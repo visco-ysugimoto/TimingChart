@@ -1,0 +1,23 @@
+{
+  "suggestions": [
+    "CLK",
+    "RESET",
+    "ENABLE",
+    "VALID",
+    "READY",
+    "BUSY",
+    "DONE",
+    "ERROR",
+    "START",
+    "STOP",
+    "PAUSE",
+    "CONTINUE",
+    "INIT",
+    "IDLE",
+    "ACTIVE",
+    "WAIT",
+    "SYNC",
+    "ASYNC",
+    "TRIGGER"
+  ]
+}

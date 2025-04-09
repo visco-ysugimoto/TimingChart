@@ -1,0 +1,23 @@
+{
+  "suggestions": [
+    "ACK",
+    "NACK",
+    "VALID",
+    "READY",
+    "BUSY",
+    "DONE",
+    "ERROR",
+    "COMPLETE",
+    "SUCCESS",
+    "FAIL",
+    "PASS",
+    "FAIL",
+    "TIMEOUT",
+    "OVERRUN",
+    "UNDERRUN",
+    "FULL",
+    "EMPTY",
+    "LOCKED",
+    "UNLOCKED"
+  ]
+} 

@@ -1,0 +1,111 @@
+{
+  "@@locale": "en",
+  "appTitle": "Timing Chart Generator",
+  "@appTitle": {
+      "description": "The main title of the application"
+  },
+  "formTabTitle": "Input Form",
+  "@formTabTitle": {
+      "description": "Title for the tab containing the input form"
+  },
+  "chartTabTitle": "Timing Chart",
+  "@chartTabTitle": {
+      "description": "Title for the tab displaying the timing chart"
+  },
+  "menu_file": "File",
+  "@menu_file": {
+      "description": "Label for the File menu"
+  },
+  "menu_item_new": "New",
+  "@menu_item_new": {
+      "description": "Menu item to create a new file"
+  },
+  "menu_item_open": "Open...",
+  "@menu_item_open": {
+      "description": "Menu item to open an existing file"
+  },
+  "menu_item_save": "Save",
+  "@menu_item_save": {
+      "description": "Menu item to save the current file"
+  },
+  "menu_item_save_as": "Save As...",
+  "@menu_item_save_as": {
+      "description": "Menu item to save the current file with a new name"
+  },
+  "menu_edit": "Edit",
+  "@menu_edit": {
+      "description": "Label for the Edit menu"
+  },
+  "menu_item_cut": "Cut",
+  "@menu_item_cut": {
+      "description": "Menu item to cut selected content"
+  },
+  "menu_item_copy": "Copy",
+  "@menu_item_copy": {
+      "description": "Menu item to copy selected content"
+  },
+  "menu_item_paste": "Paste",
+  "@menu_item_paste": {
+      "description": "Menu item to paste content from clipboard"
+  },
+  "menu_help": "Help",
+  "@menu_help": {
+      "description": "Label for the Help menu"
+  },
+  "menu_item_about": "About",
+  "@menu_item_about": {
+      "description": "Menu item to show information about the application"
+  },
+  "chartNameLabel": "Chart Name",
+  "@chartNameLabel": {
+      "description": "Label for the chart name input field"
+  },
+  "triggerOptionLabel": "Trigger Option",
+  "@triggerOptionLabel": {
+      "description": "Label for the trigger option dropdown"
+  },
+  "ioPortLabel": "Total I/O Port",
+  "@ioPortLabel": {
+      "description": "Label for the total I/O port selection dropdown"
+  },
+  "hwPortLabel": "Total HW Port",
+  "@hwPortLabel": {
+      "description": "Label for the total hardware trigger port selection dropdown"
+  },
+  "cameraLabel": "Total Camera",
+  "@cameraLabel": {
+      "description": "Label for the total camera selection dropdown"
+  },
+  "inputSignalSectionTitle": "Input Signals",
+  "@inputSignalSectionTitle": {
+      "description": "Title for the input signal name entry section"
+  },
+  "inputSignalPrefix": "Input",
+  "@inputSignalPrefix": {
+      "description": "Prefix used for input signal labels (e.g., Input 1, Input 2)"
+  },
+  "outputSignalSectionTitle": "Output Signals",
+  "@outputSignalSectionTitle": {
+      "description": "Title for the output signal name entry section"
+  },
+  "outputSignalPrefix": "Output",
+  "@outputSignalPrefix": {
+      "description": "Prefix used for output signal labels (e.g., Output 1, Output 2)"
+  },
+  "hwTriggerSectionTitle": "HW Trigger Signals",
+  "@hwTriggerSectionTitle": {
+      "description": "Title for the hardware trigger signal name entry section"
+  },
+  "hwTriggerPrefix": "HW Trigger",
+  "@hwTriggerPrefix": {
+      "description": "Prefix used for hardware trigger signal labels (e.g., HW Trigger 1)"
+  },
+  "createTemplateButton": "Create Template",
+  "@createTemplateButton": {
+      "description": "Text for the button to create a template (might be replaced)"
+  },
+  "updateChartButton": "Update Chart",
+  "@updateChartButton": {
+      "description": "Text for the button that updates the timing chart based on form input"
+  }
+}
