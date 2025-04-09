@@ -9,11 +9,6 @@ import 'models/chart/signal_data.dart';
 import 'models/chart/timing_chart_annotation.dart';
 import 'widgets/form/form_tab.dart';
 import 'widgets/chart/timing_chart.dart';
-import 'common_padding.dart';
-import 'custom_dropdown.dart';
-import 'input_suggestion_text_field.dart';
-import 'output_suggestion_text_field.dart';
-import 'controller_list.dart';
 
 void main() {
   runApp(const MyApp());
@@ -427,8 +422,8 @@ class _MyHomePageState extends State<MyHomePage>
             signalTypes:
                 _chartSignals.map((s) {
                   if (s.name.startsWith('In')) return SignalType.input;
-                  if (s.name.startsWith('Out')) return SignalType.output;
                   if (s.name.startsWith('HW')) return SignalType.hwTrigger;
+                  if (s.name.startsWith('Out')) return SignalType.output;
                   return SignalType.input; // デフォルト
                 }).toList(),
           ),

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'chart_coordinate_mapper.dart';
 
+// 後方互換性のためのウィジェット（テスト用）
 class ChartGrid extends StatelessWidget {
   final int timeSteps;
   final double cellWidth;
@@ -35,6 +37,7 @@ class ChartGrid extends StatelessWidget {
   }
 }
 
+// 後方互換性のためのペインター（テスト用）
 class _ChartGridPainter extends CustomPainter {
   final int timeSteps;
   final double cellWidth;
@@ -78,5 +81,108 @@ class _ChartGridPainter extends CustomPainter {
         cellWidth != oldDelegate.cellWidth ||
         cellHeight != oldDelegate.cellHeight ||
         signalCount != oldDelegate.signalCount;
+  }
+}
+
+// 新しいコーディネートマッパーを使用したペインター
+class ChartGridPainter extends CustomPainter {
+  final ChartCoordinateMapper mapper;
+  final List<String> signalNames;
+  final double gridInterval;
+
+  ChartGridPainter({
+    required this.mapper,
+    required this.signalNames,
+    this.gridInterval = 50.0, // デフォルトのグリッド間隔（ピクセル）
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    try {
+      final gridPaint =
+          Paint()
+            ..color = Colors.grey.withOpacity(0.3)
+            ..strokeWidth = 1.0;
+
+      final textPaint = TextStyle(color: Colors.black87, fontSize: 12);
+
+      final textPainter = TextPainter(
+        textDirection: TextDirection.ltr,
+        textAlign: TextAlign.right,
+      );
+
+      // 水平グリッド線（信号の区切り）
+      for (int i = 0; i <= mapper.signalCount; i++) {
+        final y =
+            i == 0
+                ? mapper.topPadding
+                : (i == mapper.signalCount
+                    ? mapper.topPadding +
+                        mapper.signalCount * mapper.signalTotalHeight
+                    : mapper.getSignalBottomY(i - 1));
+
+        canvas.drawLine(
+          Offset(mapper.leftPadding, y),
+          Offset(mapper.leftPadding + mapper.chartAreaWidth, y),
+          gridPaint,
+        );
+
+        // 信号名ラベルを描画（左側）
+        if (i < mapper.signalCount && i < signalNames.length) {
+          final signalCenterY = mapper.getSignalCenterY(i);
+          textPainter.text = TextSpan(text: signalNames[i], style: textPaint);
+          textPainter.layout(maxWidth: mapper.leftPadding - 10);
+          textPainter.paint(
+            canvas,
+            Offset(
+              mapper.leftPadding - textPainter.width - 5,
+              signalCenterY - textPainter.height / 2,
+            ),
+          );
+        }
+      }
+
+      // 垂直グリッド線（時間軸）
+      // 適切な時間間隔を計算
+      final timeInterval = mapper.calculateTimeGridInterval(gridInterval);
+      final numTimeLines = (mapper.totalTime / timeInterval).ceil() + 1;
+
+      for (int i = 0; i <= numTimeLines; i++) {
+        final time = i * timeInterval;
+        if (time > mapper.totalTime) break;
+
+        final x = mapper.mapTimeToX(time);
+
+        // グリッド線
+        canvas.drawLine(
+          Offset(x, mapper.topPadding),
+          Offset(x, mapper.topPadding + mapper.chartAreaHeight),
+          gridPaint,
+        );
+
+        // 時間ラベル
+        textPainter.text = TextSpan(
+          text: time.toStringAsFixed(1),
+          style: textPaint,
+        );
+        textPainter.layout();
+        textPainter.paint(
+          canvas,
+          Offset(
+            x - textPainter.width / 2,
+            mapper.topPadding + mapper.chartAreaHeight + 5,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('エラー: グリッドの描画中にエラーが発生しました: $e');
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant ChartGridPainter oldDelegate) {
+    return mapper != oldDelegate.mapper ||
+        signalNames != oldDelegate.signalNames ||
+        gridInterval != oldDelegate.gridInterval;
   }
 }
