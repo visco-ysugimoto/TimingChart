@@ -2,9 +2,11 @@ import 'dart:math' as math;
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import '../../models/chart/timing_chart_annotation.dart';
-
-enum SignalType { input, output, hwTrigger }
+import 'chart_annotations.dart';
+import 'chart_grid.dart';
+import 'chart_signals.dart';
 
 class TimingChart extends StatefulWidget {
   final List<String> initialSignalNames;
@@ -21,10 +23,10 @@ class TimingChart extends StatefulWidget {
   });
 
   @override
-  State<TimingChart> createState() => _TimingChartState();
+  State<TimingChart> createState() => TimingChartState();
 }
 
-class _TimingChartState extends State<TimingChart>
+class TimingChartState extends State<TimingChart>
     with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
@@ -55,6 +57,9 @@ class _TimingChartState extends State<TimingChart>
 
   Offset? _dragStartGlobal;
 
+  // 描画用のキー
+  final GlobalKey _customPaintKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
@@ -62,6 +67,30 @@ class _TimingChartState extends State<TimingChart>
     signals =
         widget.initialSignals.map((list) => List<int>.from(list)).toList();
     annotations = List.from(widget.initialAnnotations);
+  }
+
+  // 信号データを更新するメソッド
+  void updateSignals(List<List<int>> newSignals) {
+    setState(() {
+      signals = newSignals.map((list) => List<int>.from(list)).toList();
+      _forceRepaint();
+    });
+  }
+
+  // アノテーションを更新するメソッド
+  void updateAnnotations(List<TimingChartAnnotation> newAnnotations) {
+    setState(() {
+      annotations = List.from(newAnnotations);
+      _forceRepaint();
+    });
+  }
+
+  // 信号名を更新するメソッド
+  void updateSignalNames(List<String> newNames) {
+    setState(() {
+      signalNames = List.from(newNames);
+      _forceRepaint();
+    });
   }
 
   @override
@@ -237,6 +266,13 @@ class _TimingChartState extends State<TimingChart>
         time < signals[sig].length) {
       setState(() {
         signals[sig][time] = (signals[sig][time] == 0) ? 1 : 0;
+
+        // デバッグ出力で信号の変更を確認
+        debugPrint('信号を反転: 行=${sig}, 列=${time}, 新しい値=${signals[sig][time]}');
+
+        // 強制的に再描画をトリガーする
+        _highlightTimeIndices = [..._highlightTimeIndices];
+        _forceRepaint();
       });
     }
   }
@@ -464,7 +500,11 @@ class _TimingChartState extends State<TimingChart>
       );
 
       setState(() {
+        debugPrint('コメント追加: ID=${annId}, text=${newComment}, index=${tIndex}');
         annotations.add(newAnnotation);
+        // 強制的に再描画をトリガーするためのダミー更新
+        _highlightTimeIndices = [..._highlightTimeIndices];
+        _forceRepaint();
       });
     }
   }
@@ -513,7 +553,11 @@ class _TimingChartState extends State<TimingChart>
       );
 
       setState(() {
+        debugPrint(
+          '範囲コメント追加: ID=${annId}, text=${newComment}, start=${stTime}, end=${edTime}',
+        );
         annotations.add(newAnnotation);
+        _forceRepaint();
         _clearSelection();
       });
     }
@@ -596,6 +640,7 @@ class _TimingChartState extends State<TimingChart>
     if (stSig < 0 || edSig >= signals.length) return;
 
     setState(() {
+      // 選択された信号の値を反転
       for (int row = stSig; row <= edSig; row++) {
         final maxTimeForRow = signals[row].length - 1;
         final clampedStTime = stTime.clamp(0, maxTimeForRow);
@@ -607,6 +652,13 @@ class _TimingChartState extends State<TimingChart>
           signals[row][t] = (signals[row][t] == 0) ? 1 : 0;
         }
       }
+
+      // 強制的に再描画をトリガーする
+      _highlightTimeIndices = [..._highlightTimeIndices];
+      _forceRepaint();
+
+      // 変更をすぐに見えるようにするため、選択範囲をクリアしない
+      // _clearSelection();
     });
   }
 
@@ -719,32 +771,51 @@ class _TimingChartState extends State<TimingChart>
       onTapDown: _handleTap,
       onSecondaryTapDown:
           (details) => _showContextMenu(context, details.globalPosition),
-      child: CustomPaint(
-        size: Size(totalWidth, totalHeight),
-        painter: _StepTimingChartPainter(
-          signals: signals,
-          signalNames: signalNames,
-          signalTypes: widget.signalTypes,
-          annotations: annotations,
-          cellWidth: _cellWidth,
-          cellHeight: cellHeight,
-          labelWidth: labelWidth,
-          commentAreaHeight: commentAreaHeight,
-          chartMarginLeft: chartMarginLeft,
-          chartMarginTop: chartMarginTop,
-          startSignalIndex: _startSignalIndex,
-          endSignalIndex: _endSignalIndex,
-          startTimeIndex: _startTimeIndex,
-          endTimeIndex: _endTimeIndex,
-          highlightTimeIndices: _highlightTimeIndices,
-          selectedAnnotationId: _selectedAnnotationId,
-          annotationRects: _annotationHitRects,
+      child: RepaintBoundary(
+        child: CustomPaint(
+          key: _customPaintKey,
+          isComplex: true,
+          willChange: true,
+          size: Size(totalWidth, totalHeight),
+          painter: _StepTimingChartPainter(
+            signals: signals,
+            signalNames: signalNames,
+            signalTypes: widget.signalTypes,
+            annotations: annotations,
+            cellWidth: _cellWidth,
+            cellHeight: cellHeight,
+            labelWidth: labelWidth,
+            commentAreaHeight: commentAreaHeight,
+            chartMarginLeft: chartMarginLeft,
+            chartMarginTop: chartMarginTop,
+            startSignalIndex: _startSignalIndex,
+            endSignalIndex: _endSignalIndex,
+            startTimeIndex: _startTimeIndex,
+            endTimeIndex: _endTimeIndex,
+            highlightTimeIndices: _highlightTimeIndices,
+            selectedAnnotationId: _selectedAnnotationId,
+            annotationRects: _annotationHitRects,
+          ),
         ),
       ),
     );
   }
+
+  // 強制的に再描画をトリガーするメソッド
+  void _forceRepaint() {
+    final customPaint = _customPaintKey.currentContext?.findRenderObject();
+    if (customPaint is RenderCustomPaint) {
+      customPaint.markNeedsPaint();
+    }
+  }
 }
 
+/// タイミングチャートを描画するカスタムペインター
+///
+/// 責務の分離に基づいて以下の3つのマネージャークラスを利用：
+/// - ChartGridManager: グリッド線と信号名ラベルの描画
+/// - ChartSignalsManager: デジタル信号波形と選択範囲の描画
+/// - ChartAnnotationsManager: コメント関連の描画
 class _StepTimingChartPainter extends CustomPainter {
   _StepTimingChartPainter({
     required this.signals,
@@ -764,7 +835,31 @@ class _StepTimingChartPainter extends CustomPainter {
     required this.highlightTimeIndices,
     required this.selectedAnnotationId,
     required this.annotationRects,
-  });
+  }) {
+    // 各マネージャークラスを初期化
+    _annotationsManager = ChartAnnotationsManager(
+      annotations: annotations,
+      cellWidth: cellWidth,
+      cellHeight: cellHeight,
+      labelWidth: labelWidth,
+      highlightTimeIndices: highlightTimeIndices,
+      selectedAnnotationId: selectedAnnotationId,
+    );
+
+    _gridManager = ChartGridManager(
+      cellWidth: cellWidth,
+      cellHeight: cellHeight,
+      labelWidth: labelWidth,
+      signalNames: signalNames,
+    );
+
+    _signalsManager = ChartSignalsManager(
+      cellWidth: cellWidth,
+      cellHeight: cellHeight,
+      labelWidth: labelWidth,
+      signalTypes: signalTypes,
+    );
+  }
 
   final List<List<int>> signals;
   final List<String> signalNames;
@@ -786,444 +881,92 @@ class _StepTimingChartPainter extends CustomPainter {
 
   final String? selectedAnnotationId;
   final Map<String, Rect> annotationRects;
-  static const double waveAmplitude = 10;
 
-  final List<Rect> _placedArrowRects = [];
+  // 各種マネージャーインスタンス
+  late final ChartAnnotationsManager _annotationsManager;
+  late final ChartGridManager _gridManager;
+  late final ChartSignalsManager _signalsManager;
 
   @override
   void paint(Canvas canvas, Size size) {
+    debugPrint('\n=== TimingChart Paint Start ===');
+    debugPrint('Canvas Size: $size');
+    debugPrint('Chart Margin: Left=$chartMarginLeft, Top=$chartMarginTop');
+
+    // 描画の開始点をオフセット
     canvas.save();
     canvas.translate(chartMarginLeft, chartMarginTop);
+    debugPrint('Canvas translated by: ($chartMarginLeft, $chartMarginTop)');
 
-    _drawSignalLabels(canvas, size);
+    // 描画順序は背景から前景へ：
+    debugPrint('\n1. Drawing signal labels');
+    _gridManager.drawSignalLabels(canvas, signals.length);
 
-    var paintLine = Paint()..strokeWidth = 2;
-
-    for (int row = 0; row < signals.length; row++) {
-      final rowData = signals[row];
-      final yOffset = row * cellHeight + (cellHeight / 2);
-
-      final currentSignalType =
-          (row >= 0 && row < signalTypes.length)
-              ? signalTypes[row]
-              : SignalType.input;
-
-      switch (currentSignalType) {
-        case SignalType.input:
-          paintLine =
-              Paint()
-                ..color = Colors.blue
-                ..strokeWidth = 2;
-          break;
-        case SignalType.output:
-          paintLine =
-              Paint()
-                ..color = Colors.red
-                ..strokeWidth = 2;
-          break;
-        case SignalType.hwTrigger:
-          paintLine =
-              Paint()
-                ..color = Colors.green
-                ..strokeWidth = 2;
-          break;
-      }
-
-      for (int t = 0; t < rowData.length - 1; t++) {
-        final currentValue = rowData[t];
-        final nextValue = rowData[t + 1];
-
-        final xStart = labelWidth + t * cellWidth;
-        final xEnd = labelWidth + (t + 1) * cellWidth;
-
-        final yCurrent =
-            (currentValue == 1) ? (yOffset - waveAmplitude) : yOffset;
-        final yNext = (nextValue == 1) ? (yOffset - waveAmplitude) : yOffset;
-
-        canvas.drawLine(
-          Offset(xStart, yCurrent),
-          Offset(xEnd, yCurrent),
-          paintLine,
-        );
-
-        if (currentValue != nextValue) {
-          canvas.drawLine(
-            Offset(xEnd, yCurrent),
-            Offset(xEnd, yNext),
-            paintLine,
-          );
-        }
-      }
-      if (rowData.isNotEmpty) {
-        final lastIndex = rowData.length - 1;
-        final lastValue = rowData[lastIndex];
-        final xStart = labelWidth + lastIndex * cellWidth;
-        final xEnd = labelWidth + (lastIndex + 1) * cellWidth;
-        final yLast = (lastValue == 1) ? (yOffset - waveAmplitude) : yOffset;
-        canvas.drawLine(Offset(xStart, yLast), Offset(xEnd, yLast), paintLine);
-      }
-    }
-
-    if (startSignalIndex != null &&
-        endSignalIndex != null &&
-        startTimeIndex != null &&
-        endTimeIndex != null) {
-      final stSig = math.min(startSignalIndex!, endSignalIndex!);
-      final edSig = math.max(startSignalIndex!, endSignalIndex!);
-      final stTime = math.min(startTimeIndex!, endTimeIndex!);
-      final edTime = math.max(startTimeIndex!, endTimeIndex!);
-
-      final selectionRect = Rect.fromLTWH(
-        labelWidth + stTime * cellWidth,
-        stSig * cellHeight,
-        (edTime - stTime + 1) * cellWidth,
-        (edSig - stSig + 1) * cellHeight,
-      );
-
-      final paintSelection =
-          Paint()
-            ..color = Colors.blue.withOpacity(0.2)
-            ..style = PaintingStyle.fill;
-
-      canvas.drawRect(selectionRect, paintSelection);
-    }
-
-    final paintGuide =
-        Paint()
-          ..color = Colors.grey.withOpacity(0.5)
-          ..strokeWidth = 1;
-    final paintHighlight =
-        Paint()
-          ..color = Colors.redAccent
-          ..strokeWidth = 2;
-
-    final maxLen =
+    debugPrint('\n2. Drawing grid lines');
+    final maxTimeSteps =
         signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
+    _gridManager.drawGridLines(canvas, size, signals.length, maxTimeSteps);
 
-    final commentTimeIndices = annotations.map((a) => a.startTimeIndex).toSet();
+    debugPrint('\n3. Drawing highlighted time indices');
+    _gridManager.drawHighlightedLines(canvas, highlightTimeIndices, size);
 
-    for (int i = 0; i <= maxLen; i++) {
-      final x = labelWidth + i * cellWidth;
-      final paintToUse =
-          highlightTimeIndices.contains(i) ? paintHighlight : paintGuide;
+    debugPrint('\n4. Drawing signal waveforms');
+    _signalsManager.drawSignalWaveforms(canvas, signals);
 
-      if (highlightTimeIndices.contains(i)) {
-        canvas.drawLine(
-          Offset(x, 0),
-          Offset(x, size.height - commentAreaHeight),
-          paintToUse,
-        );
-      } else if (!commentTimeIndices.contains(i)) {
-        canvas.drawLine(
-          Offset(x, 0),
-          Offset(x, size.height - commentAreaHeight),
-          paintGuide,
-        );
-      }
-    }
+    debugPrint('\n5. Drawing selection highlight');
+    _signalsManager.drawSelectionHighlight(
+      canvas,
+      startSignalIndex,
+      endSignalIndex,
+      startTimeIndex,
+      endTimeIndex,
+    );
 
-    final chartBottomY = signals.length * cellHeight;
-    _drawAnnotationsAndBoundaries(canvas, size, chartBottomY);
+    debugPrint('\n6. Drawing annotations with boundary lines');
+    _annotationsManager.drawAnnotations(canvas, size, signals.length);
+
+    // アノテーションの当たり判定用Rectマップを更新
+    annotationRects.clear();
+    annotationRects.addAll(_annotationsManager.getAnnotationRects());
 
     canvas.restore();
-  }
-
-  void _drawSignalLabels(Canvas canvas, Size size) {
-    for (int row = 0; row < signals.length; row++) {
-      final name = (row < signalNames.length) ? signalNames[row] : "";
-      final textSpan = TextSpan(
-        text: name,
-        style: const TextStyle(color: Colors.black, fontSize: 14),
-      );
-
-      final textPainter = TextPainter(
-        text: textSpan,
-        textDirection: TextDirection.ltr,
-        maxLines: 2,
-        ellipsis: '...',
-      );
-      textPainter.layout(maxWidth: labelWidth - 8.0 * 2);
-
-      final yCenter = row * cellHeight + (cellHeight - textPainter.height) / 2;
-      final offset = Offset(6, yCenter);
-      textPainter.paint(canvas, offset);
-    }
-  }
-
-  void _drawAnnotationsAndBoundaries(
-    Canvas canvas,
-    Size size,
-    double chartBottomY,
-  ) {
-    annotationRects.clear();
-    final double baseCommentY = chartBottomY + 20;
-
-    if (annotations.isEmpty) {
-      return;
-    }
-
-    final sortedAnnotations = [...annotations];
-    sortedAnnotations.sort((a, b) {
-      final startCompare = a.startTimeIndex.compareTo(b.startTimeIndex);
-      if (startCompare != 0) return startCompare;
-      if (a.endTimeIndex == null && b.endTimeIndex != null) return -1;
-      if (a.endTimeIndex != null && b.endTimeIndex == null) return 1;
-      if (a.endTimeIndex != null && b.endTimeIndex != null) {
-        return a.endTimeIndex!.compareTo(b.endTimeIndex!);
-      }
-      return 0;
-    });
-
-    final List<Rect> placedCommentRects = [];
-    _placedArrowRects.clear();
-
-    for (final ann in sortedAnnotations) {
-      double commentX, commentY;
-      Rect commentRect;
-      Rect? arrowRect;
-
-      final textSpan = TextSpan(
-        text: ann.text,
-        style: const TextStyle(color: Colors.black, fontSize: 14),
-      );
-      final textPainter = TextPainter(
-        text: textSpan,
-        textDirection: TextDirection.ltr,
-        maxLines: 3,
-        ellipsis: '...',
-        textAlign: TextAlign.left,
-      );
-      textPainter.layout(maxWidth: 120);
-      final textWidth = textPainter.width;
-      final textHeight = textPainter.height;
-      final boxWidth = textWidth + 10;
-      final boxHeight = textHeight + 10;
-
-      if (ann.endTimeIndex != null) {
-        double arrowBaseY = chartBottomY + 10;
-        final double arrowStartX = labelWidth + ann.startTimeIndex * cellWidth;
-        final double arrowEndX =
-            labelWidth + (ann.endTimeIndex! + 1) * cellWidth;
-        const double arrowThickness = 4;
-        Rect currentArrowRect = Rect.fromLTWH(
-          arrowStartX,
-          arrowBaseY - arrowThickness / 2,
-          arrowEndX - arrowStartX,
-          arrowThickness,
-        );
-
-        int attempts = 0;
-        while ((_placedArrowRects.any((r) => r.overlaps(currentArrowRect)) ||
-                _isArrowOverlappingCommentBoxes(
-                  currentArrowRect,
-                  placedCommentRects,
-                )) &&
-            attempts < 15) {
-          arrowBaseY += 20;
-          currentArrowRect = Rect.fromLTWH(
-            arrowStartX,
-            arrowBaseY - arrowThickness / 2,
-            arrowEndX - arrowStartX,
-            arrowThickness,
-          );
-          attempts++;
-        }
-        arrowRect = currentArrowRect;
-        _placedArrowRects.add(arrowRect);
-
-        commentY = arrowRect.bottom + 5;
-        commentX = arrowRect.center.dx - boxWidth / 2;
-        commentRect = Rect.fromLTWH(commentX, commentY, boxWidth, boxHeight);
-      } else {
-        commentY = baseCommentY;
-        commentX =
-            labelWidth +
-            ann.startTimeIndex * cellWidth +
-            cellWidth / 2 -
-            boxWidth / 2;
-        commentRect = Rect.fromLTWH(commentX, commentY, boxWidth, boxHeight);
-      }
-
-      int attempts = 0;
-      while (placedCommentRects.any((r) => r.overlaps(commentRect)) &&
-          attempts < 15) {
-        commentY += 20;
-        commentRect = Rect.fromLTWH(commentX, commentY, boxWidth, boxHeight);
-        attempts++;
-      }
-      placedCommentRects.add(commentRect);
-      annotationRects[ann.id] = commentRect;
-
-      final isSelected = selectedAnnotationId == ann.id;
-      final paintBg =
-          Paint()
-            ..color = isSelected ? Colors.yellow.withOpacity(0.3) : Colors.white
-            ..style = PaintingStyle.fill;
-      final paintBorder =
-          Paint()
-            ..color = Colors.black
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = isSelected ? 2.0 : 1.0;
-      canvas.drawRect(commentRect, paintBg);
-      canvas.drawRect(commentRect, paintBorder);
-      textPainter.paint(canvas, commentRect.topLeft.translate(4, 4));
-
-      if (arrowRect != null) {
-        final paintArrowLine =
-            Paint()
-              ..color = Colors.blue
-              ..strokeWidth = 4;
-        final startPt = Offset(arrowRect.left, arrowRect.center.dy);
-        final endPt = Offset(arrowRect.right, arrowRect.center.dy);
-        canvas.drawLine(startPt, endPt, paintArrowLine);
-        const double headLength = 8;
-        _drawArrowhead(canvas, startPt, math.pi, headLength, paintArrowLine);
-        _drawArrowhead(canvas, endPt, 0, headLength, paintArrowLine);
-      }
-
-      final Rect? foundArrowRect = _placedArrowRects.firstWhereOrNull(
-        (ar) => ar.left == labelWidth + ann.startTimeIndex * cellWidth,
-      );
-      if (foundArrowRect != null) {
-        drawDashedLine(
-          canvas,
-          Offset(commentRect.center.dx, commentRect.bottom),
-          Offset(foundArrowRect.center.dx, foundArrowRect.top),
-          Paint()..color = Colors.black,
-          dashWidth: 2,
-          dashSpace: 2,
-        );
-      }
-    }
-
-    final Paint boundaryPaint =
-        Paint()
-          ..color = Colors.black.withOpacity(0.7)
-          ..strokeWidth = 1;
-    final double dashWidth = 5;
-    final double dashSpace = 3;
-
-    for (final ann in annotations) {
-      final Rect? commentRect = annotationRects[ann.id];
-      if (commentRect == null) continue;
-
-      final double startX = labelWidth + ann.startTimeIndex * cellWidth;
-      final double boundaryEndY = commentRect.top;
-
-      drawDashedLine(
-        canvas,
-        Offset(startX, 0),
-        Offset(startX, boundaryEndY),
-        boundaryPaint,
-        dashWidth: dashWidth,
-        dashSpace: dashSpace,
-      );
-
-      if (ann.endTimeIndex != null) {
-        final double endX = labelWidth + (ann.endTimeIndex! + 1) * cellWidth;
-        drawDashedLine(
-          canvas,
-          Offset(endX, 0),
-          Offset(endX, boundaryEndY),
-          boundaryPaint,
-          dashWidth: dashWidth,
-          dashSpace: dashSpace,
-        );
-        final Rect? arrowRect = _placedArrowRects.firstWhereOrNull(
-          (ar) => ar.left == startX,
-        );
-        if (arrowRect != null) {
-          drawDashedLine(
-            canvas,
-            commentRect.center.translate(0, commentRect.height / 2),
-            Offset(arrowRect.center.dx, arrowRect.top),
-            boundaryPaint,
-            dashWidth: 2,
-            dashSpace: 2,
-          );
-        }
-      } else {
-        final double cellCenterX = startX + cellWidth / 2;
-        drawDashedLine(
-          canvas,
-          Offset(commentRect.center.dx, commentRect.top),
-          Offset(cellCenterX, 0),
-          boundaryPaint,
-          dashWidth: dashWidth,
-          dashSpace: dashSpace,
-        );
-      }
-    }
-  }
-
-  bool _isArrowOverlappingCommentBoxes(
-    Rect arrowRect,
-    List<Rect> commentBoxes,
-  ) {
-    for (final boxRect in commentBoxes) {
-      final bool horizontalOverlap =
-          !(arrowRect.right < boxRect.left || arrowRect.left > boxRect.right);
-      final bool verticalOverlap =
-          !(arrowRect.bottom < boxRect.top || arrowRect.top > boxRect.bottom);
-      if (horizontalOverlap && verticalOverlap) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  void _drawArrowhead(
-    Canvas canvas,
-    Offset tip,
-    double angle,
-    double length,
-    Paint paint,
-  ) {
-    final leftEnd = Offset(
-      tip.dx - length * math.cos(angle - math.pi / 6),
-      tip.dy - length * math.sin(angle - math.pi / 6),
-    );
-    final rightEnd = Offset(
-      tip.dx - length * math.cos(angle + math.pi / 6),
-      tip.dy - length * math.sin(angle + math.pi / 6),
-    );
-    canvas.drawLine(tip, leftEnd, paint);
-    canvas.drawLine(tip, rightEnd, paint);
-  }
-
-  void drawDashedLine(
-    Canvas canvas,
-    Offset start,
-    Offset end,
-    Paint paint, {
-    double dashWidth = 5,
-    double dashSpace = 3,
-  }) {
-    if ((start - end).distance < 0.1) return;
-
-    final totalDistance = (end - start).distance;
-    final patternLength = dashWidth + dashSpace;
-    if (patternLength <= 0) return;
-
-    final dashCount = (totalDistance / patternLength).floor();
-    final Offset delta = end - start;
-    final Offset dashVector = delta * (dashWidth / totalDistance);
-    final Offset spaceVector = delta * (dashSpace / totalDistance);
-
-    Offset currentPoint = start;
-    for (int i = 0; i < dashCount; i++) {
-      final nextPoint = currentPoint + dashVector;
-      canvas.drawLine(currentPoint, nextPoint, paint);
-      currentPoint = nextPoint + spaceVector;
-    }
-    final remainingDistance = (end - currentPoint).distance;
-    if (remainingDistance > 0.1) {
-      canvas.drawLine(currentPoint, end, paint);
-    }
+    debugPrint('Canvas restored to original state');
+    debugPrint('=== TimingChart Paint End ===\n');
   }
 
   @override
   bool shouldRepaint(covariant _StepTimingChartPainter oldDelegate) {
-    return true;
+    // 最初に信号値の比較
+    bool signalsChanged = signals.length != oldDelegate.signals.length;
+
+    if (!signalsChanged) {
+      // 各信号の長さと内容を比較
+      for (int i = 0; i < signals.length; i++) {
+        if (signals[i].length != oldDelegate.signals[i].length) {
+          signalsChanged = true;
+          break;
+        }
+
+        // ビット単位で比較して変更を検出
+        for (int j = 0; j < signals[i].length; j++) {
+          if (signals[i][j] != oldDelegate.signals[i][j]) {
+            signalsChanged = true;
+            break;
+          }
+        }
+
+        if (signalsChanged) break;
+      }
+    }
+
+    return signalsChanged ||
+        signalNames != oldDelegate.signalNames ||
+        annotations != oldDelegate.annotations ||
+        selectedAnnotationId != oldDelegate.selectedAnnotationId ||
+        !listEquals(highlightTimeIndices, oldDelegate.highlightTimeIndices) ||
+        startSignalIndex != oldDelegate.startSignalIndex ||
+        endSignalIndex != oldDelegate.endSignalIndex ||
+        startTimeIndex != oldDelegate.startTimeIndex ||
+        endTimeIndex != oldDelegate.endTimeIndex;
   }
 }

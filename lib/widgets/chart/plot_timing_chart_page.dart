@@ -83,10 +83,9 @@ class _TimingChartPageState extends State<TimingChartPage>
   // signals の比較用
   bool _areSignalsEqual(List<List<int>> a, List<List<int>> b) {
     if (a.length != b.length) return false;
-    for (int i = 0; i < a.length; i++) {
-      if (!listEquals(a[i], b[i])) return false;
-    }
-    return true;
+    return a.asMap().entries.every(
+      (entry) => entry.key < b.length && listEquals(entry.value, b[entry.key]),
+    );
   }
 
   // annotations の比較用
@@ -137,10 +136,17 @@ class _TimingChartPageState extends State<TimingChartPage>
 
   /// 選択範囲が有効かどうか
   bool get _hasValidSelection {
-    return _startSignalIndex != null &&
-        _endSignalIndex != null &&
-        _startTimeIndex != null &&
-        _endTimeIndex != null;
+    if (_startSignalIndex == null ||
+        _endSignalIndex == null ||
+        _startTimeIndex == null ||
+        _endTimeIndex == null) {
+      return false;
+    }
+
+    // 効率化: 簡潔な条件チェック
+    return signals.isNotEmpty &&
+        math.min(_startSignalIndex!, _endSignalIndex!) >= 0 &&
+        math.max(_startSignalIndex!, _endSignalIndex!) < signals.length;
   }
 
   /// 選択範囲をリセットしてハイライト解除
@@ -421,7 +427,22 @@ class _TimingChartPageState extends State<TimingChartPage>
       if (_selectedAnnotationId == annId) {
         _selectedAnnotationId = null;
       }
+
+      // コメント削除後に強制的に再描画を実行する
+      // 1. 一時的にハイライトを設定して画面の変更を強制
+      _highlightTimeIndices.add(0); // ダミーのハイライト
+
+      // 次の描画サイクルでハイライトをクリア
+      Future.microtask(() {
+        if (mounted) {
+          setState(() {
+            _highlightTimeIndices.clear();
+          });
+        }
+      });
     });
+
+    debugPrint('コメントを削除しました: $annId');
   }
 
   /// signals 全体の中で最大の長さを計算し、
@@ -725,6 +746,47 @@ class _TimingChartPageState extends State<TimingChartPage>
 
 enum SignalType { input, output, hwTrigger }
 
+void drawDashedLine(
+  Canvas canvas,
+  Offset start,
+  Offset end,
+  Paint paint, {
+  double dashWidth = 5,
+  double dashSpace = 3,
+}) {
+  if ((start - end).distance < 0.1) return;
+
+  final path = Path();
+  final delta = end - start;
+  final distance = delta.distance;
+  final patternLength = dashWidth + dashSpace;
+  final count = (distance / patternLength).floor();
+
+  final unitVector = delta / distance;
+  var currentDistance = 0.0;
+
+  for (var i = 0; i < count; i++) {
+    final dashStart = start + unitVector * currentDistance;
+    currentDistance += dashWidth;
+    final dashEnd = start + unitVector * currentDistance;
+
+    path.moveTo(dashStart.dx, dashStart.dy);
+    path.lineTo(dashEnd.dx, dashEnd.dy);
+
+    currentDistance += dashSpace;
+  }
+
+  // 残りの部分を処理
+  if (currentDistance < distance) {
+    final dashStart = start + unitVector * currentDistance;
+    final dashEnd = end;
+    path.moveTo(dashStart.dx, dashStart.dy);
+    path.lineTo(dashEnd.dx, dashEnd.dy);
+  }
+
+  canvas.drawPath(path, paint);
+}
+
 /// 矩形波描画 + 信号名表示 + 選択範囲ハイライト
 class _StepTimingChartPainter extends CustomPainter {
   _StepTimingChartPainter({
@@ -898,7 +960,13 @@ class _StepTimingChartPainter extends CustomPainter {
       }
     }
 
-    final commentTimeIndics = annotations.map((a) => a.startTimeIndex).toSet();
+    final commentTimeIndics = <int>{};
+    for (final a in annotations) {
+      commentTimeIndics.add(a.startTimeIndex);
+      if (a.endTimeIndex != null) {
+        commentTimeIndics.add(a.endTimeIndex!);
+      }
+    }
 
     // (4) グリッド線など(任意)
     final paintGuide =
@@ -930,16 +998,14 @@ class _StepTimingChartPainter extends CustomPainter {
           canvas,
           Offset(x, 0),
           Offset(x, size.height),
-          paintHighlight,
+          Paint()
+            ..color = Colors.black
+            ..strokeWidth = 1,
+          dashWidth: 2,
+          dashSpace: 2,
         );
         //canvas.drawLine(Offset(x, 0), Offset(x, size.height), paintHighlight);
       } else if (commentTimeIndics.contains(i)) {
-        /*drawDashedLine(
-          canvas,
-          Offset(x, 0),
-          Offset(x, size.height),
-          paintAnnotations,
-        );*/
         canvas.drawLine(Offset(x, 0), Offset(x, size.height), paintGuide);
       } else {
         canvas.drawLine(Offset(x, 0), Offset(x, size.height), paintGuide);
@@ -972,7 +1038,11 @@ class _StepTimingChartPainter extends CustomPainter {
         canvas,
         Offset(xStart, 0),
         Offset(xStart, endY),
-        boundaryPaint,
+        Paint()
+          ..color = Colors.black.withOpacity(0.7)
+          ..strokeWidth = 1,
+        dashWidth: 5,
+        dashSpace: 3,
       );
       if (ann.endTimeIndex != null) {
         // 右側の縦線: endTimeIndex の右端に対応する x 座標（セルの幅分を足す）
@@ -982,7 +1052,11 @@ class _StepTimingChartPainter extends CustomPainter {
           canvas,
           Offset(xEnd, 0),
           Offset(xEnd, endY),
-          boundaryPaint,
+          Paint()
+            ..color = Colors.black.withOpacity(0.7)
+            ..strokeWidth = 1,
+          dashWidth: 5,
+          dashSpace: 3,
         );
       }
     }
@@ -1215,33 +1289,14 @@ class _StepTimingChartPainter extends CustomPainter {
     canvas.drawLine(tip, rightEnd, paint);
   }
 
-  void drawDashedLine(
-    Canvas canvas,
-    Offset start,
-    Offset end,
-    Paint paint, {
-    double dashWidth = 5,
-    double dashSpace = 3,
-  }) {
-    final totalDistance = (end - start).distance;
-    final dashCount = (totalDistance / (dashWidth + dashSpace)).floor();
-    final dashVector = (end - start) / totalDistance * dashWidth;
-    final spaceVector = (end - start) / totalDistance * dashSpace;
-    Offset currentPoint = start;
-    for (int i = 0; i < dashCount; i++) {
-      final nextPoint = currentPoint + dashVector;
-      canvas.drawLine(currentPoint, nextPoint, paint);
-      currentPoint = nextPoint + spaceVector;
-    }
-    // 端の余りがあれば最後に描画
-    if ((currentPoint - end).distance > 0) {
-      canvas.drawLine(currentPoint, end, paint);
-    }
-  }
-
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) {
-    // signalsや選択範囲が更新されたら再描画
-    return true;
+  bool shouldRepaint(covariant _StepTimingChartPainter oldDelegate) {
+    return signals != oldDelegate.signals ||
+        signalNames != oldDelegate.signalNames ||
+        annotations != oldDelegate.annotations ||
+        selectedAnnotationId != oldDelegate.selectedAnnotationId ||
+        !listEquals(highlightTimeIndices, oldDelegate.highlightTimeIndices) ||
+        startSignalIndex != oldDelegate.startSignalIndex ||
+        endSignalIndex != oldDelegate.endSignalIndex;
   }
 }

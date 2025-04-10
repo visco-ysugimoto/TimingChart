@@ -3,6 +3,368 @@ import '../../models/chart/timing_chart_annotation.dart';
 import 'chart_coordinate_mapper.dart';
 import 'dart:math' as math;
 
+/// アノテーション（コメント）管理とレンダリングを担当するクラス
+class ChartAnnotationsManager {
+  // アノテーションの描画に必要な設定
+  final List<TimingChartAnnotation> annotations;
+  final double cellWidth;
+  final double cellHeight;
+  final double labelWidth;
+  final List<int> highlightTimeIndices;
+
+  // 選択中のアノテーションID
+  final String? selectedAnnotationId;
+
+  // アノテーションの当たり判定用マップ（IDとRect）
+  final Map<String, Rect> annotationRects = {};
+  final List<Rect> _placedArrowRects = [];
+
+  ChartAnnotationsManager({
+    required this.annotations,
+    required this.cellWidth,
+    required this.cellHeight,
+    required this.labelWidth,
+    required this.highlightTimeIndices,
+    this.selectedAnnotationId,
+  });
+
+  /// アノテーションの描画
+  void drawAnnotations(Canvas canvas, Size size, int signalCount) {
+    // 既存のアノテーションRectをクリア
+    annotationRects.clear();
+    _placedArrowRects.clear();
+
+    // ベース座標と必要な値を計算
+    final chartBottomY = signalCount * cellHeight;
+    final double baseCommentY = chartBottomY + 20;
+
+    if (annotations.isEmpty) {
+      debugPrint('アノテーションが空のため描画しません');
+      return;
+    }
+
+    debugPrint('描画するアノテーション数: ${annotations.length}');
+
+    // アノテーションの並べ替え
+    final sortedAnnotations = _sortAnnotations();
+
+    // 衝突回避用のリスト
+    final List<Rect> placedCommentRects = [];
+
+    // 境界線描画用のペイント
+    final double dashWidth = 5;
+    final double dashSpace = 3;
+
+    for (final ann in sortedAnnotations) {
+      debugPrint(
+        'アノテーション描画: ID=${ann.id}, text=${ann.text}, start=${ann.startTimeIndex}, end=${ann.endTimeIndex}',
+      );
+
+      double commentX, commentY;
+      Rect commentRect;
+      Rect? arrowRect;
+
+      final textSpan = TextSpan(
+        text: ann.text,
+        style: const TextStyle(color: Colors.black, fontSize: 14),
+      );
+      final textPainter = TextPainter(
+        text: textSpan,
+        textDirection: TextDirection.ltr,
+        maxLines: 3,
+        ellipsis: '...',
+        textAlign: TextAlign.left,
+      );
+      textPainter.layout(maxWidth: 120);
+      final textWidth = textPainter.width;
+      final textHeight = textPainter.height;
+      final boxWidth = textWidth + 10;
+      final boxHeight = textHeight + 10;
+
+      if (ann.endTimeIndex != null) {
+        // 範囲コメントの場合
+        double arrowBaseY = chartBottomY + 10;
+        final double arrowStartX = labelWidth + ann.startTimeIndex * cellWidth;
+        final double arrowEndX =
+            labelWidth + (ann.endTimeIndex! + 1) * cellWidth;
+        const double arrowThickness = 4;
+        Rect currentArrowRect = Rect.fromLTWH(
+          arrowStartX,
+          arrowBaseY - arrowThickness / 2,
+          arrowEndX - arrowStartX,
+          arrowThickness,
+        );
+
+        int attempts = 0;
+        while ((_placedArrowRects.any((r) => r.overlaps(currentArrowRect)) ||
+                isArrowOverlappingCommentBoxes(
+                  currentArrowRect,
+                  placedCommentRects,
+                )) &&
+            attempts < 15) {
+          arrowBaseY += 20;
+          currentArrowRect = Rect.fromLTWH(
+            arrowStartX,
+            arrowBaseY - arrowThickness / 2,
+            arrowEndX - arrowStartX,
+            arrowThickness,
+          );
+          attempts++;
+        }
+        arrowRect = currentArrowRect;
+        _placedArrowRects.add(arrowRect);
+
+        commentY = arrowRect.bottom + 5;
+        commentX = arrowRect.center.dx - boxWidth / 2;
+        commentRect = Rect.fromLTWH(commentX, commentY, boxWidth, boxHeight);
+      } else {
+        // 単一ポイントコメントの場合
+        commentY = baseCommentY;
+        commentX =
+            labelWidth +
+            ann.startTimeIndex * cellWidth +
+            cellWidth / 2 -
+            boxWidth / 2;
+        commentRect = Rect.fromLTWH(commentX, commentY, boxWidth, boxHeight);
+      }
+
+      int attempts = 0;
+      while (placedCommentRects.any((r) => r.overlaps(commentRect)) &&
+          attempts < 15) {
+        commentY += 20;
+        commentRect = Rect.fromLTWH(commentX, commentY, boxWidth, boxHeight);
+        attempts++;
+      }
+
+      debugPrint(
+        'コメントボックスの位置: X=${commentRect.left}, Y=${commentRect.top}, Width=${commentRect.width}, Height=${commentRect.height}',
+      );
+
+      placedCommentRects.add(commentRect);
+
+      // アノテーションIDに対応するRectを保存 (ここが重要！)
+      annotationRects[ann.id] = commentRect;
+
+      // 先に境界線を描画
+      // 左側の垂直線
+      final double startX = labelWidth + ann.startTimeIndex * cellWidth;
+      final double boundaryEndY = commentRect.top;
+
+      debugPrint('左境界線: x=$startX, y1=0, y2=$boundaryEndY');
+
+      // 境界線の色を設定
+      final boundaryPaint =
+          Paint()
+            ..color = Colors.black.withOpacity(0.7)
+            ..strokeWidth = 2.0
+            ..style = PaintingStyle.stroke;
+
+      // 垂直の破線を描画
+      drawDashedLine(
+        canvas,
+        Offset(startX, 0),
+        Offset(startX, boundaryEndY),
+        boundaryPaint,
+        dashWidth: dashWidth,
+        dashSpace: dashSpace,
+      );
+
+      // 範囲コメントの右側の垂直線
+      if (ann.endTimeIndex != null) {
+        final double endX = labelWidth + (ann.endTimeIndex! + 1) * cellWidth;
+        debugPrint('右境界線: x=$endX, y1=0, y2=$boundaryEndY');
+
+        drawDashedLine(
+          canvas,
+          Offset(endX, 0),
+          Offset(endX, boundaryEndY),
+          boundaryPaint,
+          dashWidth: dashWidth,
+          dashSpace: dashSpace,
+        );
+      }
+
+      // コメントボックスの描画
+      _drawCommentBox(canvas, commentRect, textPainter, ann.id);
+
+      // 矢印の描画
+      if (arrowRect != null) {
+        _drawArrow(canvas, arrowRect);
+      }
+    }
+  }
+
+  /// コメントボックスを描画
+  void _drawCommentBox(
+    Canvas canvas,
+    Rect rect,
+    TextPainter textPainter,
+    String annId,
+  ) {
+    final isSelected = selectedAnnotationId == annId;
+    final paintBg =
+        Paint()
+          ..color = isSelected ? Colors.yellow.withOpacity(0.3) : Colors.white
+          ..style = PaintingStyle.fill;
+    final paintBorder =
+        Paint()
+          ..color = Colors.black
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = isSelected ? 2.0 : 1.0;
+    canvas.drawRect(rect, paintBg);
+    canvas.drawRect(rect, paintBorder);
+    textPainter.paint(canvas, rect.topLeft.translate(4, 4));
+  }
+
+  /// 矢印を描画
+  void _drawArrow(Canvas canvas, Rect arrowRect) {
+    final paintArrowLine =
+        Paint()
+          ..color = Colors.blue
+          ..strokeWidth = 4;
+    final startPt = Offset(arrowRect.left, arrowRect.center.dy);
+    final endPt = Offset(arrowRect.right, arrowRect.center.dy);
+    canvas.drawLine(startPt, endPt, paintArrowLine);
+    const double headLength = 8;
+    drawArrowhead(canvas, startPt, math.pi, headLength, paintArrowLine);
+    drawArrowhead(canvas, endPt, 0, headLength, paintArrowLine);
+  }
+
+  /// アノテーションのソート
+  List<TimingChartAnnotation> _sortAnnotations() {
+    final sortedAnnotations = [...annotations];
+    sortedAnnotations.sort((a, b) {
+      // 単一セルと範囲コメントを区別
+      if (a.endTimeIndex == null && b.endTimeIndex != null) {
+        return -1; // 単一セルを優先
+      } else if (a.endTimeIndex != null && b.endTimeIndex == null) {
+        return 1;
+      } else {
+        // 同じタイプ同士の場合
+        if (a.endTimeIndex == null && b.endTimeIndex == null) {
+          // 単一セルの場合はstartTimeIndexで昇順
+          return a.startTimeIndex.compareTo(b.startTimeIndex);
+        } else {
+          // 範囲コメントの場合
+          if (a.endTimeIndex == b.endTimeIndex) {
+            // endTimeIndexが同じ場合はstartTimeIndexで昇順
+            return a.startTimeIndex.compareTo(b.startTimeIndex);
+          } else {
+            // endTimeIndexで昇順
+            return a.endTimeIndex!.compareTo(b.endTimeIndex!);
+          }
+        }
+      }
+    });
+    return sortedAnnotations;
+  }
+
+  /// 矢印とコメントボックスの衝突検出
+  bool isArrowOverlappingCommentBoxes(Rect arrowRect, List<Rect> commentBoxes) {
+    for (final boxRect in commentBoxes) {
+      final bool horizontalOverlap =
+          !(arrowRect.right < boxRect.left || arrowRect.left > boxRect.right);
+      final bool verticalOverlap =
+          !(arrowRect.bottom < boxRect.top || arrowRect.top > boxRect.bottom);
+      if (horizontalOverlap && verticalOverlap) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// 矢印描画ユーティリティ
+  void drawArrowhead(
+    Canvas canvas,
+    Offset tip,
+    double angle,
+    double length,
+    Paint paint,
+  ) {
+    final leftEnd = Offset(
+      tip.dx - length * math.cos(angle - math.pi / 6),
+      tip.dy - length * math.sin(angle - math.pi / 6),
+    );
+    final rightEnd = Offset(
+      tip.dx - length * math.cos(angle + math.pi / 6),
+      tip.dy - length * math.sin(angle + math.pi / 6),
+    );
+    canvas.drawLine(tip, leftEnd, paint);
+    canvas.drawLine(tip, rightEnd, paint);
+  }
+
+  /// 破線描画ユーティリティ
+  void drawDashedLine(
+    Canvas canvas,
+    Offset start,
+    Offset end,
+    Paint paint, {
+    double dashWidth = 10, // デバッグ用に大きくする
+    double dashSpace = 5, // デバッグ用に大きくする
+  }) {
+    debugPrint('=== drawDashedLine Debug ===');
+    debugPrint('Start: $start');
+    debugPrint('End: $end');
+    debugPrint('Paint color: ${paint.color}');
+    debugPrint('Paint strokeWidth: ${paint.strokeWidth}');
+
+    if ((start - end).distance < 0.1) {
+      debugPrint('Line too short, skipping');
+      return;
+    }
+
+    // デバッグ用に線を太くする
+    paint.strokeWidth = 1.0;
+    // デバッグ用に色を目立つように変更
+    paint.color = Colors.black.withOpacity(0.7);
+
+    final totalDistance = (end - start).distance;
+    debugPrint('Total distance: $totalDistance');
+
+    final patternLength = dashWidth + dashSpace;
+    debugPrint('Pattern length: $patternLength');
+
+    if (patternLength <= 0) {
+      debugPrint('Invalid pattern length');
+      return;
+    }
+
+    final path = Path();
+    final dashCount = (totalDistance / patternLength).floor();
+    debugPrint('Dash count: $dashCount');
+    final delta = end - start;
+
+    Offset currentPoint = start;
+    for (int i = 0; i < dashCount; i++) {
+      final nextPoint = currentPoint + delta * (dashWidth / totalDistance);
+      debugPrint(
+        'Drawing dash $i: ${currentPoint.dx},${currentPoint.dy} -> ${nextPoint.dx},${nextPoint.dy}',
+      );
+
+      path.moveTo(currentPoint.dx, currentPoint.dy);
+      path.lineTo(nextPoint.dx, nextPoint.dy);
+      currentPoint = nextPoint + delta * (dashSpace / totalDistance);
+    }
+
+    final remainingDistance = (end - currentPoint).distance;
+    if (remainingDistance > 0.1) {
+      debugPrint(
+        'Drawing remaining: ${currentPoint.dx},${currentPoint.dy} -> ${end.dx},${end.dy}',
+      );
+      path.moveTo(currentPoint.dx, currentPoint.dy);
+      path.lineTo(end.dx, end.dy);
+    }
+
+    canvas.drawPath(path, paint);
+    debugPrint('=== End drawDashedLine ===\n');
+  }
+
+  /// コメントボックスの当たり判定用のRectMapを取得
+  Map<String, Rect> getAnnotationRects() {
+    return Map<String, Rect>.from(annotationRects);
+  }
+}
+
 // 後方互換性のためのウィジェット（テスト用）
 class ChartAnnotations extends StatelessWidget {
   final List<TimingChartAnnotation> annotations;
@@ -191,26 +553,64 @@ class _ChartAnnotationsPainter extends CustomPainter {
     Offset start,
     Offset end,
     Paint paint, {
-    double dashWidth = 5,
-    double dashSpace = 3,
+    double dashWidth = 10, // デバッグ用に大きくする
+    double dashSpace = 5, // デバッグ用に大きくする
   }) {
-    final distance = (end - start).distance;
-    final dashCount = (distance / (dashWidth + dashSpace)).floor();
+    debugPrint('=== drawDashedLine Debug ===');
+    debugPrint('Start: $start');
+    debugPrint('End: $end');
+    debugPrint('Paint color: ${paint.color}');
+    debugPrint('Paint strokeWidth: ${paint.strokeWidth}');
 
-    final dashVector = (end - start) / distance * dashWidth;
-    final spaceVector = (end - start) / distance * dashSpace;
+    if ((start - end).distance < 0.1) {
+      debugPrint('Line too short, skipping');
+      return;
+    }
+
+    // デバッグ用に線を太くする
+    paint.strokeWidth = 2.0;
+    // デバッグ用に色を目立つように変更
+    paint.color = Colors.black;
+
+    final totalDistance = (end - start).distance;
+    debugPrint('Total distance: $totalDistance');
+
+    final patternLength = dashWidth + dashSpace;
+    debugPrint('Pattern length: $patternLength');
+
+    if (patternLength <= 0) {
+      debugPrint('Invalid pattern length');
+      return;
+    }
+
+    final path = Path();
+    final dashCount = (totalDistance / patternLength).floor();
+    debugPrint('Dash count: $dashCount');
+    final delta = end - start;
 
     Offset currentPoint = start;
     for (int i = 0; i < dashCount; i++) {
-      final dashEnd = currentPoint + dashVector;
-      canvas.drawLine(currentPoint, dashEnd, paint);
-      currentPoint = dashEnd + spaceVector;
+      final nextPoint = currentPoint + delta * (dashWidth / totalDistance);
+      debugPrint(
+        'Drawing dash $i: ${currentPoint.dx},${currentPoint.dy} -> ${nextPoint.dx},${nextPoint.dy}',
+      );
+
+      path.moveTo(currentPoint.dx, currentPoint.dy);
+      path.lineTo(nextPoint.dx, nextPoint.dy);
+      currentPoint = nextPoint + delta * (dashSpace / totalDistance);
     }
 
-    // 残りの距離を描画
-    if ((end - currentPoint).distance > 0) {
-      canvas.drawLine(currentPoint, end, paint);
+    final remainingDistance = (end - currentPoint).distance;
+    if (remainingDistance > 0.1) {
+      debugPrint(
+        'Drawing remaining: ${currentPoint.dx},${currentPoint.dy} -> ${end.dx},${end.dy}',
+      );
+      path.moveTo(currentPoint.dx, currentPoint.dy);
+      path.lineTo(end.dx, end.dy);
     }
+
+    canvas.drawPath(path, paint);
+    debugPrint('=== End drawDashedLine ===\n');
   }
 
   void drawArrowhead(
@@ -292,6 +692,7 @@ class ChartAnnotationsPainter extends CustomPainter {
           Offset(xStart, mapper.topPadding + mapper.chartAreaHeight / 2),
           linePaint,
         );
+        debugPrint("endTimeIndex: ${annotation.endTimeIndex}");
 
         // 範囲アノテーションの場合は終了位置にも線を引く
         if (annotation.endTimeIndex != null) {
@@ -378,26 +779,64 @@ class ChartAnnotationsPainter extends CustomPainter {
     Offset start,
     Offset end,
     Paint paint, {
-    double dashWidth = 5,
-    double dashSpace = 3,
+    double dashWidth = 10, // デバッグ用に大きくする
+    double dashSpace = 5, // デバッグ用に大きくする
   }) {
-    final distance = (end - start).distance;
-    final dashCount = (distance / (dashWidth + dashSpace)).floor();
+    debugPrint('=== drawDashedLine Debug ===');
+    debugPrint('Start: $start');
+    debugPrint('End: $end');
+    debugPrint('Paint color: ${paint.color}');
+    debugPrint('Paint strokeWidth: ${paint.strokeWidth}');
 
-    final dashVector = (end - start) / distance * dashWidth;
-    final spaceVector = (end - start) / distance * dashSpace;
+    if ((start - end).distance < 0.1) {
+      debugPrint('Line too short, skipping');
+      return;
+    }
+
+    // デバッグ用に線を太くする
+    paint.strokeWidth = 2.0;
+    // デバッグ用に色を目立つように変更
+    paint.color = Colors.black.withOpacity(0.7);
+
+    final totalDistance = (end - start).distance;
+    debugPrint('Total distance: $totalDistance');
+
+    final patternLength = dashWidth + dashSpace;
+    debugPrint('Pattern length: $patternLength');
+
+    if (patternLength <= 0) {
+      debugPrint('Invalid pattern length');
+      return;
+    }
+
+    final path = Path();
+    final dashCount = (totalDistance / patternLength).floor();
+    debugPrint('Dash count: $dashCount');
+    final delta = end - start;
 
     Offset currentPoint = start;
     for (int i = 0; i < dashCount; i++) {
-      final dashEnd = currentPoint + dashVector;
-      canvas.drawLine(currentPoint, dashEnd, paint);
-      currentPoint = dashEnd + spaceVector;
+      final nextPoint = currentPoint + delta * (dashWidth / totalDistance);
+      debugPrint(
+        'Drawing dash $i: ${currentPoint.dx},${currentPoint.dy} -> ${nextPoint.dx},${nextPoint.dy}',
+      );
+
+      path.moveTo(currentPoint.dx, currentPoint.dy);
+      path.lineTo(nextPoint.dx, nextPoint.dy);
+      currentPoint = nextPoint + delta * (dashSpace / totalDistance);
     }
 
-    // 残りの距離を描画
-    if ((end - currentPoint).distance > 0) {
-      canvas.drawLine(currentPoint, end, paint);
+    final remainingDistance = (end - currentPoint).distance;
+    if (remainingDistance > 0.1) {
+      debugPrint(
+        'Drawing remaining: ${currentPoint.dx},${currentPoint.dy} -> ${end.dx},${end.dy}',
+      );
+      path.moveTo(currentPoint.dx, currentPoint.dy);
+      path.lineTo(end.dx, end.dy);
     }
+
+    canvas.drawPath(path, paint);
+    debugPrint('=== End drawDashedLine ===\n');
   }
 
   void drawArrowhead(

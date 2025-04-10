@@ -7,22 +7,47 @@ void drawDashedLine(
   Offset start,
   Offset end,
   Paint paint, {
-  double dashWidth = 5,
-  double dashSpace = 3,
+  double dashWidth = 5.0,
+  double dashSpace = 3.0,
 }) {
-  final totalDistance = (end - start).distance;
-  final dashCount = (totalDistance / (dashWidth + dashSpace)).floor();
-  final dashVector = (end - start) / totalDistance * dashWidth;
-  final spaceVector = (end - start) / totalDistance * dashSpace;
-  Offset currentPoint = start;
+  final double totalDistance = (end - start).distance;
+  final double patternLength = dashWidth + dashSpace;
+  final int dashCount = (totalDistance / patternLength).floor();
+
+  debugPrint('=== drawDashedLine Debug ===');
+  debugPrint('Start: $start');
+  debugPrint('End: $end');
+  debugPrint('Paint color: ${paint.color}');
+  debugPrint('Paint strokeWidth: ${paint.strokeWidth}');
+  debugPrint('Total distance: $totalDistance');
+  debugPrint('Pattern length: $patternLength');
+  debugPrint('Dash count: $dashCount');
+
+  // 破線の各セグメントを描画
   for (int i = 0; i < dashCount; i++) {
-    final nextPoint = currentPoint + dashVector;
+    final double startFraction = i * patternLength / totalDistance;
+    final double endFraction = (i * patternLength + dashWidth) / totalDistance;
+    final Offset currentPoint = Offset.lerp(start, end, startFraction)!;
+    final Offset nextPoint = Offset.lerp(start, end, endFraction)!;
+
+    debugPrint(
+      'Drawing dash $i: ${currentPoint.dx.toStringAsFixed(2)},${currentPoint.dy.toStringAsFixed(2)} -> ${nextPoint.dx.toStringAsFixed(2)},${nextPoint.dy.toStringAsFixed(2)}',
+    );
     canvas.drawLine(currentPoint, nextPoint, paint);
-    currentPoint = nextPoint + spaceVector;
   }
-  if ((currentPoint - end).distance > 0) {
+
+  // 残りの部分を描画
+  final double remainingStartFraction =
+      dashCount * patternLength / totalDistance;
+  if (remainingStartFraction < 1.0) {
+    final Offset currentPoint =
+        Offset.lerp(start, end, remainingStartFraction)!;
+    debugPrint(
+      'Drawing remaining: ${currentPoint.dx.toStringAsFixed(2)},${currentPoint.dy.toStringAsFixed(2)} -> ${end.dx.toStringAsFixed(2)},${end.dy.toStringAsFixed(2)}',
+    );
     canvas.drawLine(currentPoint, end, paint);
   }
+  debugPrint('=== End drawDashedLine ===\n');
 }
 
 /// キャンバス上に矢印ヘッドを描画するユーティリティ関数

@@ -1,6 +1,130 @@
 import 'package:flutter/material.dart';
 import 'chart_coordinate_mapper.dart';
 
+/// グリッド描画を管理するクラス
+class ChartGridManager {
+  final double cellWidth;
+  final double cellHeight;
+  final double labelWidth;
+  final List<String> signalNames;
+
+  ChartGridManager({
+    required this.cellWidth,
+    required this.cellHeight,
+    required this.labelWidth,
+    required this.signalNames,
+  });
+
+  /// グリッド線を描画
+  void drawGridLines(
+    Canvas canvas,
+    Size size,
+    int signalCount,
+    int maxTimeSteps,
+  ) {
+    final paintGuide =
+        Paint()
+          ..color = Colors.grey.withOpacity(0.5)
+          ..strokeWidth = 1;
+
+    // 縦線（タイムインデックス）
+    for (int i = 0; i <= maxTimeSteps; i++) {
+      final x = labelWidth + i * cellWidth;
+      canvas.drawLine(
+        Offset(x, 0),
+        Offset(x, signalCount * cellHeight),
+        paintGuide,
+      );
+    }
+
+    // 横線（信号区切り）
+    for (int j = 0; j <= signalCount; j++) {
+      final y = j * cellHeight;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paintGuide);
+    }
+  }
+
+  /// 信号名ラベルを描画
+  void drawSignalLabels(Canvas canvas, int signalCount) {
+    for (int row = 0; row < signalCount; row++) {
+      final name = (row < signalNames.length) ? signalNames[row] : "";
+      final textSpan = TextSpan(
+        text: name,
+        style: const TextStyle(color: Colors.black, fontSize: 14),
+      );
+
+      final textPainter = TextPainter(
+        text: textSpan,
+        textDirection: TextDirection.ltr,
+        maxLines: 2,
+        ellipsis: '...',
+      );
+      textPainter.layout(maxWidth: labelWidth - 16);
+
+      final yCenter = row * cellHeight + (cellHeight - textPainter.height) / 2;
+      final offset = Offset(6, yCenter);
+      textPainter.paint(canvas, offset);
+    }
+  }
+
+  /// 強調表示された縦線を描画
+  void drawHighlightedLines(
+    Canvas canvas,
+    List<int> highlightIndices,
+    Size size,
+  ) {
+    for (int i in highlightIndices) {
+      final x = labelWidth + i * cellWidth;
+      _drawDashedLine(
+        canvas,
+        Offset(x, 0),
+        Offset(x, size.height),
+        Paint()
+          ..color = Colors.black
+          ..strokeWidth = 2,
+        dashWidth: 2,
+        dashSpace: 2,
+      );
+    }
+  }
+
+  /// 破線を描画するユーティリティメソッド
+  void _drawDashedLine(
+    Canvas canvas,
+    Offset start,
+    Offset end,
+    Paint paint, {
+    double dashWidth = 5,
+    double dashSpace = 3,
+  }) {
+    if ((start - end).distance < 0.1) return;
+
+    final totalDistance = (end - start).distance;
+    final patternLength = dashWidth + dashSpace;
+    if (patternLength <= 0) return;
+
+    final path = Path();
+    final dashCount = (totalDistance / patternLength).floor();
+    final delta = end - start;
+
+    Offset currentPoint = start;
+    for (int i = 0; i < dashCount; i++) {
+      final nextPoint = currentPoint + delta * (dashWidth / totalDistance);
+      path.moveTo(currentPoint.dx, currentPoint.dy);
+      path.lineTo(nextPoint.dx, nextPoint.dy);
+      currentPoint = nextPoint + delta * (dashSpace / totalDistance);
+    }
+
+    final remainingDistance = (end - currentPoint).distance;
+    if (remainingDistance > 0.1) {
+      path.moveTo(currentPoint.dx, currentPoint.dy);
+      path.lineTo(end.dx, end.dy);
+    }
+
+    canvas.drawPath(path, paint);
+  }
+}
+
 // 後方互換性のためのウィジェット（テスト用）
 class ChartGrid extends StatelessWidget {
   final int timeSteps;

@@ -9,6 +9,7 @@ import 'models/chart/signal_data.dart';
 import 'models/chart/timing_chart_annotation.dart';
 import 'widgets/form/form_tab.dart';
 import 'widgets/chart/timing_chart.dart';
+import 'widgets/chart/chart_signals.dart'; // SignalType を含むファイルをインポート
 
 void main() {
   runApp(const MyApp());
@@ -67,6 +68,9 @@ class _MyHomePageState extends State<MyHomePage>
   final double _cellWidth = 50.0;
   final double _cellHeight = 30.0;
 
+  // タイミングチャートの参照を保持する変数を追加
+  GlobalKey<TimingChartState> _timingChartKey = GlobalKey<TimingChartState>();
+
   @override
   void initState() {
     super.initState();
@@ -80,6 +84,9 @@ class _MyHomePageState extends State<MyHomePage>
       outputCount: 6,
     );
     _initializeControllers();
+
+    // テストコメントは削除
+    _chartAnnotations = [];
   }
 
   void _initializeControllers() {
@@ -187,41 +194,23 @@ class _MyHomePageState extends State<MyHomePage>
   }
 
   void _updateChartFromForm() {
-    final List<SignalData> newChartSignals = [];
-    int inputSignalCount = 0;
-    int outputSignalCount = 0;
-    int hwTriggerSignalCount = 0;
+    // 各種信号を一時的に別々のリストに保存
+    final List<SignalData> inputSignals = [];
+    final List<SignalData> hwTriggerSignals = [];
+    final List<SignalData> outputSignals = [];
 
     // Input信号を収集
     for (int i = 0; i < _formState.inputCount; i++) {
       if (i < _inputControllers.length) {
         final name = _inputControllers[i].text.trim();
         if (name.isNotEmpty) {
-          newChartSignals.add(
+          inputSignals.add(
             SignalData(
               name: 'In${i + 1} : $name',
               color: Colors.blue,
               values: List.filled(_initialTimeSteps, 0),
             ),
           );
-          inputSignalCount++;
-        }
-      }
-    }
-
-    // Output信号を収集
-    for (int i = 0; i < _formState.outputCount; i++) {
-      if (i < _outputControllers.length) {
-        final name = _outputControllers[i].text.trim();
-        if (name.isNotEmpty) {
-          newChartSignals.add(
-            SignalData(
-              name: 'Out${i + 1} : $name',
-              color: Colors.green,
-              values: List.filled(_initialTimeSteps, 0),
-            ),
-          );
-          outputSignalCount++;
         }
       }
     }
@@ -231,20 +220,84 @@ class _MyHomePageState extends State<MyHomePage>
       if (i < _hwTriggerControllers.length) {
         final name = _hwTriggerControllers[i].text.trim();
         if (name.isNotEmpty) {
-          newChartSignals.add(
+          hwTriggerSignals.add(
             SignalData(
               name: 'HW${i + 1} : $name',
               color: Colors.red,
               values: List.filled(_initialTimeSteps, 0),
             ),
           );
-          hwTriggerSignalCount++;
         }
       }
     }
 
+    // Output信号を収集
+    for (int i = 0; i < _formState.outputCount; i++) {
+      if (i < _outputControllers.length) {
+        final name = _outputControllers[i].text.trim();
+        if (name.isNotEmpty) {
+          outputSignals.add(
+            SignalData(
+              name: 'Out${i + 1} : $name',
+              color: Colors.green,
+              values: List.filled(_initialTimeSteps, 0),
+            ),
+          );
+        }
+      }
+    }
+
+    // 希望の順序で結合: Input → HWTrigger → Output
+    final List<SignalData> newChartSignals = [];
+    newChartSignals.addAll(inputSignals);
+    newChartSignals.addAll(hwTriggerSignals);
+    newChartSignals.addAll(outputSignals);
+
     setState(() {
       _chartSignals = newChartSignals;
+
+      // TimingChartウィジェットも更新する
+      if (_timingChartKey.currentState != null) {
+        _timingChartKey.currentState!.updateSignalNames(
+          _chartSignals.map((s) => s.name).toList(),
+        );
+        _timingChartKey.currentState!.updateSignals(
+          _chartSignals.map((s) => s.values).toList(),
+        );
+      }
+    });
+  }
+
+  void _toggleSingleSignalValue(int signalIndex, int timeIndex) {
+    if (signalIndex < 0 || signalIndex >= _chartSignals.length) return;
+    if (timeIndex < 0 || timeIndex >= _chartSignals[signalIndex].values.length)
+      return;
+
+    setState(() {
+      final newValues = List<int>.from(_chartSignals[signalIndex].values);
+      newValues[timeIndex] = newValues[timeIndex] == 0 ? 1 : 0;
+
+      _chartSignals[signalIndex] = _chartSignals[signalIndex].copyWith(
+        values: newValues,
+      );
+
+      // タイミングチャートの状態を更新
+      if (_timingChartKey.currentState != null) {
+        _timingChartKey.currentState!.updateSignals(
+          _chartSignals.map((s) => s.values).toList(),
+        );
+      }
+    });
+  }
+
+  void _addAnnotation(TimingChartAnnotation annotation) {
+    setState(() {
+      _chartAnnotations.add(annotation);
+
+      // タイミングチャートの状態を更新
+      if (_timingChartKey.currentState != null) {
+        _timingChartKey.currentState!.updateAnnotations(_chartAnnotations);
+      }
     });
   }
 
@@ -406,13 +459,7 @@ class _MyHomePageState extends State<MyHomePage>
 
           // --- TimingChart Tab ---
           TimingChart(
-            // ★ 修正: 以前のパラメータを削除し、新しい必須パラメータを設定
-            // signals: _chartSignals,
-            // annotations: _chartAnnotations,
-            // cellWidth: _cellWidth,
-            // cellHeight: _cellHeight,
-            // timeSteps: _initialTimeSteps,
-
+            key: _timingChartKey,
             // ★ _chartSignals (List<SignalData>) から必要なデータを抽出して渡す
             initialSignalNames: _chartSignals.map((s) => s.name).toList(),
             initialSignals: _chartSignals.map((s) => s.values).toList(),
