@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/form/form_state.dart';
+import '../../models/template/template_definitions.dart';
 import 'input_section.dart';
 import 'output_section.dart';
 import 'hw_trigger_section.dart';
@@ -71,10 +72,13 @@ class _FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
 
   // --- テーブル用の状態 ---
   // 初期行数
-  int _rowCount = 5;
+  int _rowCount = 6;
 
   // テーブルデータを保持する2次元配列（初期値はすべてnone）
   List<List<CellMode>> _tableData = [];
+
+  // テンプレート定義の取得
+  final _templateDefinitions = TemplateDefinitions();
 
   @override
   void initState() {
@@ -133,6 +137,103 @@ class _FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
     });
   }
 
+  // テンプレートを適用する関数
+  void _applyTemplate(SignalTemplate template) {
+    // 入力フィールドをクリア
+    for (var controller in widget.inputControllers) {
+      controller.clear();
+    }
+    for (var controller in widget.outputControllers) {
+      controller.clear();
+    }
+    for (var controller in widget.hwTriggerControllers) {
+      controller.clear();
+    }
+
+    // テンプレートの値を適用
+    // Input Signals
+    for (
+      int i = 0;
+      i < template.inputSignals.length && i < widget.inputControllers.length;
+      i++
+    ) {
+      widget.inputControllers[i].text = template.inputSignals[i];
+    }
+
+    // Output Signals
+    for (
+      int i = 0;
+      i < template.outputSignals.length && i < widget.outputControllers.length;
+      i++
+    ) {
+      widget.outputControllers[i].text = template.outputSignals[i];
+    }
+
+    // HW Trigger Signals
+    for (
+      int i = 0;
+      i < template.hwTriggerSignals.length &&
+          i < widget.hwTriggerControllers.length;
+      i++
+    ) {
+      widget.hwTriggerControllers[i].text = template.hwTriggerSignals[i];
+    }
+  }
+
+  // テーブルデータをクリアするメソッド
+  void _clearTableData() {
+    setState(() {
+      // 全てのセルをnoneに設定
+      for (int row = 0; row < _tableData.length; row++) {
+        for (int col = 0; col < _tableData[row].length; col++) {
+          _tableData[row][col] = CellMode.none;
+        }
+      }
+    });
+  }
+
+  // テンプレート選択ダイアログを表示
+  void _showTemplateDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('テンプレート選択'),
+          content: SizedBox(
+            width: 400,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: _templateDefinitions.templates.length,
+              itemBuilder: (context, index) {
+                final template = _templateDefinitions.templates[index];
+                return ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: template.color,
+                    child: Text(template.name[0]),
+                  ),
+                  title: Text(template.name),
+                  subtitle: Text(
+                    '入力: ${template.inputSignals.length}  出力: ${template.outputSignals.length}  HW: ${template.hwTriggerSignals.length}',
+                  ),
+                  onTap: () {
+                    _applyTemplate(template);
+                    Navigator.of(context).pop();
+                  },
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('キャンセル'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // AutomaticKeepAliveClientMixin を使う場合は super.build(context) が必要
@@ -172,6 +273,17 @@ class _FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
     final removeRowButtonStyle = ElevatedButton.styleFrom(
       backgroundColor: Colors.red.shade100,
       foregroundColor: Colors.red.shade900,
+      minimumSize: Size(120, _buttonHeight),
+      padding: EdgeInsets.symmetric(
+        horizontal: _buttonHorizontalPadding,
+        vertical: _buttonVerticalPadding,
+      ),
+    );
+
+    // テンプレートボタン用のスタイルを追加
+    final templateButtonStyle = ElevatedButton.styleFrom(
+      backgroundColor: Colors.amber.shade100,
+      foregroundColor: Colors.amber.shade900,
       minimumSize: Size(120, _buttonHeight),
       padding: EdgeInsets.symmetric(
         horizontal: _buttonHorizontalPadding,
@@ -221,7 +333,7 @@ class _FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
               Expanded(
                 child: CustomDropdown<int>(
                   value: widget.formState.ioPort,
-                  items: List.generate(12, (index) => index + 1),
+                  items: const [6, 16, 32, 64],
                   onChanged: widget.onIoPortChanged,
                   label: 'IO Port',
                 ),
@@ -239,10 +351,33 @@ class _FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
               Expanded(
                 child: CustomDropdown<int>(
                   value: widget.formState.camera,
-                  items: List.generate(4, (index) => index + 1),
+                  items: List.generate(8, (index) => index + 1),
                   onChanged: widget.onCameraChanged,
                   label: 'Camera',
                 ),
+              ),
+              const SizedBox(width: 16),
+              ElevatedButton(
+                onPressed: () {
+                  // テーブルデータをクリア
+                  _clearTableData();
+                  // テキストフィールドをクリア
+                  widget.onClearFields();
+                },
+                style: clearButtonStyle,
+                child: const Text('Clear'),
+              ),
+              const SizedBox(width: 16),
+              ElevatedButton(
+                onPressed: () => _showTemplateDialog(context),
+                style: templateButtonStyle,
+                child: const Text('Template'),
+              ),
+              const SizedBox(width: 16),
+              ElevatedButton(
+                onPressed: widget.onUpdateChart,
+                style: updateButtonStyle,
+                child: const Text('Update Chart'),
               ),
             ],
           ),
@@ -432,27 +567,6 @@ class _FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
                 ),
               ],
             ),
-          ),
-        ),
-
-        // ボタン
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              ElevatedButton(
-                onPressed: widget.onClearFields,
-                style: clearButtonStyle,
-                child: const Text('Clear'),
-              ),
-              const SizedBox(width: 16),
-              ElevatedButton(
-                onPressed: widget.onUpdateChart,
-                style: updateButtonStyle,
-                child: const Text('Update Chart'),
-              ),
-            ],
           ),
         ),
       ],
