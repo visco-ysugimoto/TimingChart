@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import '../../models/form/form_state.dart';
 import '../../models/chart/chart_data_generator.dart'; // 新しいジェネレータをインポート
 import '../../models/chart/signal_type.dart'; // SignalTypeのインポートを追加
@@ -92,6 +93,13 @@ class _FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
     // カメラ数が変更された場合、テーブルデータを再初期化
     if (oldWidget.formState.camera != widget.formState.camera) {
       _initializeTableData();
+
+      // カメラ数変更時にHW Portの値を調整（次のフレームでスケジュール）
+      if (widget.formState.hwPort > widget.formState.camera) {
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          widget.onHwPortChanged(widget.formState.camera);
+        });
+      }
     }
   }
 
@@ -276,8 +284,14 @@ class _FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
               const SizedBox(width: 16),
               Expanded(
                 child: CustomDropdown<int>(
-                  value: widget.formState.hwPort,
-                  items: List.generate(4, (index) => index),
+                  value:
+                      widget.formState.hwPort > widget.formState.camera
+                          ? widget.formState.camera
+                          : widget.formState.hwPort,
+                  items: List.generate(
+                    widget.formState.camera + 1,
+                    (index) => index,
+                  ),
                   onChanged: widget.onHwPortChanged,
                   label: 'HW Port',
                 ),

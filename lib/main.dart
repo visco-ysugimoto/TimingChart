@@ -351,6 +351,24 @@ class _MyHomePageState extends State<MyHomePage>
                 debugPrint('Save As');
               },
             ),
+            // インポート
+            ListTile(
+              leading: Icon(Icons.file_upload),
+              title: Text('インポート'),
+              onTap: () {
+                Navigator.pop(context);
+                debugPrint('Import');
+              },
+            ),
+            // エクスポート
+            ListTile(
+              leading: Icon(Icons.file_download),
+              title: Text('エクスポート'),
+              onTap: () {
+                Navigator.pop(context);
+                debugPrint('Export');
+              },
+            ),
             Divider(),
             // 編集メニュー項目
             ListTile(
