@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import '../../models/form/form_state.dart';
-import '../../models/template/template_definitions.dart';
+import '../../models/chart/chart_data_generator.dart'; // 新しいジェネレータをインポート
+import '../../models/chart/signal_type.dart'; // SignalTypeのインポートを追加
 import 'input_section.dart';
 import 'output_section.dart';
 import 'hw_trigger_section.dart';
 import '../common/custom_dropdown.dart';
 import '../../common_padding.dart';
+import '../chart/chart_signals.dart'; // チャート信号関連のクラスをインポート
 
 // セルのモードを表す列挙型
 enum CellMode { none, mode1, mode2, mode3, mode4, mode5 }
@@ -38,7 +40,7 @@ class FormTab extends StatefulWidget {
   final ValueChanged<int?> onIoPortChanged;
   final ValueChanged<int?> onHwPortChanged;
   final ValueChanged<int?> onCameraChanged;
-  final VoidCallback onUpdateChart;
+  final Function(List<String>, List<List<int>>, List<SignalType>) onUpdateChart;
   final VoidCallback onClearFields;
 
   const FormTab({
@@ -76,9 +78,6 @@ class _FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
 
   // テーブルデータを保持する2次元配列（初期値はすべてnone）
   List<List<CellMode>> _tableData = [];
-
-  // テンプレート定義の取得
-  final _templateDefinitions = TemplateDefinitions();
 
   @override
   void initState() {
@@ -137,49 +136,6 @@ class _FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
     });
   }
 
-  // テンプレートを適用する関数
-  void _applyTemplate(SignalTemplate template) {
-    // 入力フィールドをクリア
-    for (var controller in widget.inputControllers) {
-      controller.clear();
-    }
-    for (var controller in widget.outputControllers) {
-      controller.clear();
-    }
-    for (var controller in widget.hwTriggerControllers) {
-      controller.clear();
-    }
-
-    // テンプレートの値を適用
-    // Input Signals
-    for (
-      int i = 0;
-      i < template.inputSignals.length && i < widget.inputControllers.length;
-      i++
-    ) {
-      widget.inputControllers[i].text = template.inputSignals[i];
-    }
-
-    // Output Signals
-    for (
-      int i = 0;
-      i < template.outputSignals.length && i < widget.outputControllers.length;
-      i++
-    ) {
-      widget.outputControllers[i].text = template.outputSignals[i];
-    }
-
-    // HW Trigger Signals
-    for (
-      int i = 0;
-      i < template.hwTriggerSignals.length &&
-          i < widget.hwTriggerControllers.length;
-      i++
-    ) {
-      widget.hwTriggerControllers[i].text = template.hwTriggerSignals[i];
-    }
-  }
-
   // テーブルデータをクリアするメソッド
   void _clearTableData() {
     setState(() {
@@ -192,45 +148,35 @@ class _FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
     });
   }
 
-  // テンプレート選択ダイアログを表示
-  void _showTemplateDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('テンプレート選択'),
-          content: SizedBox(
-            width: 400,
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: _templateDefinitions.templates.length,
-              itemBuilder: (context, index) {
-                final template = _templateDefinitions.templates[index];
-                return ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: template.color,
-                    child: Text(template.name[0]),
-                  ),
-                  title: Text(template.name),
-                  subtitle: Text(
-                    '入力: ${template.inputSignals.length}  出力: ${template.outputSignals.length}  HW: ${template.hwTriggerSignals.length}',
-                  ),
-                  onTap: () {
-                    _applyTemplate(template);
-                    Navigator.of(context).pop();
-                  },
-                );
-              },
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('キャンセル'),
-            ),
-          ],
-        );
-      },
+  // カメラテーブルの情報に基づいて時系列データを生成
+  List<List<int>> generateTimingChartData({int timeLength = 32}) {
+    return ChartDataGenerator.generateTimingChart(
+      formState: widget.formState,
+      inputControllers: widget.inputControllers,
+      outputControllers: widget.outputControllers,
+      hwTriggerControllers: widget.hwTriggerControllers,
+      tableData: _tableData,
+      timeLength: timeLength,
+    );
+  }
+
+  // 信号タイプのリストを生成
+  List<SignalType> generateSignalTypes() {
+    return ChartDataGenerator.generateSignalTypes(
+      inputControllers: widget.inputControllers,
+      outputControllers: widget.outputControllers,
+      hwTriggerControllers: widget.hwTriggerControllers,
+      formState: widget.formState,
+    );
+  }
+
+  // 信号名のリストを生成
+  List<String> generateSignalNames() {
+    return ChartDataGenerator.generateSignalNames(
+      inputControllers: widget.inputControllers,
+      outputControllers: widget.outputControllers,
+      hwTriggerControllers: widget.hwTriggerControllers,
+      formState: widget.formState,
     );
   }
 
@@ -273,17 +219,6 @@ class _FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
     final removeRowButtonStyle = ElevatedButton.styleFrom(
       backgroundColor: Colors.red.shade100,
       foregroundColor: Colors.red.shade900,
-      minimumSize: Size(120, _buttonHeight),
-      padding: EdgeInsets.symmetric(
-        horizontal: _buttonHorizontalPadding,
-        vertical: _buttonVerticalPadding,
-      ),
-    );
-
-    // テンプレートボタン用のスタイルを追加
-    final templateButtonStyle = ElevatedButton.styleFrom(
-      backgroundColor: Colors.amber.shade100,
-      foregroundColor: Colors.amber.shade900,
       minimumSize: Size(120, _buttonHeight),
       padding: EdgeInsets.symmetric(
         horizontal: _buttonHorizontalPadding,
@@ -369,13 +304,12 @@ class _FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
               ),
               const SizedBox(width: 16),
               ElevatedButton(
-                onPressed: () => _showTemplateDialog(context),
-                style: templateButtonStyle,
-                child: const Text('Template'),
-              ),
-              const SizedBox(width: 16),
-              ElevatedButton(
-                onPressed: widget.onUpdateChart,
+                onPressed:
+                    () => widget.onUpdateChart(
+                      generateSignalNames(),
+                      generateTimingChartData(),
+                      generateSignalTypes(),
+                    ),
                 style: updateButtonStyle,
                 child: const Text('Update Chart'),
               ),

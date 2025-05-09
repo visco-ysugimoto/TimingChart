@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import '../../models/chart/timing_chart_annotation.dart';
+import '../../models/chart/signal_type.dart';
 import 'chart_annotations.dart';
 import 'chart_grid.dart';
 import 'chart_signals.dart';

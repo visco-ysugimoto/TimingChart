@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../models/chart/signal_data.dart';
+import '../../models/chart/signal_type.dart';
 import 'chart_coordinate_mapper.dart';
 import 'dart:math' as math;
-
-/// Timing Chart内で使用される信号タイプ列挙型
-enum SignalType { input, output, hwTrigger }
 
 /// 信号波形描画を管理するクラス
 class ChartSignalsManager {
@@ -21,6 +19,20 @@ class ChartSignalsManager {
     required this.signalTypes,
   });
 
+  /// 信号タイプに基づいて色を返す
+  Color _getColorForSignalType(SignalType type) {
+    switch (type) {
+      case SignalType.input:
+        return Colors.blue;
+      case SignalType.output:
+        return Colors.red;
+      case SignalType.hwTrigger:
+        return Colors.green;
+      default:
+        return Colors.grey;
+    }
+  }
+
   /// 信号波形を描画
   void drawSignalWaveforms(Canvas canvas, List<List<int>> signals) {
     var paintLine = Paint()..strokeWidth = 2;
@@ -35,26 +47,10 @@ class ChartSignalsManager {
               ? signalTypes[row]
               : SignalType.input;
 
-      switch (currentSignalType) {
-        case SignalType.input:
-          paintLine =
-              Paint()
-                ..color = Colors.blue
-                ..strokeWidth = 2;
-          break;
-        case SignalType.output:
-          paintLine =
-              Paint()
-                ..color = Colors.red
-                ..strokeWidth = 2;
-          break;
-        case SignalType.hwTrigger:
-          paintLine =
-              Paint()
-                ..color = Colors.green
-                ..strokeWidth = 2;
-          break;
-      }
+      paintLine =
+          Paint()
+            ..color = _getColorForSignalType(currentSignalType)
+            ..strokeWidth = 2;
 
       // 波形の描画
       for (int t = 0; t < rowData.length - 1; t++) {
@@ -145,8 +141,8 @@ class ChartSignals extends StatelessWidget {
   /// 各要素は[time, value]のペアで、timeは時間、valueは信号値（0または1）
   final List<List<double>> signals;
 
-  /// 信号の色
-  final Color color;
+  /// 信号タイプ
+  final SignalType signalType;
 
   /// 信号の線の太さ
   final double strokeWidth;
@@ -155,7 +151,7 @@ class ChartSignals extends StatelessWidget {
   ///
   /// [mapper] 座標変換マッパー
   /// [signals] 信号データ
-  /// [color] 信号の色
+  /// [signalType] 信号タイプ
   /// [strokeWidth] 信号の線の太さ
   ///
   /// 例外:
@@ -164,13 +160,28 @@ class ChartSignals extends StatelessWidget {
     super.key,
     required this.mapper,
     required this.signals,
-    this.color = Colors.blue,
+    required this.signalType,
     this.strokeWidth = 2.0,
   }) : assert(signals.isNotEmpty, '信号データは空であってはいけません'),
        assert(strokeWidth > 0, '線の太さは0より大きい必要があります');
 
+  /// 信号タイプに基づいて色を返す
+  Color _getColorForSignalType() {
+    switch (signalType) {
+      case SignalType.input:
+        return Colors.blue;
+      case SignalType.output:
+        return Colors.red;
+      case SignalType.hwTrigger:
+        return Colors.green;
+      default:
+        return Colors.grey;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final color = _getColorForSignalType();
     return CustomPaint(
       painter: _ChartSignalsPainter(
         mapper: mapper,
@@ -277,28 +288,43 @@ class ChartSignalsPainter extends CustomPainter {
 
   ChartSignalsPainter({required this.signals, required this.mapper});
 
+  /// 信号タイプに基づいて色を返す
+  Color _getColorForSignalType(SignalType type) {
+    switch (type) {
+      case SignalType.input:
+        return Colors.blue;
+      case SignalType.output:
+        return Colors.red;
+      case SignalType.hwTrigger:
+        return Colors.green;
+      default:
+        return Colors.grey;
+    }
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     try {
       for (int i = 0; i < signals.length; i++) {
         final signal = signals[i];
+        final signalColor = _getColorForSignalType(signal.signalType);
 
         // 信号の色を使用
         final highPaint =
             Paint()
-              ..color = signal.color
+              ..color = signalColor
               ..strokeWidth = 2.0
               ..style = PaintingStyle.stroke;
 
         final lowPaint =
             Paint()
-              ..color = signal.color
+              ..color = signalColor
               ..strokeWidth = 2.0
               ..style = PaintingStyle.stroke;
 
         final transitionPaint =
             Paint()
-              ..color = signal.color
+              ..color = signalColor
               ..strokeWidth = 1.0
               ..style = PaintingStyle.stroke;
 

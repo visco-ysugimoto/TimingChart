@@ -6,10 +6,11 @@ import 'package:flutter_localizations/flutter_localizations.dart'; // 多言語�
 import 'generated/l10n.dart';
 import 'models/form/form_state.dart';
 import 'models/chart/signal_data.dart';
+import 'models/chart/signal_type.dart';
 import 'models/chart/timing_chart_annotation.dart';
 import 'widgets/form/form_tab.dart';
 import 'widgets/chart/timing_chart.dart';
-import 'widgets/chart/chart_signals.dart'; // SignalType を含むファイルをインポート
+// import 'widgets/chart/chart_signals.dart'; // SignalType を含むファイルをインポートから削除
 
 void main() {
   runApp(const MyApp());
@@ -193,79 +194,18 @@ class _MyHomePageState extends State<MyHomePage>
     }
   }
 
-  void _updateChartFromForm() {
-    // 各種信号を一時的に別々のリストに保存
-    final List<SignalData> inputSignals = [];
-    final List<SignalData> hwTriggerSignals = [];
-    final List<SignalData> outputSignals = [];
-
-    // Input信号を収集
-    for (int i = 0; i < _formState.inputCount; i++) {
-      if (i < _inputControllers.length) {
-        final name = _inputControllers[i].text.trim();
-        if (name.isNotEmpty) {
-          inputSignals.add(
-            SignalData(
-              name: 'In${i + 1} : $name',
-              color: Colors.blue,
-              values: List.filled(_initialTimeSteps, 0),
-            ),
-          );
-        }
-      }
+  // 信号タイプに応じた色を返す
+  Color _getColorForSignalType(SignalType type) {
+    switch (type) {
+      case SignalType.input:
+        return Colors.blue;
+      case SignalType.output:
+        return Colors.red;
+      case SignalType.hwTrigger:
+        return Colors.green;
+      default:
+        return Colors.grey;
     }
-
-    // HW Trigger信号を収集
-    for (int i = 0; i < _formState.hwPort; i++) {
-      if (i < _hwTriggerControllers.length) {
-        final name = _hwTriggerControllers[i].text.trim();
-        if (name.isNotEmpty) {
-          hwTriggerSignals.add(
-            SignalData(
-              name: 'HW${i + 1} : $name',
-              color: Colors.red,
-              values: List.filled(_initialTimeSteps, 0),
-            ),
-          );
-        }
-      }
-    }
-
-    // Output信号を収集
-    for (int i = 0; i < _formState.outputCount; i++) {
-      if (i < _outputControllers.length) {
-        final name = _outputControllers[i].text.trim();
-        if (name.isNotEmpty) {
-          outputSignals.add(
-            SignalData(
-              name: 'Out${i + 1} : $name',
-              color: Colors.green,
-              values: List.filled(_initialTimeSteps, 0),
-            ),
-          );
-        }
-      }
-    }
-
-    // 希望の順序で結合: Input → HWTrigger → Output
-    final List<SignalData> newChartSignals = [];
-    newChartSignals.addAll(inputSignals);
-    newChartSignals.addAll(hwTriggerSignals);
-    newChartSignals.addAll(outputSignals);
-
-    setState(() {
-      _chartSignals = newChartSignals;
-
-      // TimingChartウィジェットも更新する
-      if (_timingChartKey.currentState != null) {
-        _timingChartKey.currentState!.updateSignalNames(
-          _chartSignals.map((s) => s.name).toList(),
-        );
-        _timingChartKey.currentState!.updateSignals(
-          _chartSignals.map((s) => s.values).toList(),
-        );
-      }
-    });
   }
 
   void _toggleSingleSignalValue(int signalIndex, int timeIndex) {
@@ -325,75 +265,15 @@ class _MyHomePageState extends State<MyHomePage>
       appBar: AppBar(
         //backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         backgroundColor: Theme.of(context).colorScheme.primary,
-        title: Row(
-          children: [
-            SizedBox(
-              width: 200, // メニューバーに十分な幅を確保
-              child: MenuBar(
-                children: [
-                  SubmenuButton(
-                    menuChildren: [
-                      MenuItemButton(
-                        onPressed: () => debugPrint('New'),
-                        child: Text(s.menu_item_new), // ★ l10n
-                      ),
-                      MenuItemButton(
-                        onPressed: () => debugPrint('Open'),
-                        child: Text(s.menu_item_open), // ★ l10n
-                      ),
-                      MenuItemButton(
-                        onPressed: () => debugPrint('Save'),
-                        child: Text(s.menu_item_save), // ★ l10n
-                      ),
-                      MenuItemButton(
-                        onPressed: () => debugPrint('Save As'),
-                        child: Text(s.menu_item_save_as), // ★ l10n
-                      ),
-                    ],
-                    child: Text(s.menu_file), // ★ l10n
-                  ),
-                  SubmenuButton(
-                    menuChildren: [
-                      MenuItemButton(
-                        onPressed: () => debugPrint('Cut'),
-                        child: Text(s.menu_item_cut), // ★ l10n
-                      ),
-                      MenuItemButton(
-                        onPressed: () => debugPrint('Copy'),
-                        child: Text(s.menu_item_copy), // ★ l10n
-                      ),
-                      MenuItemButton(
-                        onPressed: () => debugPrint('Paste'),
-                        child: Text(s.menu_item_paste), // ★ l10n
-                      ),
-                    ],
-                    child: Text(s.menu_edit), // ★ l10n
-                  ),
-                  SubmenuButton(
-                    menuChildren: [
-                      MenuItemButton(
-                        onPressed: () => debugPrint('About'),
-                        child: Text(s.menu_item_about), // ★ l10n
-                      ),
-                    ],
-                    child: Text(s.menu_help), // ★ l10n
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 20),
-            Expanded(
-              child: Text(
-                s.appTitle,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 25,
-                ),
-              ), // ★ l10nからタイトル取得
-            ),
-          ],
-        ),
+        iconTheme: IconThemeData(color: Colors.white), // ハンバーガーメニューの色を白に設定
+        title: Text(
+          s.appTitle,
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 25,
+          ),
+        ), // ★ l10nからタイトル取得
         bottom: TabBar(
           controller: _tabController,
           labelStyle: const TextStyle(fontSize: 20),
@@ -412,7 +292,123 @@ class _MyHomePageState extends State<MyHomePage>
             ), // ★ l10nからタブタイトル取得
           ],
         ),
-        // --- メニューバーは title Row 内に移動済み ---
+      ),
+      drawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            DrawerHeader(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              child: Text(
+                s.appTitle,
+                style: TextStyle(color: Colors.white, fontSize: 24),
+              ),
+            ),
+            // File メニュー項目
+            ListTile(
+              leading: Icon(Icons.file_open),
+              title: Text(s.menu_file),
+              onTap: () {
+                Navigator.pop(context);
+                // ここにファイルメニューの動作を実装
+              },
+            ),
+            // 新規
+            ListTile(
+              leading: Icon(Icons.add),
+              title: Text(s.menu_item_new),
+              onTap: () {
+                Navigator.pop(context);
+                debugPrint('New');
+              },
+            ),
+            // 開く
+            ListTile(
+              leading: Icon(Icons.folder_open),
+              title: Text(s.menu_item_open),
+              onTap: () {
+                Navigator.pop(context);
+                debugPrint('Open');
+              },
+            ),
+            // 保存
+            ListTile(
+              leading: Icon(Icons.save),
+              title: Text(s.menu_item_save),
+              onTap: () {
+                Navigator.pop(context);
+                debugPrint('Save');
+              },
+            ),
+            // 名前を付けて保存
+            ListTile(
+              leading: Icon(Icons.save_as),
+              title: Text(s.menu_item_save_as),
+              onTap: () {
+                Navigator.pop(context);
+                debugPrint('Save As');
+              },
+            ),
+            Divider(),
+            // 編集メニュー項目
+            ListTile(
+              leading: Icon(Icons.edit),
+              title: Text(s.menu_edit),
+              onTap: () {
+                Navigator.pop(context);
+                // ここに編集メニューの動作を実装
+              },
+            ),
+            // 切り取り
+            ListTile(
+              leading: Icon(Icons.content_cut),
+              title: Text(s.menu_item_cut),
+              onTap: () {
+                Navigator.pop(context);
+                debugPrint('Cut');
+              },
+            ),
+            // コピー
+            ListTile(
+              leading: Icon(Icons.content_copy),
+              title: Text(s.menu_item_copy),
+              onTap: () {
+                Navigator.pop(context);
+                debugPrint('Copy');
+              },
+            ),
+            // 貼り付け
+            ListTile(
+              leading: Icon(Icons.content_paste),
+              title: Text(s.menu_item_paste),
+              onTap: () {
+                Navigator.pop(context);
+                debugPrint('Paste');
+              },
+            ),
+            Divider(),
+            // ヘルプメニュー項目
+            ListTile(
+              leading: Icon(Icons.help),
+              title: Text(s.menu_help),
+              onTap: () {
+                Navigator.pop(context);
+                // ここにヘルプメニューの動作を実装
+              },
+            ),
+            // About
+            ListTile(
+              leading: Icon(Icons.info),
+              title: Text(s.menu_item_about),
+              onTap: () {
+                Navigator.pop(context);
+                debugPrint('About');
+              },
+            ),
+          ],
+        ),
       ),
       body: TabBarView(
         controller: _tabController,
@@ -453,7 +449,53 @@ class _MyHomePageState extends State<MyHomePage>
                 });
               }
             },
-            onUpdateChart: _updateChartFromForm,
+            onUpdateChart: (signalNames, chartData, signalTypes) {
+              setState(() {
+                // 既存の手動編集内容をマージ
+                List<SignalData> newChartSignals = [];
+                for (int i = 0; i < signalNames.length; i++) {
+                  // 既存の_signalDataから同名の信号を探す
+                  final existing = _chartSignals.firstWhere(
+                    (s) => s.name == signalNames[i],
+                    orElse:
+                        () => SignalData(
+                          name: signalNames[i],
+                          signalType: signalTypes[i],
+                          values: List.filled(
+                            i < chartData.length ? chartData[i].length : 32,
+                            0,
+                          ),
+                        ),
+                  );
+                  // 既存があれば手動編集内容を優先、なければ新規
+                  newChartSignals.add(
+                    SignalData(
+                      name: signalNames[i],
+                      signalType: signalTypes[i],
+                      values:
+                          existing.values.length ==
+                                  (i < chartData.length
+                                      ? chartData[i].length
+                                      : 32)
+                              ? existing.values
+                              : List.filled(
+                                i < chartData.length ? chartData[i].length : 32,
+                                0,
+                              ),
+                    ),
+                  );
+                }
+                _chartSignals = newChartSignals;
+
+                // チャートウィジェットを更新
+                if (_timingChartKey.currentState != null) {
+                  _timingChartKey.currentState!.updateSignalNames(signalNames);
+                  _timingChartKey.currentState!.updateSignals(
+                    _chartSignals.map((s) => s.values).toList(),
+                  );
+                }
+              });
+            },
             onClearFields: _clearAllTextFields,
           ),
 
@@ -465,14 +507,8 @@ class _MyHomePageState extends State<MyHomePage>
             initialSignals: _chartSignals.map((s) => s.values).toList(),
             // ★ _chartAnnotations はそのまま渡せる
             initialAnnotations: _chartAnnotations,
-            // ★ SignalType を _chartSignals から推定して渡す (簡易版)
-            signalTypes:
-                _chartSignals.map((s) {
-                  if (s.name.startsWith('In')) return SignalType.input;
-                  if (s.name.startsWith('HW')) return SignalType.hwTrigger;
-                  if (s.name.startsWith('Out')) return SignalType.output;
-                  return SignalType.input; // デフォルト
-                }).toList(),
+            // ★ SignalType を _chartSignals から取得して渡す
+            signalTypes: _chartSignals.map((s) => s.signalType).toList(),
           ),
         ],
       ),
