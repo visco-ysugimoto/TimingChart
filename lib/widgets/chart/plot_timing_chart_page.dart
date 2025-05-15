@@ -742,6 +742,24 @@ class _TimingChartPageState extends State<TimingChartPage>
       ),
     );
   }
+
+  void _onTabChanged(int index) {
+    print('===== タブ切り替え処理開始 =====');
+    print('切り替え前のタブ: ${widget.initialSignalNames}');
+    print('切り替え後のタブ: $index');
+
+    setState(() {
+      signalNames = List.from(widget.initialSignalNames);
+      signals =
+          widget.initialSignals.map((list) => List<int>.from(list)).toList();
+      annotations = List.from(widget.initialAnnotations);
+    });
+
+    print('チャートデータ更新後の状態:');
+    print('信号名: $signalNames');
+    print('信号タイプ: ${widget.signalTypes}');
+    print('===== タブ切り替え処理終了 =====');
+  }
 }
 
 enum SignalType { input, output, hwTrigger }
@@ -866,7 +884,7 @@ class _StepTimingChartPainter extends CustomPainter {
     var paintLine =
         Paint()
           ..color = Colors.black
-          ..strokeWidth = 2;
+          ..strokeWidth = 2.0;
 
     for (int row = 0; row < signals.length; row++) {
       final rowData = signals[row];
@@ -877,7 +895,7 @@ class _StepTimingChartPainter extends CustomPainter {
           paintLine =
               Paint()
                 ..color = Colors.blue
-                ..strokeWidth = 2;
+                ..strokeWidth = 2.0;
           break;
         case SignalType.output:
           paintLine =
@@ -999,12 +1017,11 @@ class _StepTimingChartPainter extends CustomPainter {
           Offset(x, 0),
           Offset(x, size.height),
           Paint()
-            ..color = Colors.black
-            ..strokeWidth = 1,
-          dashWidth: 2,
+            ..color = Colors.blue.withOpacity(0.8)
+            ..strokeWidth = 2,
+          dashWidth: 4,
           dashSpace: 2,
         );
-        //canvas.drawLine(Offset(x, 0), Offset(x, size.height), paintHighlight);
       } else if (commentTimeIndics.contains(i)) {
         canvas.drawLine(Offset(x, 0), Offset(x, size.height), paintGuide);
       } else {
@@ -1040,8 +1057,8 @@ class _StepTimingChartPainter extends CustomPainter {
         Offset(xStart, endY),
         Paint()
           ..color = Colors.black.withOpacity(0.7)
-          ..strokeWidth = 1,
-        dashWidth: 5,
+          ..strokeWidth = 0.5,
+        dashWidth: 3,
         dashSpace: 3,
       );
       if (ann.endTimeIndex != null) {
@@ -1054,8 +1071,8 @@ class _StepTimingChartPainter extends CustomPainter {
           Offset(xEnd, endY),
           Paint()
             ..color = Colors.black.withOpacity(0.7)
-            ..strokeWidth = 1,
-          dashWidth: 5,
+            ..strokeWidth = 0.5,
+          dashWidth: 3,
           dashSpace: 3,
         );
       }

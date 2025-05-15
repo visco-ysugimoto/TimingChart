@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/chart/timing_chart_annotation.dart';
 import 'chart_coordinate_mapper.dart';
 import 'dart:math' as math;
+import 'chart_drawing_util.dart';
 
 /// アノテーション（コメント）管理とレンダリングを担当するクラス
 class ChartAnnotationsManager {
@@ -185,49 +186,13 @@ class ChartAnnotationsManager {
       }
 
       // コメントボックスの描画
-      _drawCommentBox(canvas, commentRect, textPainter, ann.id);
+      drawCommentBox(canvas, commentRect, textPainter, ann.id, selectedAnnotationId);
 
       // 矢印の描画
       if (arrowRect != null) {
-        _drawArrow(canvas, arrowRect);
+        drawArrow(canvas, arrowRect);
       }
     }
-  }
-
-  /// コメントボックスを描画
-  void _drawCommentBox(
-    Canvas canvas,
-    Rect rect,
-    TextPainter textPainter,
-    String annId,
-  ) {
-    final isSelected = selectedAnnotationId == annId;
-    final paintBg =
-        Paint()
-          ..color = isSelected ? Colors.yellow.withOpacity(0.3) : Colors.white
-          ..style = PaintingStyle.fill;
-    final paintBorder =
-        Paint()
-          ..color = Colors.black
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = isSelected ? 2.0 : 1.0;
-    canvas.drawRect(rect, paintBg);
-    canvas.drawRect(rect, paintBorder);
-    textPainter.paint(canvas, rect.topLeft.translate(4, 4));
-  }
-
-  /// 矢印を描画
-  void _drawArrow(Canvas canvas, Rect arrowRect) {
-    final paintArrowLine =
-        Paint()
-          ..color = Colors.blue
-          ..strokeWidth = 4;
-    final startPt = Offset(arrowRect.left, arrowRect.center.dy);
-    final endPt = Offset(arrowRect.right, arrowRect.center.dy);
-    canvas.drawLine(startPt, endPt, paintArrowLine);
-    const double headLength = 8;
-    drawArrowhead(canvas, startPt, math.pi, headLength, paintArrowLine);
-    drawArrowhead(canvas, endPt, 0, headLength, paintArrowLine);
   }
 
   /// アノテーションのソート
@@ -271,92 +236,6 @@ class ChartAnnotationsManager {
       }
     }
     return false;
-  }
-
-  /// 矢印描画ユーティリティ
-  void drawArrowhead(
-    Canvas canvas,
-    Offset tip,
-    double angle,
-    double length,
-    Paint paint,
-  ) {
-    final leftEnd = Offset(
-      tip.dx - length * math.cos(angle - math.pi / 6),
-      tip.dy - length * math.sin(angle - math.pi / 6),
-    );
-    final rightEnd = Offset(
-      tip.dx - length * math.cos(angle + math.pi / 6),
-      tip.dy - length * math.sin(angle + math.pi / 6),
-    );
-    canvas.drawLine(tip, leftEnd, paint);
-    canvas.drawLine(tip, rightEnd, paint);
-  }
-
-  /// 破線描画ユーティリティ
-  void drawDashedLine(
-    Canvas canvas,
-    Offset start,
-    Offset end,
-    Paint paint, {
-    double dashWidth = 10, // デバッグ用に大きくする
-    double dashSpace = 5, // デバッグ用に大きくする
-  }) {
-    debugPrint('=== drawDashedLine Debug ===');
-    debugPrint('Start: $start');
-    debugPrint('End: $end');
-    debugPrint('Paint color: ${paint.color}');
-    debugPrint('Paint strokeWidth: ${paint.strokeWidth}');
-
-    if ((start - end).distance < 0.1) {
-      debugPrint('Line too short, skipping');
-      return;
-    }
-
-    // デバッグ用に線を太くする
-    paint.strokeWidth = 1.0;
-    // デバッグ用に色を目立つように変更
-    paint.color = Colors.black.withOpacity(0.7);
-
-    final totalDistance = (end - start).distance;
-    debugPrint('Total distance: $totalDistance');
-
-    final patternLength = dashWidth + dashSpace;
-    debugPrint('Pattern length: $patternLength');
-
-    if (patternLength <= 0) {
-      debugPrint('Invalid pattern length');
-      return;
-    }
-
-    final path = Path();
-    final dashCount = (totalDistance / patternLength).floor();
-    debugPrint('Dash count: $dashCount');
-    final delta = end - start;
-
-    Offset currentPoint = start;
-    for (int i = 0; i < dashCount; i++) {
-      final nextPoint = currentPoint + delta * (dashWidth / totalDistance);
-      debugPrint(
-        'Drawing dash $i: ${currentPoint.dx},${currentPoint.dy} -> ${nextPoint.dx},${nextPoint.dy}',
-      );
-
-      path.moveTo(currentPoint.dx, currentPoint.dy);
-      path.lineTo(nextPoint.dx, nextPoint.dy);
-      currentPoint = nextPoint + delta * (dashSpace / totalDistance);
-    }
-
-    final remainingDistance = (end - currentPoint).distance;
-    if (remainingDistance > 0.1) {
-      debugPrint(
-        'Drawing remaining: ${currentPoint.dx},${currentPoint.dy} -> ${end.dx},${end.dy}',
-      );
-      path.moveTo(currentPoint.dx, currentPoint.dy);
-      path.lineTo(end.dx, end.dy);
-    }
-
-    canvas.drawPath(path, paint);
-    debugPrint('=== End drawDashedLine ===\n');
   }
 
   /// コメントボックスの当たり判定用のRectMapを取得
@@ -548,91 +427,6 @@ class _ChartAnnotationsPainter extends CustomPainter {
     }
   }
 
-  void drawDashedLine(
-    Canvas canvas,
-    Offset start,
-    Offset end,
-    Paint paint, {
-    double dashWidth = 10, // デバッグ用に大きくする
-    double dashSpace = 5, // デバッグ用に大きくする
-  }) {
-    debugPrint('=== drawDashedLine Debug ===');
-    debugPrint('Start: $start');
-    debugPrint('End: $end');
-    debugPrint('Paint color: ${paint.color}');
-    debugPrint('Paint strokeWidth: ${paint.strokeWidth}');
-
-    if ((start - end).distance < 0.1) {
-      debugPrint('Line too short, skipping');
-      return;
-    }
-
-    // デバッグ用に線を太くする
-    paint.strokeWidth = 2.0;
-    // デバッグ用に色を目立つように変更
-    paint.color = Colors.black;
-
-    final totalDistance = (end - start).distance;
-    debugPrint('Total distance: $totalDistance');
-
-    final patternLength = dashWidth + dashSpace;
-    debugPrint('Pattern length: $patternLength');
-
-    if (patternLength <= 0) {
-      debugPrint('Invalid pattern length');
-      return;
-    }
-
-    final path = Path();
-    final dashCount = (totalDistance / patternLength).floor();
-    debugPrint('Dash count: $dashCount');
-    final delta = end - start;
-
-    Offset currentPoint = start;
-    for (int i = 0; i < dashCount; i++) {
-      final nextPoint = currentPoint + delta * (dashWidth / totalDistance);
-      debugPrint(
-        'Drawing dash $i: ${currentPoint.dx},${currentPoint.dy} -> ${nextPoint.dx},${nextPoint.dy}',
-      );
-
-      path.moveTo(currentPoint.dx, currentPoint.dy);
-      path.lineTo(nextPoint.dx, nextPoint.dy);
-      currentPoint = nextPoint + delta * (dashSpace / totalDistance);
-    }
-
-    final remainingDistance = (end - currentPoint).distance;
-    if (remainingDistance > 0.1) {
-      debugPrint(
-        'Drawing remaining: ${currentPoint.dx},${currentPoint.dy} -> ${end.dx},${end.dy}',
-      );
-      path.moveTo(currentPoint.dx, currentPoint.dy);
-      path.lineTo(end.dx, end.dy);
-    }
-
-    canvas.drawPath(path, paint);
-    debugPrint('=== End drawDashedLine ===\n');
-  }
-
-  void drawArrowhead(
-    Canvas canvas,
-    Offset tip,
-    double angle,
-    double length,
-    Paint paint,
-  ) {
-    final p1 = Offset(
-      tip.dx - length * math.cos(angle - math.pi / 6),
-      tip.dy - length * math.sin(angle - math.pi / 6),
-    );
-    final p2 = Offset(
-      tip.dx - length * math.cos(angle + math.pi / 6),
-      tip.dy - length * math.sin(angle + math.pi / 6),
-    );
-
-    canvas.drawLine(tip, p1, paint);
-    canvas.drawLine(tip, p2, paint);
-  }
-
   @override
   bool shouldRepaint(covariant _ChartAnnotationsPainter oldDelegate) {
     return annotations != oldDelegate.annotations ||
@@ -772,91 +566,6 @@ class ChartAnnotationsPainter extends CustomPainter {
     } catch (e) {
       debugPrint('エラー: アノテーションの描画中にエラーが発生しました: $e');
     }
-  }
-
-  void drawDashedLine(
-    Canvas canvas,
-    Offset start,
-    Offset end,
-    Paint paint, {
-    double dashWidth = 10, // デバッグ用に大きくする
-    double dashSpace = 5, // デバッグ用に大きくする
-  }) {
-    debugPrint('=== drawDashedLine Debug ===');
-    debugPrint('Start: $start');
-    debugPrint('End: $end');
-    debugPrint('Paint color: ${paint.color}');
-    debugPrint('Paint strokeWidth: ${paint.strokeWidth}');
-
-    if ((start - end).distance < 0.1) {
-      debugPrint('Line too short, skipping');
-      return;
-    }
-
-    // デバッグ用に線を太くする
-    paint.strokeWidth = 2.0;
-    // デバッグ用に色を目立つように変更
-    paint.color = Colors.black.withOpacity(0.7);
-
-    final totalDistance = (end - start).distance;
-    debugPrint('Total distance: $totalDistance');
-
-    final patternLength = dashWidth + dashSpace;
-    debugPrint('Pattern length: $patternLength');
-
-    if (patternLength <= 0) {
-      debugPrint('Invalid pattern length');
-      return;
-    }
-
-    final path = Path();
-    final dashCount = (totalDistance / patternLength).floor();
-    debugPrint('Dash count: $dashCount');
-    final delta = end - start;
-
-    Offset currentPoint = start;
-    for (int i = 0; i < dashCount; i++) {
-      final nextPoint = currentPoint + delta * (dashWidth / totalDistance);
-      debugPrint(
-        'Drawing dash $i: ${currentPoint.dx},${currentPoint.dy} -> ${nextPoint.dx},${nextPoint.dy}',
-      );
-
-      path.moveTo(currentPoint.dx, currentPoint.dy);
-      path.lineTo(nextPoint.dx, nextPoint.dy);
-      currentPoint = nextPoint + delta * (dashSpace / totalDistance);
-    }
-
-    final remainingDistance = (end - currentPoint).distance;
-    if (remainingDistance > 0.1) {
-      debugPrint(
-        'Drawing remaining: ${currentPoint.dx},${currentPoint.dy} -> ${end.dx},${end.dy}',
-      );
-      path.moveTo(currentPoint.dx, currentPoint.dy);
-      path.lineTo(end.dx, end.dy);
-    }
-
-    canvas.drawPath(path, paint);
-    debugPrint('=== End drawDashedLine ===\n');
-  }
-
-  void drawArrowhead(
-    Canvas canvas,
-    Offset tip,
-    double angle,
-    double length,
-    Paint paint,
-  ) {
-    final p1 = Offset(
-      tip.dx - length * math.cos(angle - math.pi / 6),
-      tip.dy - length * math.sin(angle - math.pi / 6),
-    );
-    final p2 = Offset(
-      tip.dx - length * math.cos(angle + math.pi / 6),
-      tip.dy - length * math.sin(angle + math.pi / 6),
-    );
-
-    canvas.drawLine(tip, p1, paint);
-    canvas.drawLine(tip, p2, paint);
   }
 
   @override

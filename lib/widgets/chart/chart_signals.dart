@@ -36,16 +36,24 @@ class ChartSignalsManager {
   /// 信号波形を描画
   void drawSignalWaveforms(Canvas canvas, List<List<int>> signals) {
     var paintLine = Paint()..strokeWidth = 2;
+    int visibleRow = 0;
 
     for (int row = 0; row < signals.length; row++) {
       final rowData = signals[row];
-      final yOffset = row * cellHeight + (cellHeight / 2);
+      final yOffset = visibleRow * cellHeight + (cellHeight / 2);
 
       // 信号タイプに基づいて色を設定
       final currentSignalType =
           (row >= 0 && row < signalTypes.length)
               ? signalTypes[row]
               : SignalType.input;
+
+      // Control、Group、Task信号は描画しない
+      if (currentSignalType == SignalType.control ||
+          currentSignalType == SignalType.group ||
+          currentSignalType == SignalType.task) {
+        continue;
+      }
 
       paintLine =
           Paint()
@@ -90,6 +98,8 @@ class ChartSignalsManager {
         final yLast = (lastValue == 1) ? (yOffset - waveAmplitude) : yOffset;
         canvas.drawLine(Offset(xStart, yLast), Offset(xEnd, yLast), paintLine);
       }
+
+      visibleRow++;
     }
   }
 

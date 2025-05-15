@@ -69,3 +69,41 @@ void drawArrowhead(
   canvas.drawLine(tip, leftEnd, paint);
   canvas.drawLine(tip, rightEnd, paint);
 }
+
+/// コメントボックスを描画
+void drawCommentBox(
+  Canvas canvas,
+  Rect rect,
+  TextPainter textPainter,
+  String annId,
+  String? selectedAnnotationId, // Added to handle selection state
+) {
+  final isSelected = selectedAnnotationId == annId;
+  final paintBg =
+      Paint()
+        ..color = isSelected ? Colors.yellow.withOpacity(0.3) : Colors.white
+        ..style = PaintingStyle.fill;
+  final paintBorder =
+      Paint()
+        ..color = Colors.black
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = isSelected ? 2.0 : 1.0;
+  canvas.drawRect(rect, paintBg);
+  canvas.drawRect(rect, paintBorder);
+  textPainter.paint(canvas, rect.topLeft.translate(4, 4));
+}
+
+/// 矢印を描画
+void drawArrow(Canvas canvas, Rect arrowRect) {
+  final paintArrowLine =
+      Paint()
+        ..color = Colors.blue
+        ..strokeWidth = 4;
+  final startPt = Offset(arrowRect.left, arrowRect.center.dy);
+  final endPt = Offset(arrowRect.right, arrowRect.center.dy);
+  canvas.drawLine(startPt, endPt, paintArrowLine);
+  const double headLength = 8;
+  // Call existing drawArrowhead from this file
+  drawArrowhead(canvas, startPt, math.pi, headLength, paintArrowLine);
+  drawArrowhead(canvas, endPt, 0, headLength, paintArrowLine);
+}

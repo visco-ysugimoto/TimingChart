@@ -1,103 +1,121 @@
 import 'package:flutter/material.dart';
-import '../common/suggestion_text_field.dart';
-import '../../suggestion_loader.dart';
+import '../../models/chart/signal_type.dart';
 
-class InputSection extends StatefulWidget {
+class InputSection extends StatelessWidget {
   final List<TextEditingController> controllers;
   final int count;
+  final List<bool> visibilityList;
+  final Function(int) onVisibilityChanged;
+  final String triggerOption;
+  final int ioPort;
 
   const InputSection({
     super.key,
     required this.controllers,
     required this.count,
+    required this.visibilityList,
+    required this.onVisibilityChanged,
+    required this.triggerOption,
+    required this.ioPort,
   });
 
-  @override
-  State<InputSection> createState() => _InputSectionState();
-}
+  // SignalTypeを取得する関数
+  SignalType _getSignalType(int index) {
+    if (triggerOption == 'Code Trigger') {
+      if (ioPort >= 32) {
+        if (index >= 1 && index <= 8) {
+          // Input2~9
+          return SignalType.control;
+        } else if (index >= 9 && index <= 14) {
+          // Input10~15
+          return SignalType.group;
+        } else if (index >= 15 && index <= 20) {
+          // Input16~21
+          return SignalType.task;
+        }
+      } else if (ioPort == 16) {
+        if (index >= 1 && index <= 4) {
+          // Input2~5
+          return SignalType.control;
+        } else if (index >= 5 && index <= 7) {
+          // Input6~8
+          return SignalType.group;
+        } else if (index >= 8 && index <= 13) {
+          // Input9~14
+          return SignalType.task;
+        }
+      }
+    }
+    return SignalType.input;
+  }
 
-class _InputSectionState extends State<InputSection> {
+  // Control信号の名前を取得する関数
+  String _getControlSignalName(int index) {
+    if (triggerOption == 'Code Trigger') {
+      if (ioPort >= 32) {
+        if (index >= 1 && index <= 8) {
+          // Input2~9 を Control Code1~8 に変換
+          return 'Control Code${index}(bit)';
+        }
+      } else if (ioPort == 16) {
+        if (index >= 1 && index <= 4) {
+          // Input2~5 を Control Code1~4 に変換
+          return 'Control Code${index}(bit)';
+        }
+      }
+    }
+    return 'Input ${index + 1}';
+  }
+
   @override
   Widget build(BuildContext context) {
-    // 入力項目が0のときはエラーになるのを防ぐ
-    if (widget.count <= 0) {
-      return const SizedBox.shrink();
-    }
-
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        /*const Text(
-          'Input Signals',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),*/
-        const SizedBox(height: 8),
-        // 具体的な高さを持つContainerで囲むことで、ReorderableListViewのサイズを制限
-        SizedBox(
-          height: widget.count * 56.0, // 各アイテムの高さ (48) + パディング (8) × アイテム数
-          child: ReorderableListView.builder(
-            buildDefaultDragHandles: false, // ドラッグハンドルを明示的に制御
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: widget.count,
-            onReorder: (oldIndex, newIndex) {
-              if (oldIndex < 0 ||
-                  newIndex < 0 ||
-                  oldIndex >= widget.controllers.length ||
-                  newIndex >= widget.controllers.length) {
-                return; // インデックスが範囲外なら何もしない
-              }
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: List.generate(count, (index) {
+        final signalType = _getSignalType(index);
+        final isLocked =
+            signalType == SignalType.control ||
+            signalType == SignalType.group ||
+            signalType == SignalType.task;
 
-              setState(() {
-                // Flutterの挙動に合わせてインデックスを調整
-                if (newIndex > oldIndex) {
-                  newIndex -= 1;
-                }
+        // Control信号の場合は自動的に名前を設定
+        if (signalType == SignalType.control) {
+          controllers[index].text = _getControlSignalName(index);
+        }
 
-                // テキストの値を一時変数に保存
-                final String tempValue = widget.controllers[oldIndex].text;
-
-                // 移動元のテキストを移動先のテキストで上書き（値だけを交換）
-                widget.controllers[oldIndex].text =
-                    widget.controllers[newIndex].text;
-                widget.controllers[newIndex].text = tempValue;
-              });
-            },
-            itemBuilder: (context, index) {
-              if (index < 0 || index >= widget.controllers.length) {
-                return const SizedBox.shrink(); // 安全チェック
-              }
-
-              return Padding(
-                key: ValueKey('input_$index'),
-                padding: const EdgeInsets.only(bottom: 8.0),
-                child: Row(
-                  children: [
-                    // ドラッグハンドル
-                    ReorderableDragStartListener(
-                      index: index,
-                      child: Icon(
-                        Icons.drag_handle,
-                        color: Colors.grey.shade400,
-                        size: 20,
-                      ),
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12.0),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: controllers[index],
+                  enabled: !isLocked,
+                  decoration: InputDecoration(
+                    labelText: 'Input ${index + 1}',
+                    border: const OutlineInputBorder(),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12.0,
+                      vertical: 10.0,
                     ),
-                    const SizedBox(width: 8),
-                    // テキストフィールド
-                    Expanded(
-                      child: SuggestionTextField(
-                        label: 'Input ${index + 1}',
-                        controller: widget.controllers[index],
-                        loadSuggestions: loadInputSuggestions,
-                      ),
-                    ),
-                  ],
+                    filled: isLocked,
+                    fillColor: isLocked ? Colors.grey.shade200 : null,
+                    hintText: isLocked ? 'Locked' : null,
+                  ),
                 ),
-              );
-            },
+              ),
+              const SizedBox(width: 8),
+              if (!isLocked) // ロックされていない場合のみチェックボックスを表示
+                Checkbox(
+                  value: visibilityList[index],
+                  onChanged: (value) {
+                    onVisibilityChanged(index);
+                  },
+                ),
+            ],
           ),
-        ),
-      ],
+        );
+      }),
     );
   }
 }

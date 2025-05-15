@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'chart_coordinate_mapper.dart';
+import '../../models/chart/signal_type.dart';
 
 /// グリッド描画を管理するクラス
 class ChartGridManager {
@@ -7,12 +8,14 @@ class ChartGridManager {
   final double cellHeight;
   final double labelWidth;
   final List<String> signalNames;
+  final List<SignalType> signalTypes;
 
   ChartGridManager({
     required this.cellWidth,
     required this.cellHeight,
     required this.labelWidth,
     required this.signalNames,
+    required this.signalTypes,
   });
 
   /// グリッド線を描画
@@ -38,15 +41,49 @@ class ChartGridManager {
     }
 
     // 横線（信号区切り）
-    for (int j = 0; j <= signalCount; j++) {
-      final y = j * cellHeight;
+    int visibleRow = 0;
+    for (int j = 0; j < signalCount; j++) {
+      // 信号タイプに基づいて色を設定
+      final currentSignalType =
+          (j >= 0 && j < signalTypes.length)
+              ? signalTypes[j]
+              : SignalType.input;
+
+      // Control、Group、Task信号は描画しない
+      if (currentSignalType == SignalType.control ||
+          currentSignalType == SignalType.group ||
+          currentSignalType == SignalType.task) {
+        continue;
+      }
+
+      final y = visibleRow * cellHeight;
       canvas.drawLine(Offset(0, y), Offset(size.width, y), paintGuide);
+      visibleRow++;
     }
+    // 最後の線を描画
+    canvas.drawLine(
+      Offset(0, visibleRow * cellHeight),
+      Offset(size.width, visibleRow * cellHeight),
+      paintGuide,
+    );
   }
 
   /// 信号名ラベルを描画
   void drawSignalLabels(Canvas canvas, int signalCount) {
     for (int row = 0; row < signalCount; row++) {
+      // 信号タイプに基づいて色を設定
+      final currentSignalType =
+          (row >= 0 && row < signalTypes.length)
+              ? signalTypes[row]
+              : SignalType.input;
+
+      // Control、Group、Task信号は描画しない
+      if (currentSignalType == SignalType.control ||
+          currentSignalType == SignalType.group ||
+          currentSignalType == SignalType.task) {
+        continue;
+      }
+
       final name = (row < signalNames.length) ? signalNames[row] : "";
       final textSpan = TextSpan(
         text: name,
@@ -73,18 +110,14 @@ class ChartGridManager {
     List<int> highlightIndices,
     Size size,
   ) {
-    for (int i in highlightIndices) {
-      final x = labelWidth + i * cellWidth;
-      _drawDashedLine(
-        canvas,
-        Offset(x, 0),
-        Offset(x, size.height),
+    final paintHighlight =
         Paint()
-          ..color = Colors.black
-          ..strokeWidth = 2,
-        dashWidth: 2,
-        dashSpace: 2,
-      );
+          ..color = Colors.redAccent
+          ..strokeWidth = 2;
+
+    for (final index in highlightIndices) {
+      final x = labelWidth + index * cellWidth;
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paintHighlight);
     }
   }
 

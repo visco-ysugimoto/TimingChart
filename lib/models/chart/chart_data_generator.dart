@@ -146,97 +146,11 @@ class ChartDataGenerator {
         chartData.add(List.filled(timeLength, 0));
         continue;
       }
-
-      // 各信号タイプごとに異なる位相で生成（自動生成は行わない）
-      // chartData.add(List.filled(timeLength, 0));
-      // continue;
-
       // 既存の自動生成ロジックを削除し、全て0の配列のみ返す
       chartData.add(List.filled(timeLength, 0));
     }
 
     return chartData;
-  }
-
-  /// 信号間の干渉に基づいて位相を計算
-  static int _calculatePhaseWithInterference(
-    _SignalInfo currentSignal,
-    List<_SignalInfo> allSignals,
-    int currentIndex,
-    List<List<CellMode>> tableData,
-  ) {
-    // 基本位相
-    int basePhase = 0;
-
-    // 信号タイプに基づく基本位相設定
-    switch (currentSignal.type) {
-      case SignalType.input:
-        basePhase = currentSignal.index % 4; // 入力信号は少しずつずらす
-        break;
-      case SignalType.output:
-        basePhase = 2 + (currentSignal.index % 3); // 出力は入力より少し遅れる
-        break;
-      case SignalType.hwTrigger:
-        basePhase = 4 + (currentSignal.index % 2); // HWトリガーはさらに遅れる
-        break;
-    }
-
-    // 入力信号が同じカメラ内に存在する場合、それらの相互作用を考慮
-    List<CellMode> cameraModesWithCurrent = _findCameraModesForSignal(
-      currentSignal,
-      tableData,
-    );
-
-    // 同じカメラ内に異なるモードがある場合、位相を調整
-    if (cameraModesWithCurrent.contains(CellMode.mode1) &&
-        cameraModesWithCurrent.contains(CellMode.mode2)) {
-      // 入力と出力が同じカメラ内にある場合
-      if (currentSignal.type == SignalType.output) {
-        basePhase += 2; // 出力は入力より遅延
-      }
-    }
-
-    // 特定の関連信号を探して位相調整
-    for (int i = 0; i < currentIndex; i++) {
-      final otherSignal = allSignals[i];
-
-      // 入力信号と出力信号の関係性による位相調整
-      if (currentSignal.type == SignalType.output &&
-          otherSignal.type == SignalType.input) {
-        // 名前パターンの類似性に基づく関連性検出
-        if (_areSignalsRelated(currentSignal.name, otherSignal.name)) {
-          basePhase = (otherSignal.phase + 2) % 8; // 関連する入力より2サイクル遅れ
-          break;
-        }
-      }
-
-      // トリガー信号の調整
-      if (currentSignal.type == SignalType.hwTrigger &&
-          (otherSignal.type == SignalType.input ||
-              otherSignal.type == SignalType.output)) {
-        // トリガーは先行する信号と協調するよう位相調整
-        basePhase = (otherSignal.phase + 1) % 8;
-      }
-    }
-
-    // 位相を更新
-    currentSignal.phase = basePhase;
-
-    return basePhase;
-  }
-
-  /// 信号タイプに基づいた周期を返す
-  static int _getPeriodForSignalType(SignalType type) {
-    switch (type) {
-      case SignalType.input:
-        return 8; // 入力信号の基本周期
-      case SignalType.output:
-        return 8; // 出力信号の基本周期
-      case SignalType.hwTrigger:
-        return 16; // HWトリガーはより長い周期
-      default:
-        return 8; // デフォルト
-    }
   }
 
   /// 信号とカメラテーブルを照合して、適切なモードを割り当てる
@@ -449,19 +363,19 @@ class ChartDataGenerator {
       }
     }
 
-    // 出力信号
-    for (int i = 0; i < formState.outputCount; i++) {
-      if (i < outputControllers.length &&
-          outputControllers[i].text.isNotEmpty) {
-        names.add(outputControllers[i].text);
-      }
-    }
-
     // HWトリガー信号
     for (int i = 0; i < formState.hwPort; i++) {
       if (i < hwTriggerControllers.length &&
           hwTriggerControllers[i].text.isNotEmpty) {
         names.add(hwTriggerControllers[i].text);
+      }
+    }
+
+    // 出力信号
+    for (int i = 0; i < formState.outputCount; i++) {
+      if (i < outputControllers.length &&
+          outputControllers[i].text.isNotEmpty) {
+        names.add(outputControllers[i].text);
       }
     }
 
@@ -484,19 +398,19 @@ class ChartDataGenerator {
       }
     }
 
-    // 出力信号
-    for (int i = 0; i < formState.outputCount; i++) {
-      if (i < outputControllers.length &&
-          outputControllers[i].text.isNotEmpty) {
-        types.add(SignalType.output);
-      }
-    }
-
     // HWトリガー信号
     for (int i = 0; i < formState.hwPort; i++) {
       if (i < hwTriggerControllers.length &&
           hwTriggerControllers[i].text.isNotEmpty) {
         types.add(SignalType.hwTrigger);
+      }
+    }
+
+    // 出力信号
+    for (int i = 0; i < formState.outputCount; i++) {
+      if (i < outputControllers.length &&
+          outputControllers[i].text.isNotEmpty) {
+        types.add(SignalType.output);
       }
     }
 

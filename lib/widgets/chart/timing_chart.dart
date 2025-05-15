@@ -36,6 +36,7 @@ class TimingChartState extends State<TimingChart>
   late List<String> signalNames;
   late List<TimingChartAnnotation> annotations;
   List<int> _highlightTimeIndices = [];
+  List<int> _visibleIndexes = [];
 
   double _cellWidth = 40;
   final double cellHeight = 40;
@@ -92,6 +93,22 @@ class TimingChartState extends State<TimingChart>
       signalNames = List.from(newNames);
       _forceRepaint();
     });
+  }
+
+  // 現在の信号データを取得するメソッド
+  List<List<int>> getChartData() {
+    print('===== チャートデータ取得 =====');
+    print('信号数: ${signals.length}');
+    print('信号名: $signalNames');
+    print('信号タイプ: ${widget.signalTypes}');
+
+    List<List<int>> result = List.from(signals);
+    print('返却するデータ行数: ${result.length}');
+    if (result.isNotEmpty) {
+      print('最初の行のデータ例: ${result[0].take(10)}...');
+    }
+    print('===== チャートデータ取得終了 =====');
+    return result;
   }
 
   @override
@@ -260,21 +277,20 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  void _toggleSingleSignal(int sig, int time) {
-    if (sig >= 0 &&
-        sig < signals.length &&
-        time >= 0 &&
-        time < signals[sig].length) {
-      setState(() {
-        signals[sig][time] = (signals[sig][time] == 0) ? 1 : 0;
-
-        // デバッグ出力で信号の変更を確認
-        debugPrint('信号を反転: 行=${sig}, 列=${time}, 新しい値=${signals[sig][time]}');
-
-        // 強制的に再描画をトリガーする
-        _highlightTimeIndices = [..._highlightTimeIndices];
-        _forceRepaint();
-      });
+  void _toggleSingleSignal(int visibleRow, int time) {
+    if (visibleRow >= 0 && visibleRow < _visibleIndexes.length) {
+      final originalRow = _visibleIndexes[visibleRow];
+      if (time >= 0 && time < signals[originalRow].length) {
+        setState(() {
+          signals[originalRow][time] =
+              (signals[originalRow][time] == 0) ? 1 : 0;
+          debugPrint(
+            '信号を反転: 行=${originalRow}, 列=${time}, 新しい値=${signals[originalRow][time]}',
+          );
+          _highlightTimeIndices = [..._highlightTimeIndices];
+          _forceRepaint();
+        });
+      }
     }
   }
 
@@ -632,56 +648,45 @@ class TimingChartState extends State<TimingChart>
   @override
   void _toggleSignalsInSelection() {
     if (!_hasValidSelection) return;
-
     final stSig = math.min(_startSignalIndex!, _endSignalIndex!);
     final edSig = math.max(_startSignalIndex!, _endSignalIndex!);
     final stTime = math.min(_startTimeIndex!, _endTimeIndex!);
     final edTime = math.max(_startTimeIndex!, _endTimeIndex!);
-
-    if (stSig < 0 || edSig >= signals.length) return;
-
+    if (stSig < 0 || edSig >= _visibleIndexes.length) return;
     setState(() {
-      // 選択された信号の値を反転
-      for (int row = stSig; row <= edSig; row++) {
-        final maxTimeForRow = signals[row].length - 1;
+      for (int visibleRow = stSig; visibleRow <= edSig; visibleRow++) {
+        final originalRow = _visibleIndexes[visibleRow];
+        final maxTimeForRow = signals[originalRow].length - 1;
         final clampedStTime = stTime.clamp(0, maxTimeForRow);
         final clampedEdTime = edTime.clamp(0, maxTimeForRow);
-
         if (clampedStTime > clampedEdTime) continue;
-
         for (int t = clampedStTime; t <= clampedEdTime; t++) {
-          signals[row][t] = (signals[row][t] == 0) ? 1 : 0;
+          signals[originalRow][t] = (signals[originalRow][t] == 0) ? 1 : 0;
         }
       }
-
-      // 強制的に再描画をトリガーする
       _highlightTimeIndices = [..._highlightTimeIndices];
       _forceRepaint();
-
-      // 変更をすぐに見えるようにするため、選択範囲をクリアしない
-      // _clearSelection();
     });
   }
 
   @override
   void _insertZerosToSelection() {
     if (!_hasValidSelection) return;
-
     final stSig = math.min(_startSignalIndex!, _endSignalIndex!);
     final edSig = math.max(_startSignalIndex!, _endSignalIndex!);
     final stTime = math.min(_startTimeIndex!, _endTimeIndex!);
     final edTime = math.max(_startTimeIndex!, _endTimeIndex!);
-
-    if (stSig < 0 || edSig >= signals.length) return;
-
+    if (stSig < 0 || edSig >= _visibleIndexes.length) return;
     final lengthToInsert = (edTime - stTime + 1);
     if (lengthToInsert <= 0) return;
-
     setState(() {
-      for (int row = stSig; row <= edSig; row++) {
-        final clampedStTime = stTime.clamp(0, signals[row].length);
-
-        signals[row].insertAll(clampedStTime, List.filled(lengthToInsert, 0));
+      for (int visibleRow = stSig; visibleRow <= edSig; visibleRow++) {
+        final originalRow = _visibleIndexes[visibleRow];
+        final clampedStTime = stTime.clamp(0, signals[originalRow].length);
+        signals[originalRow].insertAll(
+          clampedStTime,
+          List.filled(lengthToInsert, 0),
+        );
       }
       _normalizeSignalLengths();
       _clearSelection();
@@ -691,23 +696,19 @@ class TimingChartState extends State<TimingChart>
   @override
   void _deleteRange() {
     if (!_hasValidSelection) return;
-
     final stSig = math.min(_startSignalIndex!, _endSignalIndex!);
     final edSig = math.max(_startSignalIndex!, _endSignalIndex!);
     final stTime = math.min(_startTimeIndex!, _endTimeIndex!);
     final edTime = math.max(_startTimeIndex!, _endTimeIndex!);
-
-    if (stSig < 0 || edSig >= signals.length) return;
-
+    if (stSig < 0 || edSig >= _visibleIndexes.length) return;
     setState(() {
-      for (int row = stSig; row <= edSig; row++) {
-        final maxTimeForRow = signals[row].length;
+      for (int visibleRow = stSig; visibleRow <= edSig; visibleRow++) {
+        final originalRow = _visibleIndexes[visibleRow];
+        final maxTimeForRow = signals[originalRow].length;
         final clampedStTime = stTime.clamp(0, maxTimeForRow);
         final clampedEdTime = (edTime + 1).clamp(0, maxTimeForRow);
-
         if (clampedStTime >= clampedEdTime) continue;
-
-        signals[row].removeRange(clampedStTime, clampedEdTime);
+        signals[originalRow].removeRange(clampedStTime, clampedEdTime);
       }
       _normalizeSignalLengths();
       _clearSelection();
@@ -765,6 +766,26 @@ class TimingChartState extends State<TimingChart>
     final double totalHeight =
         chartMarginTop + signals.length * cellHeight + commentAreaHeight;
 
+    // 表示対象インデックスを抽出
+    final visibleIndexes = <int>[];
+    for (int i = 0; i < widget.signalTypes.length; i++) {
+      final t = widget.signalTypes[i];
+      if (t != SignalType.control &&
+          t != SignalType.group &&
+          t != SignalType.task) {
+        visibleIndexes.add(i);
+      }
+    }
+
+    // フィルタ済みリストを作成
+    final visibleSignalNames = [for (final i in visibleIndexes) signalNames[i]];
+    final visibleSignals = [for (final i in visibleIndexes) signals[i]];
+    final visibleSignalTypes = [
+      for (final i in visibleIndexes) widget.signalTypes[i],
+    ];
+
+    _visibleIndexes = visibleIndexes;
+
     return GestureDetector(
       onPanStart: _onPanStart,
       onPanUpdate: _onPanUpdate,
@@ -779,9 +800,9 @@ class TimingChartState extends State<TimingChart>
           willChange: true,
           size: Size(totalWidth, totalHeight),
           painter: _StepTimingChartPainter(
-            signals: signals,
-            signalNames: signalNames,
-            signalTypes: widget.signalTypes,
+            signals: visibleSignals,
+            signalNames: visibleSignalNames,
+            signalTypes: visibleSignalTypes,
             annotations: annotations,
             cellWidth: _cellWidth,
             cellHeight: cellHeight,
@@ -808,6 +829,34 @@ class TimingChartState extends State<TimingChart>
     if (customPaint is RenderCustomPaint) {
       customPaint.markNeedsPaint();
     }
+  }
+
+  void _invertSignal(int index) {
+    print('===== 信号反転処理開始 =====');
+    print('反転対象の信号インデックス: $index');
+    print('反転前の信号名: ${signalNames[index]}');
+    print('反転前の信号タイプ: ${widget.signalTypes[index]}');
+
+    setState(() {
+      // 信号値を反転
+      for (int i = 0; i < signals[index].length; i++) {
+        signals[index][i] = signals[index][i] == 0 ? 1 : 0;
+      }
+
+      // 信号名を更新
+      String originalName = signalNames[index];
+      if (originalName.startsWith('!')) {
+        signalNames[index] = originalName.substring(1);
+      } else {
+        signalNames[index] = '!$originalName';
+      }
+
+      print('反転後の信号名: ${signalNames[index]}');
+      print('反転後の信号タイプ: ${widget.signalTypes[index]}');
+      print('反転後の信号値: ${signals[index].take(10)}...');
+    });
+
+    print('===== 信号反転処理終了 =====');
   }
 }
 
@@ -852,6 +901,7 @@ class _StepTimingChartPainter extends CustomPainter {
       cellHeight: cellHeight,
       labelWidth: labelWidth,
       signalNames: signalNames,
+      signalTypes: signalTypes,
     );
 
     _signalsManager = ChartSignalsManager(
@@ -899,14 +949,17 @@ class _StepTimingChartPainter extends CustomPainter {
     canvas.translate(chartMarginLeft, chartMarginTop);
     debugPrint('Canvas translated by: ($chartMarginLeft, $chartMarginTop)');
 
+    // signals, signalNames, signalTypesの長さはすべて一致している前提
+    final rowCount = signals.length;
+
     // 描画順序は背景から前景へ：
     debugPrint('\n1. Drawing signal labels');
-    _gridManager.drawSignalLabels(canvas, signals.length);
+    _gridManager.drawSignalLabels(canvas, rowCount);
 
     debugPrint('\n2. Drawing grid lines');
     final maxTimeSteps =
         signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
-    _gridManager.drawGridLines(canvas, size, signals.length, maxTimeSteps);
+    _gridManager.drawGridLines(canvas, size, rowCount, maxTimeSteps);
 
     debugPrint('\n3. Drawing highlighted time indices');
     _gridManager.drawHighlightedLines(canvas, highlightTimeIndices, size);
@@ -924,7 +977,7 @@ class _StepTimingChartPainter extends CustomPainter {
     );
 
     debugPrint('\n6. Drawing annotations with boundary lines');
-    _annotationsManager.drawAnnotations(canvas, size, signals.length);
+    _annotationsManager.drawAnnotations(canvas, size, rowCount);
 
     // アノテーションの当たり判定用Rectマップを更新
     annotationRects.clear();
