@@ -147,10 +147,13 @@ class _MyHomePageState extends State<MyHomePage>
         if (_timingChartKey.currentState != null) {
           final chartData = _timingChartKey.currentState!.getChartData();
           if (_formTabKey.currentState != null) {
+            // 信号の順序を保持したまま更新
+            final signalNames = _chartSignals.map((s) => s.name).toList();
+            final signalTypes = _chartSignals.map((s) => s.signalType).toList();
             _formTabKey.currentState!.updateSignalDataFromChartData(
               chartData,
-              _chartSignals.map((s) => s.name).toList(),
-              _chartSignals.map((s) => s.signalType).toList(),
+              signalNames,
+              signalTypes,
             );
           }
         }
@@ -161,6 +164,7 @@ class _MyHomePageState extends State<MyHomePage>
           // ここでAppConfigを更新する処理を追加
           setState(() {
             _formState = config.formState;
+            // 信号の順序を保持したまま更新
             _chartSignals = config.signals;
           });
         });
@@ -315,6 +319,14 @@ class _MyHomePageState extends State<MyHomePage>
           "非ゼロ値を含む: ${signalData.any((signal) => signal.values.any((val) => val != 0))}",
         );
       }
+    }
+
+    // 信号の順序を保持するために、_chartSignalsの順序に基づいてsignalDataを並び替え
+    if (signalData.isNotEmpty && _chartSignals.isNotEmpty) {
+      final Map<String, SignalData> signalMap = {
+        for (var signal in signalData) signal.name: signal,
+      };
+      signalData = _chartSignals.map((s) => signalMap[s.name] ?? s).toList();
     }
 
     print("最終的に使用する信号データ数: ${signalData.length}");
