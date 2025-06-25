@@ -12,6 +12,8 @@ import 'hw_trigger_section.dart';
 import '../common/custom_dropdown.dart';
 import '../../common_padding.dart';
 import '../chart/chart_signals.dart'; // チャート信号関連のクラスをインポート
+import '../../providers/form_state_notifier.dart';
+import 'package:provider/provider.dart';
 
 // セルのモードを表す列挙型
 enum CellMode { none, mode1, mode2, mode3, mode4, mode5 }
@@ -107,16 +109,17 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
 
   // SignalDataリストを初期化
   void _initializeSignalDataList() {
+    final formState = context.read<FormStateNotifier>().state;
     _signalDataList = [];
 
     // 入力信号
-    for (int i = 0; i < widget.formState.inputCount; i++) {
+    for (int i = 0; i < formState.inputCount; i++) {
       SignalType signalType = SignalType.input;
       bool isVisible = true;
 
       // Code Triggerの場合、totalIOポートの値に応じてSignalTypeを設定
-      if (widget.formState.triggerOption == 'Code Trigger') {
-        if (widget.formState.ioPort >= 32) {
+      if (formState.triggerOption == 'Code Trigger') {
+        if (formState.ioPort >= 32) {
           if (i >= 1 && i <= 8) {
             // Input2~9
             signalType = SignalType.control;
@@ -132,7 +135,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
             signalType = SignalType.task;
             isVisible = false;
           }
-        } else if (widget.formState.ioPort == 16) {
+        } else if (formState.ioPort == 16) {
           if (i >= 1 && i <= 4) {
             // Input2~5
             signalType = SignalType.control;
@@ -164,23 +167,8 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
       );
     }
 
-    // HWトリガー信号
-    for (int i = 0; i < widget.formState.hwPort; i++) {
-      _signalDataList.add(
-        SignalData(
-          name:
-              widget.hwTriggerControllers[i].text.isNotEmpty
-                  ? widget.hwTriggerControllers[i].text
-                  : "HW Trigger ${i + 1}",
-          signalType: SignalType.hwTrigger,
-          values: List.filled(32, 0),
-          isVisible: _hwTriggerVisibility[i],
-        ),
-      );
-    }
-
-    // 出力信号
-    for (int i = 0; i < widget.formState.outputCount; i++) {
+    // 出力信号 (Input の次に追加)
+    for (int i = 0; i < formState.outputCount; i++) {
       _signalDataList.add(
         SignalData(
           name:
@@ -190,6 +178,21 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
           signalType: SignalType.output,
           values: List.filled(32, 0),
           isVisible: _outputVisibility[i],
+        ),
+      );
+    }
+
+    // HWトリガー信号 (最後に追加)
+    for (int i = 0; i < formState.hwPort; i++) {
+      _signalDataList.add(
+        SignalData(
+          name:
+              widget.hwTriggerControllers[i].text.isNotEmpty
+                  ? widget.hwTriggerControllers[i].text
+                  : "HW Trigger ${i + 1}",
+          signalType: SignalType.hwTrigger,
+          values: List.filled(32, 0),
+          isVisible: _hwTriggerVisibility[i],
         ),
       );
     }
@@ -423,21 +426,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
         }
       }
 
-      // HWトリガー信号
-      for (int i = 0; i < widget.formState.hwPort; i++) {
-        if (widget.hwTriggerControllers[i].text.isNotEmpty) {
-          _signalDataList.add(
-            SignalData(
-              name: widget.hwTriggerControllers[i].text,
-              signalType: SignalType.hwTrigger,
-              values: List.filled(32, 0),
-              isVisible: _hwTriggerVisibility[i],
-            ),
-          );
-        }
-      }
-
-      // 出力信号
+      // 出力信号 (Input の次に追加)
       for (int i = 0; i < widget.formState.outputCount; i++) {
         if (widget.outputControllers[i].text.isNotEmpty) {
           _signalDataList.add(
@@ -451,49 +440,42 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
         }
       }
 
+      // HWトリガー信号 (最後に追加)
+      for (int i = 0; i < widget.formState.hwPort; i++) {
+        if (widget.hwTriggerControllers[i].text.isNotEmpty) {
+          _signalDataList.add(
+            SignalData(
+              name: widget.hwTriggerControllers[i].text,
+              signalType: SignalType.hwTrigger,
+              values: List.filled(32, 0),
+              isVisible: _hwTriggerVisibility[i],
+            ),
+          );
+        }
+      }
+
       // 生成したチャートデータをSignalDataに設定
       final chartData = generateTimingChartData();
       int dataIndex = 0;
       int signalIndex = 0;
 
-      // 入力信号
-      for (int i = 0; i < widget.formState.inputCount; i++) {
-        if (widget.inputControllers[i].text.isNotEmpty) {
-          if (signalIndex < _signalDataList.length &&
-              dataIndex < chartData.length) {
-            _signalDataList[signalIndex] = _signalDataList[signalIndex]
-                .copyWith(values: List<int>.from(chartData[dataIndex]));
-            signalIndex++;
+      // それぞれのカテゴリごとに chartData を割り当てる
+      void _assignValues(int count, List<TextEditingController> controllers) {
+        for (int i = 0; i < count; i++) {
+          if (controllers[i].text.isNotEmpty) {
+            if (signalIndex < _signalDataList.length &&
+                dataIndex < chartData.length) {
+              _signalDataList[signalIndex] = _signalDataList[signalIndex]
+                  .copyWith(values: List<int>.from(chartData[dataIndex]));
+              signalIndex++;
+              dataIndex++;
+            }
           }
         }
-        dataIndex++;
       }
 
-      // HWトリガー信号
-      for (int i = 0; i < widget.formState.hwPort; i++) {
-        if (widget.hwTriggerControllers[i].text.isNotEmpty) {
-          if (signalIndex < _signalDataList.length &&
-              dataIndex < chartData.length) {
-            _signalDataList[signalIndex] = _signalDataList[signalIndex]
-                .copyWith(values: List<int>.from(chartData[dataIndex]));
-            signalIndex++;
-          }
-        }
-        dataIndex++;
-      }
-
-      // 出力信号
-      for (int i = 0; i < widget.formState.outputCount; i++) {
-        if (widget.outputControllers[i].text.isNotEmpty) {
-          if (signalIndex < _signalDataList.length &&
-              dataIndex < chartData.length) {
-            _signalDataList[signalIndex] = _signalDataList[signalIndex]
-                .copyWith(values: List<int>.from(chartData[dataIndex]));
-            signalIndex++;
-          }
-        }
-        dataIndex++;
-      }
+      _assignValues(widget.formState.outputCount, widget.outputControllers);
+      _assignValues(widget.formState.hwPort, widget.hwTriggerControllers);
     });
   }
 

@@ -3,7 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart'; // 多言語�
 import 'package:flutter/scheduler.dart'; // SchedulerBinding用のインポート
 import 'dart:io';
 import 'dart:async';
-//import 'package:provider/provider.dart'; // もし Provider を使う場合 (今回は使わない前提)
+import 'package:provider/provider.dart';
 
 // ★ 作成した他のファイルをインポート
 import 'generated/l10n.dart';
@@ -17,8 +17,15 @@ import 'widgets/form/form_tab.dart';
 import 'widgets/chart/timing_chart.dart';
 // import 'widgets/chart/chart_signals.dart'; // SignalType を含むファイルをインポートから削除
 
+import 'providers/form_state_notifier.dart';
+
 void main() {
-  runApp(const MyApp());
+  runApp(
+    MultiProvider(
+      providers: [ChangeNotifierProvider(create: (_) => FormStateNotifier())],
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -77,6 +84,10 @@ class _MyHomePageState extends State<MyHomePage>
   // フォームタブへの参照
   GlobalKey<FormTabState> _formTabKey = GlobalKey<FormTabState>();
 
+  // Provider から取得しやすくするためのゲッター
+  FormStateNotifier get _formNotifier =>
+      Provider.of<FormStateNotifier>(context, listen: false);
+
   @override
   void initState() {
     super.initState();
@@ -96,6 +107,12 @@ class _MyHomePageState extends State<MyHomePage>
 
     // タブ切り替え時のリスナー登録
     _tabController.addListener(_handleTabChange);
+
+    // 初期値を Provider に同期
+    // initState では context が使えるため listen: false で呼び出し
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _formNotifier.replace(_formState);
+    });
   }
 
   // タブ切り替え時の処理
@@ -139,6 +156,11 @@ class _MyHomePageState extends State<MyHomePage>
       // チャートデータをフォームタブに同期
       _syncChartDataToFormTab();
 
+      // アノテーションを保存
+      if (_timingChartKey.currentState != null) {
+        _chartAnnotations = _timingChartKey.currentState!.getAnnotations();
+      }
+
       // ビルドサイクルを待ってからAppConfigを作成
       Future.delayed(Duration(milliseconds: 100), () async {
         await SchedulerBinding.instance.endOfFrame;
@@ -169,6 +191,14 @@ class _MyHomePageState extends State<MyHomePage>
           });
         });
       });
+    }
+
+    // フォームタブからチャートタブに移動する場合
+    if (_tabController.previousIndex == 0 && _tabController.index == 1) {
+      // 保存しておいたアノテーションを反映
+      if (_timingChartKey.currentState != null) {
+        _timingChartKey.currentState!.updateAnnotations(_chartAnnotations);
+      }
     }
   }
 
@@ -207,6 +237,9 @@ class _MyHomePageState extends State<MyHomePage>
       );
       _updateInputControllers();
       _updateOutputControllers();
+
+      // Provider に同期
+      _formNotifier.update(inputCount: totalIoPorts, outputCount: totalIoPorts);
     });
   }
 
@@ -245,23 +278,25 @@ class _MyHomePageState extends State<MyHomePage>
     }
   }
 
-  void _updateHwTriggerControllers() {
-    if (_hwTriggerControllers.length > _formState.hwPort) {
-      for (int i = _formState.hwPort; i < _hwTriggerControllers.length; i++) {
+  void _updateHwTriggerControllers([int? desiredCount]) {
+    final target = desiredCount ?? _formState.hwPort;
+
+    if (_hwTriggerControllers.length > target) {
+      for (int i = target; i < _hwTriggerControllers.length; i++) {
         _hwTriggerControllers[i].dispose();
       }
-      _hwTriggerControllers = _hwTriggerControllers.sublist(
-        0,
-        _formState.hwPort,
-      );
-    } else if (_hwTriggerControllers.length < _formState.hwPort) {
+      _hwTriggerControllers = _hwTriggerControllers.sublist(0, target);
+    } else if (_hwTriggerControllers.length < target) {
       _hwTriggerControllers.addAll(
         List.generate(
-          _formState.hwPort - _hwTriggerControllers.length,
+          target - _hwTriggerControllers.length,
           (_) => TextEditingController(),
         ),
       );
     }
+
+    // Provider に同期
+    _formNotifier.update(hwPort: _formState.hwPort);
   }
 
   void _clearAllTextFields() {
@@ -554,6 +589,9 @@ class _MyHomePageState extends State<MyHomePage>
     // l10nのための S オブジェクトを取得
     final s = S.of(context);
 
+    // Provider の最新状態をローカルに反映
+    _formState = context.watch<FormStateNotifier>().state;
+
     return Scaffold(
       appBar: AppBar(
         //backgroundColor: Theme.of(context).colorScheme.inversePrimary,
@@ -733,32 +771,29 @@ class _MyHomePageState extends State<MyHomePage>
             hwTriggerControllers: _hwTriggerControllers,
             onTriggerOptionChanged: (String? newValue) {
               if (newValue != null) {
-                setState(() {
-                  _formState = _formState.copyWith(triggerOption: newValue);
-                });
+                // Provider に反映し、UI は自動リビルド
+                _formNotifier.update(triggerOption: newValue);
               }
             },
             onIoPortChanged: (int? newValue) {
               if (newValue != null && newValue != _formState.ioPort) {
-                setState(() {
-                  _formState = _formState.copyWith(ioPort: newValue);
-                  _updateInputOutputCounts(newValue);
-                });
+                _formNotifier.update(ioPort: newValue);
+                _updateInputOutputCounts(newValue);
               }
             },
             onHwPortChanged: (int? newValue) {
               if (newValue != null && newValue != _formState.hwPort) {
+                // Provider とローカルの両方を更新
+                _formNotifier.update(hwPort: newValue);
                 setState(() {
                   _formState = _formState.copyWith(hwPort: newValue);
-                  _updateHwTriggerControllers();
+                  _updateHwTriggerControllers(newValue);
                 });
               }
             },
             onCameraChanged: (int? newValue) {
               if (newValue != null) {
-                setState(() {
-                  _formState = _formState.copyWith(camera: newValue);
-                });
+                _formNotifier.update(camera: newValue);
               }
             },
             onUpdateChart: (signalNames, chartData, signalTypes) {

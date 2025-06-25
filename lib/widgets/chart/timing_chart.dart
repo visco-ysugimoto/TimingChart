@@ -858,6 +858,9 @@ class TimingChartState extends State<TimingChart>
 
     print('===== 信号反転処理終了 =====');
   }
+
+  /// 現在のアノテーション一覧を取得
+  List<TimingChartAnnotation> getAnnotations() => List.from(annotations);
 }
 
 /// タイミングチャートを描画するカスタムペインター
