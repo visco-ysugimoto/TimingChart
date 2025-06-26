@@ -18,11 +18,15 @@ import 'widgets/chart/timing_chart.dart';
 // import 'widgets/chart/chart_signals.dart'; // SignalType を含むファイルをインポートから削除
 
 import 'providers/form_state_notifier.dart';
+import 'providers/controller_manager.dart';
 
 void main() {
   runApp(
     MultiProvider(
-      providers: [ChangeNotifierProvider(create: (_) => FormStateNotifier())],
+      providers: [
+        ChangeNotifierProvider(create: (_) => FormStateNotifier()),
+        ChangeNotifierProvider(create: (_) => ControllerManager()),
+      ],
       child: const MyApp(),
     ),
   );
@@ -69,7 +73,6 @@ class _MyHomePageState extends State<MyHomePage>
   late TabController _tabController;
 
   // フォームの状態
-  late TimingFormState _formState;
   List<TextEditingController> _inputControllers = [];
   List<TextEditingController> _outputControllers = [];
   List<TextEditingController> _hwTriggerControllers = [];
@@ -88,11 +91,25 @@ class _MyHomePageState extends State<MyHomePage>
   FormStateNotifier get _formNotifier =>
       Provider.of<FormStateNotifier>(context, listen: false);
 
+  // Provider 経由でフォーム状態を取得（listen:false）
+  TimingFormState get _formState =>
+      Provider.of<FormStateNotifier>(context, listen: false).state;
+
+  // build 中に Provider の notifyListeners が発火しないよう、
+  // フレーム終了後に更新をスケジュールするヘルパー
+  void _scheduleFormUpdate(void Function(FormStateNotifier) edit) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) edit(_formNotifier);
+    });
+  }
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _formState = TimingFormState(
+
+    // 初期ステートを Provider に設定
+    final initial = const TimingFormState(
       triggerOption: 'Single Trigger',
       ioPort: 32,
       hwPort: 0,
@@ -100,7 +117,14 @@ class _MyHomePageState extends State<MyHomePage>
       inputCount: 32,
       outputCount: 32,
     );
-    _initializeControllers();
+
+    _scheduleFormUpdate((n) => n.replace(initial));
+
+    _initializeControllers(
+      initial.inputCount,
+      initial.outputCount,
+      initial.hwPort,
+    );
 
     // テストコメントは削除
     _chartAnnotations = [];
@@ -184,11 +208,9 @@ class _MyHomePageState extends State<MyHomePage>
         WidgetsBinding.instance.addPostFrameCallback((_) {
           final config = _createAppConfig();
           // ここでAppConfigを更新する処理を追加
-          setState(() {
-            _formState = config.formState;
-            // 信号の順序を保持したまま更新
-            _chartSignals = config.signals;
-          });
+          _scheduleFormUpdate((n) => n.replace(config.formState));
+          // 信号の順序を保持したまま更新
+          _chartSignals = config.signals;
         });
       });
     }
@@ -202,7 +224,7 @@ class _MyHomePageState extends State<MyHomePage>
     }
   }
 
-  void _initializeControllers() {
+  void _initializeControllers(int inputCount, int outputCount, int hwPort) {
     // 既存のコントローラーを破棄
     for (var controller in _inputControllers) {
       controller.dispose();
@@ -216,62 +238,55 @@ class _MyHomePageState extends State<MyHomePage>
 
     // 新しいコントローラーリストを作成
     _inputControllers = List.generate(
-      _formState.inputCount,
+      inputCount,
       (index) => TextEditingController(),
     );
     _outputControllers = List.generate(
-      _formState.outputCount,
+      outputCount,
       (index) => TextEditingController(),
     );
     _hwTriggerControllers = List.generate(
-      _formState.hwPort,
+      hwPort,
       (index) => TextEditingController(),
     );
   }
 
   void _updateInputOutputCounts(int totalIoPorts) {
+    _scheduleFormUpdate(
+      (n) => n.update(inputCount: totalIoPorts, outputCount: totalIoPorts),
+    );
     setState(() {
-      _formState = _formState.copyWith(
-        inputCount: totalIoPorts,
-        outputCount: totalIoPorts,
-      );
-      _updateInputControllers();
-      _updateOutputControllers();
-
-      // Provider に同期
-      _formNotifier.update(inputCount: totalIoPorts, outputCount: totalIoPorts);
+      _updateInputControllers(totalIoPorts);
+      _updateOutputControllers(totalIoPorts);
     });
   }
 
-  void _updateInputControllers() {
-    if (_inputControllers.length > _formState.inputCount) {
-      for (int i = _formState.inputCount; i < _inputControllers.length; i++) {
+  void _updateInputControllers(int target) {
+    if (_inputControllers.length > target) {
+      for (int i = target; i < _inputControllers.length; i++) {
         _inputControllers[i].dispose();
       }
-      _inputControllers = _inputControllers.sublist(0, _formState.inputCount);
-    } else if (_inputControllers.length < _formState.inputCount) {
+      _inputControllers = _inputControllers.sublist(0, target);
+    } else if (_inputControllers.length < target) {
       _inputControllers.addAll(
         List.generate(
-          _formState.inputCount - _inputControllers.length,
+          target - _inputControllers.length,
           (_) => TextEditingController(),
         ),
       );
     }
   }
 
-  void _updateOutputControllers() {
-    if (_outputControllers.length > _formState.outputCount) {
-      for (int i = _formState.outputCount; i < _outputControllers.length; i++) {
+  void _updateOutputControllers(int target) {
+    if (_outputControllers.length > target) {
+      for (int i = target; i < _outputControllers.length; i++) {
         _outputControllers[i].dispose();
       }
-      _outputControllers = _outputControllers.sublist(
-        0,
-        _formState.outputCount,
-      );
-    } else if (_outputControllers.length < _formState.outputCount) {
+      _outputControllers = _outputControllers.sublist(0, target);
+    } else if (_outputControllers.length < target) {
       _outputControllers.addAll(
         List.generate(
-          _formState.outputCount - _outputControllers.length,
+          target - _outputControllers.length,
           (_) => TextEditingController(),
         ),
       );
@@ -294,9 +309,6 @@ class _MyHomePageState extends State<MyHomePage>
         ),
       );
     }
-
-    // Provider に同期
-    _formNotifier.update(hwPort: _formState.hwPort);
   }
 
   void _clearAllTextFields() {
@@ -517,46 +529,46 @@ class _MyHomePageState extends State<MyHomePage>
 
     if (config == null) return;
 
-    // 状態を更新
+    // Provider を更新
+    _scheduleFormUpdate((n) => n.replace(config.formState));
+
+    // コントローラー長を調整
     setState(() {
-      // フォーム状態を更新
-      _formState = config.formState;
+      _updateInputControllers(config.formState.inputCount);
+      _updateOutputControllers(config.formState.outputCount);
+      _updateHwTriggerControllers(config.formState.hwPort);
+    });
 
-      // コントローラーを更新
-      _updateInputOutputCounts(_formState.ioPort);
-      _updateHwTriggerControllers();
+    // テキストを設定
+    for (
+      int i = 0;
+      i < config.inputNames.length && i < _inputControllers.length;
+      i++
+    ) {
+      _inputControllers[i].text = config.inputNames[i];
+    }
 
-      // テキストを設定
-      for (
-        int i = 0;
-        i < config.inputNames.length && i < _inputControllers.length;
-        i++
-      ) {
-        _inputControllers[i].text = config.inputNames[i];
+    for (
+      int i = 0;
+      i < config.outputNames.length && i < _outputControllers.length;
+      i++
+    ) {
+      _outputControllers[i].text = config.outputNames[i];
+    }
+
+    for (
+      int i = 0;
+      i < config.hwTriggerNames.length && i < _hwTriggerControllers.length;
+      i++
+    ) {
+      _hwTriggerControllers[i].text = config.hwTriggerNames[i];
+    }
+
+    // FormTabを更新（ビルド後に実行）
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_formTabKey.currentState != null) {
+        _formTabKey.currentState!.updateFromAppConfig(config);
       }
-
-      for (
-        int i = 0;
-        i < config.outputNames.length && i < _outputControllers.length;
-        i++
-      ) {
-        _outputControllers[i].text = config.outputNames[i];
-      }
-
-      for (
-        int i = 0;
-        i < config.hwTriggerNames.length && i < _hwTriggerControllers.length;
-        i++
-      ) {
-        _hwTriggerControllers[i].text = config.hwTriggerNames[i];
-      }
-
-      // FormTabを更新（ビルド後に実行）
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_formTabKey.currentState != null) {
-          _formTabKey.currentState!.updateFromAppConfig(config);
-        }
-      });
     });
 
     // 結果メッセージを表示
@@ -588,9 +600,6 @@ class _MyHomePageState extends State<MyHomePage>
   Widget build(BuildContext context) {
     // l10nのための S オブジェクトを取得
     final s = S.of(context);
-
-    // Provider の最新状態をローカルに反映
-    _formState = context.watch<FormStateNotifier>().state;
 
     return Scaffold(
       appBar: AppBar(
@@ -765,35 +774,38 @@ class _MyHomePageState extends State<MyHomePage>
           // --- Form Tab ---
           FormTab(
             key: _formTabKey,
-            formState: _formState,
             inputControllers: _inputControllers,
             outputControllers: _outputControllers,
             hwTriggerControllers: _hwTriggerControllers,
             onTriggerOptionChanged: (String? newValue) {
               if (newValue != null) {
                 // Provider に反映し、UI は自動リビルド
-                _formNotifier.update(triggerOption: newValue);
+                _scheduleFormUpdate((n) => n.update(triggerOption: newValue));
               }
             },
             onIoPortChanged: (int? newValue) {
               if (newValue != null && newValue != _formState.ioPort) {
-                _formNotifier.update(ioPort: newValue);
+                _scheduleFormUpdate((n) => n.update(ioPort: newValue));
                 _updateInputOutputCounts(newValue);
               }
             },
             onHwPortChanged: (int? newValue) {
               if (newValue != null && newValue != _formState.hwPort) {
-                // Provider とローカルの両方を更新
-                _formNotifier.update(hwPort: newValue);
-                setState(() {
-                  _formState = _formState.copyWith(hwPort: newValue);
-                  _updateHwTriggerControllers(newValue);
+                // Provider への反映とコントローラリストのリサイズを
+                // 同じポストフレームコールバック内で実行し、
+                // 両者のタイミングずれによる RangeError を防ぐ
+                _scheduleFormUpdate((n) {
+                  // 1) Provider の状態を更新
+                  n.update(hwPort: newValue);
+
+                  // 2) コントローラリストをリサイズし、UI を再構築
+                  setState(() => _updateHwTriggerControllers(newValue));
                 });
               }
             },
             onCameraChanged: (int? newValue) {
               if (newValue != null) {
-                _formNotifier.update(camera: newValue);
+                _scheduleFormUpdate((n) => n.update(camera: newValue));
               }
             },
             onUpdateChart: (signalNames, chartData, signalTypes) {

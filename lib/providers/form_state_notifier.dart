@@ -47,4 +47,11 @@ class FormStateNotifier extends ChangeNotifier {
     _state = newState;
     notifyListeners();
   }
+
+  void _safeUpdate(
+    FormStateNotifier notifier,
+    void Function(FormStateNotifier) edit,
+  ) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => edit(notifier));
+  }
 }

@@ -18,6 +18,16 @@ import 'package:provider/provider.dart';
 // セルのモードを表す列挙型
 enum CellMode { none, mode1, mode2, mode3, mode4, mode5 }
 
+// 行モード（None / 同時取込）
+enum RowMode { none, simultaneous }
+
+const rowModeColors = {
+  RowMode.none: Colors.white,
+  RowMode.simultaneous: Colors.teal, // 任意の色
+};
+
+const rowModeLabels = {RowMode.none: '', RowMode.simultaneous: '同時取込'};
+
 // セルモードの色とラベルのマッピング
 const cellModeColors = {
   CellMode.none: Colors.white,
@@ -30,15 +40,14 @@ const cellModeColors = {
 
 const cellModeLabels = {
   CellMode.none: "None",
-  CellMode.mode1: "Mode 1",
-  CellMode.mode2: "Mode 2",
-  CellMode.mode3: "Mode 3",
-  CellMode.mode4: "Mode 4",
-  CellMode.mode5: "Mode 5",
+  CellMode.mode1: "順次取込",
+  CellMode.mode2: "接点入力",
+  CellMode.mode3: "HWトリガ",
+  CellMode.mode4: "複数回取込",
+  CellMode.mode5: "取込拡張",
 };
 
 class FormTab extends StatefulWidget {
-  final TimingFormState formState;
   final List<TextEditingController> inputControllers;
   final List<TextEditingController> outputControllers;
   final List<TextEditingController> hwTriggerControllers;
@@ -52,7 +61,6 @@ class FormTab extends StatefulWidget {
 
   const FormTab({
     super.key,
-    required this.formState,
     required this.inputControllers,
     required this.outputControllers,
     required this.hwTriggerControllers,
@@ -93,18 +101,78 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
   // 実際のチャートデータを保持（更新時に保存）
   List<List<int>> _actualChartData = [];
 
+  // --- 行モード ---
+  // 各行に対してセルとは独立に設定できるモードを保持（None / 同時取込）
+  List<RowMode> _rowModes = [];
+
   // 信号の表示/非表示状態を管理するリスト (以前のリストは互換性のために残しておく)
   List<bool> _inputVisibility = [];
   List<bool> _outputVisibility = [];
   List<bool> _hwTriggerVisibility = [];
 
+  // Provider からフォーム状態を取得するゲッター
+  TimingFormState get formState => context.read<FormStateNotifier>().state;
+
+  bool _initializedWithProvider = false;
+
+  // 前回取得した各カウントを保持し、変化を検知する
+  int _prevInputCount = -1;
+  int _prevOutputCount = -1;
+  int _prevHwPort = -1;
+  int _prevCamera = -1;
+
+  bool _hwVis(int index) =>
+      index < _hwTriggerVisibility.length ? _hwTriggerVisibility[index] : true;
+
   @override
-  void initState() {
-    super.initState();
-    // 初期化をここで行う
-    _initializeTableData();
-    _initializeSignalVisibility();
-    _initializeSignalDataList();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    final fs = formState;
+
+    // 初回初期化
+    if (!_initializedWithProvider) {
+      _initializeTableData();
+      _initializeSignalVisibility();
+      _initializeSignalDataList();
+      _initializedWithProvider = true;
+    }
+
+    // カメラ数が変わった場合はテーブル再初期化
+    if (_prevCamera != -1 && _prevCamera != fs.camera) {
+      _initializeTableData();
+
+      if (fs.hwPort > fs.camera) {
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          widget.onHwPortChanged(fs.camera);
+        });
+      }
+    }
+
+    // 入出力/HWTrigger の数が変わった場合に Visibility リストを更新
+    if (_prevInputCount != -1 && _prevInputCount != fs.inputCount) {
+      _updateVisibilityList(_inputVisibility, fs.inputCount);
+    }
+    if (_prevOutputCount != -1 && _prevOutputCount != fs.outputCount) {
+      _updateVisibilityList(_outputVisibility, fs.outputCount);
+    }
+    if (_prevHwPort != -1 && _prevHwPort != fs.hwPort) {
+      _updateVisibilityList(_hwTriggerVisibility, fs.hwPort);
+    }
+
+    // 必要であれば SignalData を再生成
+    if (_prevInputCount != fs.inputCount ||
+        _prevOutputCount != fs.outputCount ||
+        _prevHwPort != fs.hwPort ||
+        _prevCamera != fs.camera) {
+      _initializeSignalDataList();
+    }
+
+    // 現在値を保存
+    _prevInputCount = fs.inputCount;
+    _prevOutputCount = fs.outputCount;
+    _prevHwPort = fs.hwPort;
+    _prevCamera = fs.camera;
   }
 
   // SignalDataリストを初期化
@@ -167,89 +235,42 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
       );
     }
 
-    // 出力信号 (Input の次に追加)
-    for (int i = 0; i < formState.outputCount; i++) {
-      _signalDataList.add(
-        SignalData(
-          name:
-              widget.outputControllers[i].text.isNotEmpty
-                  ? widget.outputControllers[i].text
-                  : "Output ${i + 1}",
-          signalType: SignalType.output,
-          values: List.filled(32, 0),
-          isVisible: _outputVisibility[i],
-        ),
-      );
+    // HWトリガー信号 (Input の次に追加)
+    for (int i = 0; i < formState.hwPort; i++) {
+      if (widget.hwTriggerControllers[i].text.isNotEmpty) {
+        _signalDataList.add(
+          SignalData(
+            name: widget.hwTriggerControllers[i].text,
+            signalType: SignalType.hwTrigger,
+            values: List.filled(32, 0),
+            isVisible: _hwVis(i),
+          ),
+        );
+      }
     }
 
-    // HWトリガー信号 (最後に追加)
-    for (int i = 0; i < formState.hwPort; i++) {
-      _signalDataList.add(
-        SignalData(
-          name:
-              widget.hwTriggerControllers[i].text.isNotEmpty
-                  ? widget.hwTriggerControllers[i].text
-                  : "HW Trigger ${i + 1}",
-          signalType: SignalType.hwTrigger,
-          values: List.filled(32, 0),
-          isVisible: _hwTriggerVisibility[i],
-        ),
-      );
+    // 出力信号 (最後に追加)
+    for (int i = 0; i < formState.outputCount; i++) {
+      if (widget.outputControllers[i].text.isNotEmpty) {
+        _signalDataList.add(
+          SignalData(
+            name: widget.outputControllers[i].text,
+            signalType: SignalType.output,
+            values: List.filled(32, 0),
+            isVisible: _outputVisibility[i],
+          ),
+        );
+      }
     }
   }
 
   // 信号の表示/非表示状態を初期化
   void _initializeSignalVisibility() {
     setState(() {
-      _inputVisibility = List.generate(
-        widget.formState.inputCount,
-        (_) => true,
-      );
-      _outputVisibility = List.generate(
-        widget.formState.outputCount,
-        (_) => true,
-      );
-      _hwTriggerVisibility = List.generate(
-        widget.formState.hwPort,
-        (_) => true,
-      );
+      _inputVisibility = List.generate(formState.inputCount, (_) => true);
+      _outputVisibility = List.generate(formState.outputCount, (_) => true);
+      _hwTriggerVisibility = List.generate(formState.hwPort, (_) => true);
     });
-  }
-
-  @override
-  void didUpdateWidget(FormTab oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // カメラ数が変更された場合、テーブルデータを再初期化
-    if (oldWidget.formState.camera != widget.formState.camera) {
-      _initializeTableData();
-
-      // カメラ数変更時にHW Portの値を調整（次のフレームでスケジュール）
-      if (widget.formState.hwPort > widget.formState.camera) {
-        SchedulerBinding.instance.addPostFrameCallback((_) {
-          widget.onHwPortChanged(widget.formState.camera);
-        });
-      }
-    }
-
-    // 入力/出力/HWトリガーの数が変更された場合の処理
-    bool needsUpdateSignalData = false;
-
-    if (oldWidget.formState.inputCount != widget.formState.inputCount) {
-      _updateVisibilityList(_inputVisibility, widget.formState.inputCount);
-      needsUpdateSignalData = true;
-    }
-    if (oldWidget.formState.outputCount != widget.formState.outputCount) {
-      _updateVisibilityList(_outputVisibility, widget.formState.outputCount);
-      needsUpdateSignalData = true;
-    }
-    if (oldWidget.formState.hwPort != widget.formState.hwPort) {
-      _updateVisibilityList(_hwTriggerVisibility, widget.formState.hwPort);
-      needsUpdateSignalData = true;
-    }
-
-    if (needsUpdateSignalData) {
-      _initializeSignalDataList();
-    }
   }
 
   // 表示/非表示リストを更新
@@ -268,24 +289,27 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
   // テーブルデータの初期化
   void _initializeTableData() {
     // 安全チェック（カメラ数が0の場合に備える）
-    final cameraCount =
-        widget.formState.camera > 0 ? widget.formState.camera : 1;
+    final cameraCount = formState.camera > 0 ? formState.camera : 1;
 
     setState(() {
       _tableData = List.generate(
         _rowCount,
         (_) => List.generate(cameraCount, (_) => CellMode.none),
       );
+
+      // 行モードも同時に初期化
+      _rowModes = List.generate(_rowCount, (_) => RowMode.none);
     });
   }
 
   // 行を追加
   void _addRow() {
     setState(() {
-      _tableData.add(
-        List.generate(widget.formState.camera, (_) => CellMode.none),
-      );
+      _tableData.add(List.generate(formState.camera, (_) => CellMode.none));
       _rowCount++;
+
+      // 行モードリストにも追加
+      _rowModes.add(RowMode.none);
     });
   }
 
@@ -295,6 +319,9 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
       setState(() {
         _tableData.removeLast();
         _rowCount--;
+
+        // 行モードリストも同期
+        _rowModes.removeLast();
       });
     }
   }
@@ -303,6 +330,15 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
   void _changeCellMode(int row, int col, CellMode newMode) {
     setState(() {
       _tableData[row][col] = newMode;
+    });
+  }
+
+  // 行モードを変更
+  void _changeRowMode(int row) {
+    setState(() {
+      final current = _rowModes[row];
+      _rowModes[row] =
+          current == RowMode.none ? RowMode.simultaneous : RowMode.none;
     });
   }
 
@@ -326,7 +362,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
           _outputVisibility[index] = !_outputVisibility[index];
 
           // SignalDataも更新
-          int signalIndex = widget.formState.inputCount + index;
+          int signalIndex = formState.inputCount + index;
           if (signalIndex < _signalDataList.length &&
               _signalDataList[signalIndex].signalType == SignalType.output) {
             _signalDataList[signalIndex] =
@@ -339,9 +375,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
 
           // SignalDataも更新
           int signalIndex =
-              widget.formState.inputCount +
-              widget.formState.outputCount +
-              index;
+              formState.inputCount + formState.outputCount + index;
           if (signalIndex < _signalDataList.length &&
               _signalDataList[signalIndex].signalType == SignalType.hwTrigger) {
             _signalDataList[signalIndex] =
@@ -364,6 +398,11 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
           _tableData[row][col] = CellMode.none;
         }
       }
+
+      // 行モードもリセット
+      for (int i = 0; i < _rowModes.length; i++) {
+        _rowModes[i] = RowMode.none;
+      }
     });
   }
 
@@ -373,13 +412,13 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
       _signalDataList = [];
 
       // 入力信号
-      for (int i = 0; i < widget.formState.inputCount; i++) {
+      for (int i = 0; i < formState.inputCount; i++) {
         SignalType signalType = SignalType.input;
         bool isVisible = true;
 
         // Code Triggerの場合、totalIOポートの値に応じてSignalTypeを設定
-        if (widget.formState.triggerOption == 'Code Trigger') {
-          if (widget.formState.ioPort >= 32) {
+        if (formState.triggerOption == 'Code Trigger') {
+          if (formState.ioPort >= 32) {
             if (i >= 1 && i <= 8) {
               // Input2~9
               signalType = SignalType.control;
@@ -395,7 +434,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
               signalType = SignalType.task;
               isVisible = false;
             }
-          } else if (widget.formState.ioPort == 16) {
+          } else if (formState.ioPort == 16) {
             if (i >= 1 && i <= 4) {
               // Input2~5
               signalType = SignalType.control;
@@ -426,8 +465,22 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
         }
       }
 
-      // 出力信号 (Input の次に追加)
-      for (int i = 0; i < widget.formState.outputCount; i++) {
+      // HWトリガー信号 (Input の次に追加)
+      for (int i = 0; i < formState.hwPort; i++) {
+        if (widget.hwTriggerControllers[i].text.isNotEmpty) {
+          _signalDataList.add(
+            SignalData(
+              name: widget.hwTriggerControllers[i].text,
+              signalType: SignalType.hwTrigger,
+              values: List.filled(32, 0),
+              isVisible: _hwVis(i),
+            ),
+          );
+        }
+      }
+
+      // 出力信号 (最後に追加)
+      for (int i = 0; i < formState.outputCount; i++) {
         if (widget.outputControllers[i].text.isNotEmpty) {
           _signalDataList.add(
             SignalData(
@@ -435,20 +488,6 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
               signalType: SignalType.output,
               values: List.filled(32, 0),
               isVisible: _outputVisibility[i],
-            ),
-          );
-        }
-      }
-
-      // HWトリガー信号 (最後に追加)
-      for (int i = 0; i < widget.formState.hwPort; i++) {
-        if (widget.hwTriggerControllers[i].text.isNotEmpty) {
-          _signalDataList.add(
-            SignalData(
-              name: widget.hwTriggerControllers[i].text,
-              signalType: SignalType.hwTrigger,
-              values: List.filled(32, 0),
-              isVisible: _hwTriggerVisibility[i],
             ),
           );
         }
@@ -474,15 +513,15 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
         }
       }
 
-      _assignValues(widget.formState.outputCount, widget.outputControllers);
-      _assignValues(widget.formState.hwPort, widget.hwTriggerControllers);
+      _assignValues(formState.hwPort, widget.hwTriggerControllers);
+      _assignValues(formState.outputCount, widget.outputControllers);
     });
   }
 
   // カメラテーブルの情報に基づいて時系列データを生成
   List<List<int>> generateTimingChartData({int timeLength = 32}) {
     final chartData = ChartDataGenerator.generateTimingChart(
-      formState: widget.formState,
+      formState: formState,
       inputControllers: widget.inputControllers,
       outputControllers: widget.outputControllers,
       hwTriggerControllers: widget.hwTriggerControllers,
@@ -580,10 +619,10 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
 
     // ChartDataGeneratorの実装を確認
     print('FormState情報:');
-    print('  formState.inputCount: ${widget.formState.inputCount}');
-    print('  formState.outputCount: ${widget.formState.outputCount}');
-    print('  formState.hwPort: ${widget.formState.hwPort}');
-    print('  formState.camera: ${widget.formState.camera}');
+    print('  formState.inputCount: ${formState.inputCount}');
+    print('  formState.outputCount: ${formState.outputCount}');
+    print('  formState.hwPort: ${formState.hwPort}');
+    print('  formState.camera: ${formState.camera}');
     print('  テーブルデータ行数: ${_tableData.length}');
     if (_tableData.isNotEmpty) {
       print('  最初の行のモード: ${_tableData[0].map((c) => c.toString()).join(', ')}');
@@ -597,7 +636,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
     int chartDataIndex = 0;
 
     // 入力信号
-    for (int i = 0; i < widget.formState.inputCount; i++) {
+    for (int i = 0; i < formState.inputCount; i++) {
       if (widget.inputControllers[i].text.isNotEmpty) {
         List<int> values;
 
@@ -625,7 +664,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
     }
 
     // 出力信号
-    for (int i = 0; i < widget.formState.outputCount; i++) {
+    for (int i = 0; i < formState.outputCount; i++) {
       if (widget.outputControllers[i].text.isNotEmpty) {
         List<int> values;
 
@@ -653,7 +692,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
     }
 
     // HWトリガー信号
-    for (int i = 0; i < widget.formState.hwPort; i++) {
+    for (int i = 0; i < formState.hwPort; i++) {
       if (widget.hwTriggerControllers[i].text.isNotEmpty) {
         List<int> values;
 
@@ -672,7 +711,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
             name: widget.hwTriggerControllers[i].text,
             signalType: SignalType.hwTrigger,
             values: values,
-            isVisible: _hwTriggerVisibility[i],
+            isVisible: _hwVis(i),
           ),
         );
 
@@ -687,7 +726,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
     print('=============================================');
 
     return AppConfig.fromCurrentState(
-      formState: widget.formState,
+      formState: formState,
       signals: updatedSignals, // 更新されたSignalDataリストを使用
       tableData: _tableData,
       inputControllers: widget.inputControllers,
@@ -832,7 +871,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
       int dataIndex = 0;
 
       // 入力信号
-      for (int i = 0; i < widget.formState.inputCount; i++) {
+      for (int i = 0; i < formState.inputCount; i++) {
         if (widget.inputControllers[i].text.isNotEmpty) {
           if (dataIndex < _actualChartData.length) {
             result.add(
@@ -853,7 +892,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
       }
 
       // 出力信号
-      for (int i = 0; i < widget.formState.outputCount; i++) {
+      for (int i = 0; i < formState.outputCount; i++) {
         if (widget.outputControllers[i].text.isNotEmpty) {
           if (dataIndex < _actualChartData.length) {
             result.add(
@@ -874,7 +913,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
       }
 
       // HWトリガー信号
-      for (int i = 0; i < widget.formState.hwPort; i++) {
+      for (int i = 0; i < formState.hwPort; i++) {
         if (widget.hwTriggerControllers[i].text.isNotEmpty) {
           if (dataIndex < _actualChartData.length) {
             result.add(
@@ -1083,6 +1122,9 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
     // AutomaticKeepAliveClientMixin を使う場合は super.build(context) が必要
     super.build(context);
 
+    // UI 更新用に Provider を購読
+    final watchedState = context.watch<FormStateNotifier>().state;
+
     // 共通ボタンスタイルを作成
     final clearButtonStyle = ElevatedButton.styleFrom(
       backgroundColor: Colors.red.shade100,
@@ -1158,7 +1200,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
                 children: [
                   Expanded(
                     child: CustomDropdown<String>(
-                      value: widget.formState.triggerOption,
+                      value: formState.triggerOption,
                       items: const ['Single Trigger', 'Code Trigger'],
                       onChanged: widget.onTriggerOptionChanged,
                       label: 'Trigger Option',
@@ -1167,7 +1209,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
                   const SizedBox(width: 16),
                   Expanded(
                     child: CustomDropdown<int>(
-                      value: widget.formState.ioPort,
+                      value: formState.ioPort,
                       items: const [6, 16, 32, 64],
                       onChanged: widget.onIoPortChanged,
                       label: 'IO Port',
@@ -1177,11 +1219,11 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
                   Expanded(
                     child: CustomDropdown<int>(
                       value:
-                          widget.formState.hwPort > widget.formState.camera
-                              ? widget.formState.camera
-                              : widget.formState.hwPort,
+                          formState.hwPort > formState.camera
+                              ? formState.camera
+                              : formState.hwPort,
                       items: List.generate(
-                        widget.formState.camera + 1,
+                        formState.camera + 1,
                         (index) => index,
                       ),
                       onChanged: widget.onHwPortChanged,
@@ -1191,7 +1233,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
                   const SizedBox(width: 16),
                   Expanded(
                     child: CustomDropdown<int>(
-                      value: widget.formState.camera,
+                      value: formState.camera,
                       items: List.generate(8, (index) => index + 1),
                       onChanged: widget.onCameraChanged,
                       label: 'Camera',
@@ -1311,7 +1353,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
                           Expanded(
                             child: Container(
                               decoration:
-                                  widget.formState.hwPort > 0
+                                  formState.hwPort > 0
                                       ? headerDecoration
                                       : inactiveHeaderDecoration,
                               padding: headerPadding,
@@ -1326,7 +1368,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
                                         fontWeight: FontWeight.bold,
                                         fontSize: 16,
                                         color:
-                                            widget.formState.hwPort > 0
+                                            formState.hwPort > 0
                                                 ? null
                                                 : Colors.grey.shade500,
                                       ),
@@ -1354,16 +1396,15 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
                                 child: SingleChildScrollView(
                                   child: InputSection(
                                     controllers: widget.inputControllers,
-                                    count: widget.formState.inputCount,
+                                    count: formState.inputCount,
                                     visibilityList: _inputVisibility,
                                     onVisibilityChanged:
                                         (index) => _toggleSignalVisibility(
                                           index,
                                           SignalType.input,
                                         ),
-                                    triggerOption:
-                                        widget.formState.triggerOption,
-                                    ioPort: widget.formState.ioPort,
+                                    triggerOption: formState.triggerOption,
+                                    ioPort: formState.ioPort,
                                   ),
                                 ),
                               ),
@@ -1376,7 +1417,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
                                 child: SingleChildScrollView(
                                   child: OutputSection(
                                     controllers: widget.outputControllers,
-                                    count: widget.formState.outputCount,
+                                    count: formState.outputCount,
                                     visibilityList: _outputVisibility,
                                     onVisibilityChanged:
                                         (index) => _toggleSignalVisibility(
@@ -1391,12 +1432,12 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
                             // HW Trigger セクション
                             Expanded(
                               child:
-                                  widget.formState.hwPort > 0
+                                  formState.hwPort > 0
                                       ? SingleChildScrollView(
                                         child: HwTriggerSection(
                                           controllers:
                                               widget.hwTriggerControllers,
-                                          count: widget.formState.hwPort,
+                                          count: formState.hwPort,
                                           visibilityList: _hwTriggerVisibility,
                                           onVisibilityChanged:
                                               (index) =>
@@ -1519,14 +1560,14 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
     double columnWidth = 100.0; // デフォルト幅
 
     // カメラ数が多い場合は列幅を縮小
-    if (widget.formState.camera > 6) {
+    if (formState.camera > 6) {
       columnWidth = 80.0;
-    } else if (widget.formState.camera > 4) {
+    } else if (formState.camera > 4) {
       columnWidth = 90.0;
     }
 
     // すべてのカメラ列に同じ固定幅を適用
-    for (int i = 1; i <= widget.formState.camera; i++) {
+    for (int i = 1; i <= formState.camera; i++) {
       columnWidths[i] = FixedColumnWidth(columnWidth);
     }
 
@@ -1554,7 +1595,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
             ),
           ),
           // カメラ数に基づいてヘッダーを生成
-          for (int i = 0; i < widget.formState.camera; i++)
+          for (int i = 0; i < formState.camera; i++)
             TableCell(
               child: Padding(
                 padding: const EdgeInsets.all(8.0),
@@ -1577,13 +1618,32 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
           children: [
             // 行番号セル
             TableCell(
-              child: Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Center(child: Text('${row + 1}')),
+              child: InkWell(
+                onTap: () => _changeRowMode(row),
+                child: Container(
+                  color: rowModeColors[_rowModes[row]]?.withOpacity(0.3),
+                  padding: const EdgeInsets.all(8.0),
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '${row + 1}',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        if (_rowModes[row] != RowMode.none)
+                          Text(
+                            rowModeLabels[_rowModes[row]] ?? '',
+                            style: const TextStyle(fontSize: 10),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ),
             // カメラ列のセルを生成
-            for (int col = 0; col < widget.formState.camera; col++)
+            for (int col = 0; col < formState.camera; col++)
               TableCell(
                 child: Padding(
                   padding: const EdgeInsets.all(4.0),

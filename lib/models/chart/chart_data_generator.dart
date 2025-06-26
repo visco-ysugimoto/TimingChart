@@ -98,21 +98,7 @@ class ChartDataGenerator {
       }
     }
 
-    // 出力信号
-    for (int i = 0; i < formState.outputCount; i++) {
-      if (i < outputControllers.length &&
-          outputControllers[i].text.isNotEmpty) {
-        activeSignals.add(
-          _SignalInfo(
-            name: outputControllers[i].text,
-            index: i,
-            type: SignalType.output,
-          ),
-        );
-      }
-    }
-
-    // HWトリガー信号
+    // HWトリガー信号 (Input の次に追加)
     for (int i = 0; i < formState.hwPort; i++) {
       if (i < hwTriggerControllers.length &&
           hwTriggerControllers[i].text.isNotEmpty) {
@@ -121,6 +107,20 @@ class ChartDataGenerator {
             name: hwTriggerControllers[i].text,
             index: i,
             type: SignalType.hwTrigger,
+          ),
+        );
+      }
+    }
+
+    // 出力信号 (最後)
+    for (int i = 0; i < formState.outputCount; i++) {
+      if (i < outputControllers.length &&
+          outputControllers[i].text.isNotEmpty) {
+        activeSignals.add(
+          _SignalInfo(
+            name: outputControllers[i].text,
+            index: i,
+            type: SignalType.output,
           ),
         );
       }
