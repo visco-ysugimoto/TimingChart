@@ -26,6 +26,9 @@ class AppConfig {
   final List<bool> outputVisibility;
   final List<bool> hwTriggerVisibility;
 
+  // 行モード (none / simultaneous など)
+  final List<String> rowModes;
+
   const AppConfig({
     required this.formState,
     required this.signals,
@@ -36,6 +39,7 @@ class AppConfig {
     required this.inputVisibility,
     required this.outputVisibility,
     required this.hwTriggerVisibility,
+    required this.rowModes,
   });
 
   /// TextEditingControllerからテキスト値を抽出
@@ -56,6 +60,7 @@ class AppConfig {
     required List<bool> inputVisibility,
     required List<bool> outputVisibility,
     required List<bool> hwTriggerVisibility,
+    required List<String> rowModes,
   }) {
     return AppConfig(
       formState: formState,
@@ -67,6 +72,7 @@ class AppConfig {
       inputVisibility: inputVisibility,
       outputVisibility: outputVisibility,
       hwTriggerVisibility: hwTriggerVisibility,
+      rowModes: rowModes,
     );
   }
 
@@ -102,6 +108,7 @@ class AppConfig {
       'inputVisibility': inputVisibility,
       'outputVisibility': outputVisibility,
       'hwTriggerVisibility': hwTriggerVisibility,
+      'rowModes': rowModes,
     };
   }
 
@@ -152,6 +159,7 @@ class AppConfig {
       inputVisibility: (json['inputVisibility'] as List).cast<bool>(),
       outputVisibility: (json['outputVisibility'] as List).cast<bool>(),
       hwTriggerVisibility: (json['hwTriggerVisibility'] as List).cast<bool>(),
+      rowModes: (json['rowModes'] as List?)?.cast<String>() ?? const [],
     );
   }
 

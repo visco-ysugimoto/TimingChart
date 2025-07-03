@@ -47,6 +47,8 @@ dependencies:
   file_picker: ^6.1.1
   share_plus: ^7.2.1
   cross_file: ^0.3.3+7
+  # モダンなフォント用
+  google_fonts: ^6.1.0
 
 dev_dependencies:
   flutter_test:
@@ -68,6 +70,9 @@ flutter:
   assets:
     - assets/input_suggestions.json
     - assets/output_suggestions.json
+    # 言語別の候補リスト
+    - assets/suggestions/en/
+    - assets/suggestions/ja/
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.

@@ -4,6 +4,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:cross_file/cross_file.dart';
 import '../models/backup/app_config.dart';
+import '../models/chart/timing_chart_annotation.dart';
+import 'wavedrom_converter.dart';
+import '../suggestion_loader.dart';
+import '../models/chart/signal_data.dart';
 
 /// ファイル操作ユーティリティクラス
 class FileUtils {
@@ -117,6 +121,88 @@ class FileUtils {
     } catch (e) {
       print('Error importing app config: $e');
       return null;
+    }
+  }
+
+  /// AppConfig を WaveDrom JSON としてエクスポート
+  static Future<bool> exportWaveDrom(
+    AppConfig config, {
+    List<TimingChartAnnotation>? annotations,
+    String? customFileName,
+  }) async {
+    // --- 追加: ID を現在の言語のラベルへ置き換えた Config を作成 ---
+    Future<AppConfig> _translatedConfig(AppConfig cfg) async {
+      // 信号名を変換
+      final translatedSignals = <SignalData>[];
+      for (final s in cfg.signals) {
+        translatedSignals.add(s.copyWith(name: await labelOfId(s.name)));
+      }
+
+      // 各名前リストを変換
+      Future<List<String>> _translateList(List<String> list) async {
+        return Future.wait(list.map((id) => labelOfId(id)));
+      }
+
+      final inputNames = await _translateList(cfg.inputNames);
+      final outputNames = await _translateList(cfg.outputNames);
+      final hwTriggerNames = await _translateList(cfg.hwTriggerNames);
+
+      return AppConfig(
+        formState: cfg.formState,
+        signals: translatedSignals,
+        tableData: cfg.tableData,
+        inputNames: inputNames,
+        outputNames: outputNames,
+        hwTriggerNames: hwTriggerNames,
+        inputVisibility: cfg.inputVisibility,
+        outputVisibility: cfg.outputVisibility,
+        hwTriggerVisibility: cfg.hwTriggerVisibility,
+        rowModes: cfg.rowModes,
+      );
+    }
+
+    try {
+      // まず変換済み Config を取得
+      final translated = await _translatedConfig(config);
+
+      // ファイル名生成
+      final now = DateTime.now();
+      final formattedDate =
+          '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}';
+      final defaultFileName = 'timing_wave_$formattedDate.json';
+      final fileName = customFileName ?? defaultFileName;
+
+      // WaveDrom JSON 文字列を取得
+      final wavedromJson = WaveDromConverter.toWaveDromJson(
+        translated,
+        annotations: annotations,
+      );
+
+      // 保存先選択
+      String? outputFile = await FilePicker.platform.saveFile(
+        dialogTitle: 'WaveDrom JSON の保存先を選択',
+        fileName: fileName,
+        allowedExtensions: ['json'],
+        type: FileType.custom,
+      );
+
+      if (outputFile == null) {
+        return false; // キャンセル
+      }
+
+      // 拡張子強制
+      if (!outputFile.toLowerCase().endsWith('.json')) {
+        outputFile += '.json';
+      }
+
+      // 書き込み
+      final file = File(outputFile);
+      await file.writeAsString(wavedromJson);
+
+      return true;
+    } catch (e) {
+      print('Error exporting WaveDrom: $e');
+      return false;
     }
   }
 }

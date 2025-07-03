@@ -1,5 +1,13 @@
 [
-    "Input Option A",
-    "Input Option B",
-    "Input Option C"
+    { "id": "TRIGGER",   "label": "Trigger" },
+    { "id": "CAMERA_1_EXEC_CTRL", "label": "Camera Exec. Control(Camera 1)" },
+    { "id": "CAMERA_2_EXEC_CTRL", "label": "Camera Exec. Control(Camera 2)" },
+    { "id": "CAMERA_3_EXEC_CTRL", "label": "Camera Exec. Control(Camera 3)" },
+    { "id": "CAMERA_4_EXEC_CTRL", "label": "Camera Exec. Control(Camera 4)" },
+    { "id": "CAMERA_5_EXEC_CTRL", "label": "Camera Exec. Control(Camera 5)" },
+    { "id": "CAMERA_6_EXEC_CTRL", "label": "Camera Exec. Control(Camera 6)" },
+    { "id": "CAMERA_7_EXEC_CTRL", "label": "Camera Exec. Control(Camera 7)" },
+    { "id": "CAMERA_8_EXEC_CTRL", "label": "Camera Exec. Control(Camera 8)" },
+    { "id": "CONTACT_INPUT_WAITING", "label": "Contact Input Waiting Release" },
+    { "id": "SYSTEM_KEEP_RUNNING_SIGNAL", "label": "System Keep Running Signal" }
 ]

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../common/suggestion_text_field.dart';
+import '../../suggestion_loader.dart';
 
 class OutputSection extends StatelessWidget {
   final List<TextEditingController> controllers;
@@ -25,16 +27,12 @@ class OutputSection extends StatelessWidget {
           child: Row(
             children: [
               Expanded(
-                child: TextField(
+                child: SuggestionTextField(
+                  label: 'Output ${index + 1}',
                   controller: controllers[index],
-                  decoration: InputDecoration(
-                    labelText: 'Output ${index + 1}',
-                    border: const OutlineInputBorder(),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12.0,
-                      vertical: 10.0,
-                    ),
-                  ),
+                  loadSuggestions: loadOutputSuggestions,
+                  excludeControllers: controllers,
+                  enableDuplicateCheck: true,
                 ),
               ),
               const SizedBox(width: 8),

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/chart/signal_type.dart';
+import '../common/suggestion_text_field.dart';
+import '../../suggestion_loader.dart';
 
 class InputSection extends StatelessWidget {
   final List<TextEditingController> controllers;
@@ -78,31 +80,37 @@ class InputSection extends StatelessWidget {
             signalType == SignalType.group ||
             signalType == SignalType.task;
 
-        // Control信号の場合は自動的に名前を設定
-        if (signalType == SignalType.control) {
-          controllers[index].text = _getControlSignalName(index);
-        }
+        // Control信号の自動命名は外部で行うため、ここでは書き換えない
 
         return Padding(
           padding: const EdgeInsets.only(bottom: 12.0),
           child: Row(
             children: [
               Expanded(
-                child: TextField(
-                  controller: controllers[index],
-                  enabled: !isLocked,
-                  decoration: InputDecoration(
-                    labelText: 'Input ${index + 1}',
-                    border: const OutlineInputBorder(),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12.0,
-                      vertical: 10.0,
-                    ),
-                    filled: isLocked,
-                    fillColor: isLocked ? Colors.grey.shade200 : null,
-                    hintText: isLocked ? 'Locked' : null,
-                  ),
-                ),
+                child:
+                    isLocked
+                        ? TextField(
+                          controller: controllers[index],
+                          enabled: false,
+                          decoration: InputDecoration(
+                            labelText: 'Input ${index + 1}',
+                            border: const OutlineInputBorder(),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12.0,
+                              vertical: 10.0,
+                            ),
+                            filled: true,
+                            fillColor: Colors.grey.shade200,
+                            hintText: 'Locked',
+                          ),
+                        )
+                        : SuggestionTextField(
+                          label: 'Input ${index + 1}',
+                          controller: controllers[index],
+                          loadSuggestions: loadInputSuggestions,
+                          excludeControllers: controllers,
+                          enableDuplicateCheck: true,
+                        ),
               ),
               const SizedBox(width: 8),
               if (!isLocked) // ロックされていない場合のみチェックボックスを表示

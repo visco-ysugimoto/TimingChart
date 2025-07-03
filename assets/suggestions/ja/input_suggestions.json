@@ -1,5 +1,13 @@
 [
-    "Input Option A",
-    "Input Option B",
-    "Input Option C"
+    { "id": "TRIGGER",   "label": "トリガ" },
+    { "id": "CAMERA_1_EXEC_CTRL", "label": "カメラ列実行制御(カメラ1)" },
+    { "id": "CAMERA_2_EXEC_CTRL", "label": "カメラ列実行制御(カメラ2)" },
+    { "id": "CAMERA_3_EXEC_CTRL", "label": "カメラ列実行制御(カメラ3)" },
+    { "id": "CAMERA_4_EXEC_CTRL", "label": "カメラ列実行制御(カメラ4)" },
+    { "id": "CAMERA_5_EXEC_CTRL", "label": "カメラ列実行制御(カメラ5)" },
+    { "id": "CAMERA_6_EXEC_CTRL", "label": "カメラ列実行制御(カメラ6)" },
+    { "id": "CAMERA_7_EXEC_CTRL", "label": "カメラ列実行制御(カメラ7)" },
+    { "id": "CAMERA_8_EXEC_CTRL", "label": "カメラ列実行制御(カメラ8)" },
+    { "id": "CONTACT_INPUT_WAITING", "label": "接点入力待ち解除" },
+    { "id": "SYSTEM_KEEP_RUNNING_SIGNAL", "label": "システム起動保持信号" }
 ]

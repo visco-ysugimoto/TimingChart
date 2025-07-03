@@ -4,6 +4,7 @@ import 'package:flutter/scheduler.dart'; // SchedulerBinding用のインポー�
 import 'dart:io';
 import 'dart:async';
 import 'package:provider/provider.dart';
+import 'package:google_fonts/google_fonts.dart'; // Google Fontsを追加
 
 // ★ 作成した他のファイルをインポート
 import 'generated/l10n.dart';
@@ -19,6 +20,8 @@ import 'widgets/chart/timing_chart.dart';
 
 import 'providers/form_state_notifier.dart';
 import 'providers/controller_manager.dart';
+import 'providers/locale_notifier.dart'; // LocaleNotifierをインポート
+import 'suggestion_loader.dart';
 
 void main() {
   runApp(
@@ -26,6 +29,9 @@ void main() {
       providers: [
         ChangeNotifierProvider(create: (_) => FormStateNotifier()),
         ChangeNotifierProvider(create: (_) => ControllerManager()),
+        ChangeNotifierProvider(
+          create: (_) => LocaleNotifier(),
+        ), // LocaleNotifierを追加
       ],
       child: const MyApp(),
     ),
@@ -37,23 +43,38 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Timing Chart Generator', // アプリタイトル (l10nを使っても良い)
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueAccent),
-        useMaterial3: true,
-      ),
-      // --- 多言語対応設定 ---
-      localizationsDelegates: const [
-        S.delegate, // 生成されたローカライズデリゲート
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: S.delegate.supportedLocales, // サポートするロケール
-      // locale: const Locale('ja'), // 特定の言語で固定する場合
-      // ----------------------
-      home: const MyHomePage(),
+    return Consumer<LocaleNotifier>(
+      builder: (context, localeNotifier, child) {
+        return MaterialApp(
+          title: 'Timing Chart Generator', // アプリタイトル (l10nを使っても良い)
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueAccent),
+            useMaterial3: true,
+            // モダンな日本語フォントを設定
+            textTheme: GoogleFonts.notoSansJpTextTheme(
+              Theme.of(context).textTheme,
+            ),
+            appBarTheme: AppBarTheme(
+              titleTextStyle: GoogleFonts.notoSansJp(
+                fontSize: 25,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          // --- 多言語対応設定 ---
+          localizationsDelegates: const [
+            S.delegate, // 生成されたローカライズデリゲート
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: S.delegate.supportedLocales, // サポートするロケール
+          locale: localeNotifier.locale, // LocaleNotifierからlocaleを取得
+          // ----------------------
+          home: const MyHomePage(),
+        );
+      },
     );
   }
 }
@@ -177,42 +198,14 @@ class _MyHomePageState extends State<MyHomePage>
 
     // チャートタブからフォームタブに戻る場合
     if (_tabController.previousIndex == 1 && _tabController.index == 0) {
-      // チャートデータをフォームタブに同期
-      _syncChartDataToFormTab();
-
-      // アノテーションを保存
+      // アノテーションを保存（チャートデータの同期は行わない）
       if (_timingChartKey.currentState != null) {
         _chartAnnotations = _timingChartKey.currentState!.getAnnotations();
       }
 
-      // ビルドサイクルを待ってからAppConfigを作成
-      Future.delayed(Duration(milliseconds: 100), () async {
-        await SchedulerBinding.instance.endOfFrame;
-
-        // 再度同期を実行（確実に最新の状態を取得するため）
-        if (_timingChartKey.currentState != null) {
-          final chartData = _timingChartKey.currentState!.getChartData();
-          if (_formTabKey.currentState != null) {
-            // 信号の順序を保持したまま更新
-            final signalNames = _chartSignals.map((s) => s.name).toList();
-            final signalTypes = _chartSignals.map((s) => s.signalType).toList();
-            _formTabKey.currentState!.updateSignalDataFromChartData(
-              chartData,
-              signalNames,
-              signalTypes,
-            );
-          }
-        }
-
-        // さらに1フレーム待ってからAppConfigを更新
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          final config = _createAppConfig();
-          // ここでAppConfigを更新する処理を追加
-          _scheduleFormUpdate((n) => n.replace(config.formState));
-          // 信号の順序を保持したまま更新
-          _chartSignals = config.signals;
-        });
-      });
+      // フォームタブに戻る際は、テキストフィールドの位置を保持するため
+      // updateSignalDataFromChartDataは呼び出さない
+      print("チャートタブからフォームタブに戻りました。テキストフィールドの位置を保持します。");
     }
 
     // フォームタブからチャートタブに移動する場合
@@ -252,12 +245,18 @@ class _MyHomePageState extends State<MyHomePage>
   }
 
   void _updateInputOutputCounts(int totalIoPorts) {
-    _scheduleFormUpdate(
-      (n) => n.update(inputCount: totalIoPorts, outputCount: totalIoPorts),
-    );
-    setState(() {
-      _updateInputControllers(totalIoPorts);
-      _updateOutputControllers(totalIoPorts);
+    // Provider の状態更新とコントローラリストのリサイズを
+    // 同じポストフレームコールバック内で実行し、
+    // 両者のタイミングずれによる RangeError を防ぐ
+    _scheduleFormUpdate((n) {
+      // 1) Provider の状態を更新
+      n.update(inputCount: totalIoPorts, outputCount: totalIoPorts);
+
+      // 2) コントローラリストをリサイズし、UI を再構築
+      setState(() {
+        _updateInputControllers(totalIoPorts);
+        _updateOutputControllers(totalIoPorts);
+      });
     });
   }
 
@@ -324,19 +323,32 @@ class _MyHomePageState extends State<MyHomePage>
   }
 
   // AppConfigを現在の状態から作成
-  AppConfig _createAppConfig() {
+  Future<AppConfig> _createAppConfig() async {
     print("\n===== _createAppConfig =====");
 
     // チャートタブでの編集内容をフォームタブに同期
     if (_timingChartKey.currentState != null &&
         _formTabKey.currentState != null) {
-      print("エクスポート前にチャートデータをFormTabに強制同期します");
+      print("エクスポート前にチャートデータの値のみをFormTabに同期します (位置保持)");
       final chartData = _timingChartKey.currentState!.getChartData();
-      _formTabKey.currentState!.updateSignalDataFromChartData(
-        chartData,
-        _chartSignals.map((s) => s.name).toList(),
-        _chartSignals.map((s) => s.signalType).toList(),
-      );
+      _formTabKey.currentState!.setChartDataOnly(chartData);
+
+      // --- アノテーションを退避（最新を取得）---
+      List<TimingChartAnnotation> savedAnns =
+          _timingChartKey.currentState?.getAnnotations() ?? _chartAnnotations;
+
+      // すぐにグローバル変数へ反映してエクスポートで使用できるようにする
+      _chartAnnotations = savedAnns;
+
+      // 値を保持したままチャートデータを再生成し、wave の0埋めを防ぐ
+      await _formTabKey.currentState!.updateChartData();
+
+      // 1フレーム後にアノテーションを復元（Widget再構築後でも確実に反映）
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_timingChartKey.currentState != null) {
+          _timingChartKey.currentState!.updateAnnotations(savedAnns);
+        }
+      });
     }
 
     // ビルドフェーズが完了するのを待つ
@@ -349,6 +361,7 @@ class _MyHomePageState extends State<MyHomePage>
     List<bool> inputVisibility = [];
     List<bool> outputVisibility = [];
     List<bool> hwTriggerVisibility = [];
+    List<String> rowModes = [];
 
     if (_formTabKey.currentState != null) {
       // フォームタブからデータを取得
@@ -357,6 +370,7 @@ class _MyHomePageState extends State<MyHomePage>
       inputVisibility = _formTabKey.currentState!.getInputVisibility();
       outputVisibility = _formTabKey.currentState!.getOutputVisibility();
       hwTriggerVisibility = _formTabKey.currentState!.getHwTriggerVisibility();
+      rowModes = _formTabKey.currentState!.getRowModes();
 
       // FormTabから取得したデータを確認
       print("FormTabから取得した信号データ数: ${signalData.length}");
@@ -394,6 +408,7 @@ class _MyHomePageState extends State<MyHomePage>
       inputVisibility: inputVisibility,
       outputVisibility: outputVisibility,
       hwTriggerVisibility: hwTriggerVisibility,
+      rowModes: rowModes,
     );
   }
 
@@ -484,33 +499,38 @@ class _MyHomePageState extends State<MyHomePage>
 
   // 設定をエクスポート
   Future<void> _exportConfig() async {
+    // --- 先に TimingChart の最新値だけを FormTab に反映（名前位置は保持） ---
+    if (_timingChartKey.currentState != null &&
+        _formTabKey.currentState != null) {
+      final chartData = _timingChartKey.currentState!.getChartData();
+      _formTabKey.currentState!.setChartDataOnly(chartData);
+    }
+
+    // 1フレーム待って状態が反映されるのを待つ
+    await SchedulerBinding.instance.endOfFrame;
+
     // エクスポート前の確認
     final shouldContinue = await _confirmExport();
     if (!shouldContinue) return;
 
-    // チャートタブでの編集内容をフォームタブに同期
-    _syncChartDataToFormTab();
-
-    // ビルドサイクルを待ってからAppConfigを作成
-    await Future.delayed(Duration(milliseconds: 100)); // 短い遅延を追加
-    await SchedulerBinding.instance.endOfFrame; // フレーム終了を待つ
-
-    // 再度同期を実行（確実に最新の状態を取得するため）
+    // チャートタブで表示中の場合は、最新のチャート値のみ FormTab に反映（名前位置は保持）
     if (_tabController.index == 1 && _timingChartKey.currentState != null) {
       final chartData = _timingChartKey.currentState!.getChartData();
       if (_formTabKey.currentState != null) {
-        _formTabKey.currentState!.updateSignalDataFromChartData(
-          chartData,
-          _chartSignals.map((s) => s.name).toList(),
-          _chartSignals.map((s) => s.signalType).toList(),
-        );
+        _formTabKey.currentState!.setChartDataOnly(chartData);
       }
     }
 
+    // 1フレーム待ってからAppConfigを作成（状態が確実に反映されるように）
+    await SchedulerBinding.instance.endOfFrame;
+
     // さらに1フレーム待ってからエクスポート処理を実行
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final config = _createAppConfig();
-      final success = await FileUtils.exportAppConfig(config);
+      final config = await _createAppConfig();
+      final success = await FileUtils.exportWaveDrom(
+        config,
+        annotations: _chartAnnotations,
+      );
 
       // 結果メッセージを表示
       if (!mounted) return;
@@ -606,17 +626,10 @@ class _MyHomePageState extends State<MyHomePage>
         //backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         backgroundColor: Theme.of(context).colorScheme.primary,
         iconTheme: IconThemeData(color: Colors.white), // ハンバーガーメニューの色を白に設定
-        title: Text(
-          s.appTitle,
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-            fontSize: 25,
-          ),
-        ), // ★ l10nからタイトル取得
+        title: Text(s.appTitle), // ★ l10nからタイトル取得
         bottom: TabBar(
           controller: _tabController,
-          labelStyle: const TextStyle(fontSize: 20),
+          labelStyle: GoogleFonts.notoSansJp(fontSize: 20),
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white70,
           indicatorSize: TabBarIndicatorSize.tab,
@@ -643,7 +656,11 @@ class _MyHomePageState extends State<MyHomePage>
               ),
               child: Text(
                 s.appTitle,
-                style: TextStyle(color: Colors.white, fontSize: 24),
+                style: GoogleFonts.notoSansJp(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
             // File メニュー項目
@@ -710,44 +727,34 @@ class _MyHomePageState extends State<MyHomePage>
               },
             ),
             Divider(),
-            // 編集メニュー項目
+            // 言語切替
             ListTile(
-              leading: Icon(Icons.edit),
-              title: Text(s.menu_edit),
+              leading: Icon(Icons.language),
+              title: const Text('English'),
               onTap: () {
+                setSuggestionLanguage(SuggestionLanguage.en);
+                Provider.of<LocaleNotifier>(
+                  context,
+                  listen: false,
+                ).setLocale(const Locale('en'));
                 Navigator.pop(context);
-                // ここに編集メニューの動作を実装
+                setState(() {});
               },
             ),
-            // 切り取り
             ListTile(
-              leading: Icon(Icons.content_cut),
-              title: Text(s.menu_item_cut),
+              leading: Icon(Icons.language),
+              title: const Text('日本語'),
               onTap: () {
+                setSuggestionLanguage(SuggestionLanguage.ja);
+                Provider.of<LocaleNotifier>(
+                  context,
+                  listen: false,
+                ).setLocale(const Locale('ja'));
                 Navigator.pop(context);
-                debugPrint('Cut');
-              },
-            ),
-            // コピー
-            ListTile(
-              leading: Icon(Icons.content_copy),
-              title: Text(s.menu_item_copy),
-              onTap: () {
-                Navigator.pop(context);
-                debugPrint('Copy');
-              },
-            ),
-            // 貼り付け
-            ListTile(
-              leading: Icon(Icons.content_paste),
-              title: Text(s.menu_item_paste),
-              onTap: () {
-                Navigator.pop(context);
-                debugPrint('Paste');
+                setState(() {});
               },
             ),
             Divider(),
-            // ヘルプメニュー項目
             ListTile(
               leading: Icon(Icons.help),
               title: Text(s.menu_help),
@@ -810,30 +817,44 @@ class _MyHomePageState extends State<MyHomePage>
             },
             onUpdateChart: (signalNames, chartData, signalTypes) {
               setState(() {
+                // --- 現在のチャート波形を取得（ユーザ編集後の最新状態を優先） ---
+                Map<String, List<int>> existingValuesMap = {};
+                if (_timingChartKey.currentState != null) {
+                  final currentChartValues =
+                      _timingChartKey.currentState!.getChartData();
+
+                  // _chartSignals と表示行は同じ順序である前提
+                  for (
+                    int i = 0;
+                    i < _chartSignals.length && i < currentChartValues.length;
+                    i++
+                  ) {
+                    existingValuesMap[_chartSignals[i].name] =
+                        currentChartValues[i];
+                  }
+                } else {
+                  // フォールバック: これまで保持している値
+                  for (var signal in _chartSignals) {
+                    existingValuesMap[signal.name] = signal.values;
+                  }
+                }
+
                 // 既存の手動編集内容をマージ
                 List<SignalData> newChartSignals = [];
-
-                // 既存の値をマップに格納して名前で検索できるようにする
-                Map<String, List<int>> existingValuesMap = {};
-                for (var signal in _chartSignals) {
-                  existingValuesMap[signal.name] = signal.values;
-                }
 
                 for (int i = 0; i < signalNames.length; i++) {
                   // 既存のデータがあれば再利用、なければ新規作成
                   List<int> signalValues;
 
-                  if (existingValuesMap.containsKey(signalNames[i]) &&
-                      existingValuesMap[signalNames[i]]!.any((v) => v != 0)) {
-                    // 既存の非ゼロデータがある場合は保持
-                    print("既存の信号データを保持: ${signalNames[i]}");
-                    signalValues = existingValuesMap[signalNames[i]]!;
+                  if (existingValuesMap.containsKey(signalNames[i])) {
+                    signalValues = List<int>.from(
+                      existingValuesMap[signalNames[i]]!,
+                    );
 
                     // 長さの調整が必要な場合
                     if (i < chartData.length &&
                         signalValues.length != chartData[i].length) {
                       if (signalValues.length < chartData[i].length) {
-                        // 足りない分を0で埋める
                         signalValues.addAll(
                           List.filled(
                             chartData[i].length - signalValues.length,
@@ -841,7 +862,6 @@ class _MyHomePageState extends State<MyHomePage>
                           ),
                         );
                       } else {
-                        // 長すぎる場合は切り詰める
                         signalValues = signalValues.sublist(
                           0,
                           chartData[i].length,
@@ -849,7 +869,7 @@ class _MyHomePageState extends State<MyHomePage>
                       }
                     }
                   } else {
-                    // 新規信号または値が全て0の信号の場合は新しい値を使用
+                    // 新規信号
                     signalValues =
                         i < chartData.length
                             ? List.from(chartData[i])
@@ -865,6 +885,7 @@ class _MyHomePageState extends State<MyHomePage>
                     ),
                   );
                 }
+
                 _chartSignals = newChartSignals;
 
                 // チャートウィジェットを更新

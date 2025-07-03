@@ -1,0 +1,10 @@
+[
+    { "id": "HW_TRIGGER1",   "label": "ハードウェアトリガ 1" },
+    { "id": "HW_TRIGGER2",   "label": "ハードウェアトリガ 2" },
+    { "id": "HW_TRIGGER3",   "label": "ハードウェアトリガ 3" },
+    { "id": "HW_TRIGGER4",   "label": "ハードウェアトリガ 4" },
+    { "id": "HW_TRIGGER5",   "label": "ハードウェアトリガ 5" },
+    { "id": "HW_TRIGGER6",   "label": "ハードウェアトリガ 6" },
+    { "id": "HW_TRIGGER7",   "label": "ハードウェアトリガ 7" },
+    { "id": "HW_TRIGGER8",   "label": "ハードウェアトリガ 8" }
+]
