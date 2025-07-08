@@ -292,6 +292,30 @@ class _MyHomePageState extends State<MyHomePage>
     }
   }
 
+  // --- 新規: Input Port のみ更新 ---
+  void _updateInputCount(int inputPorts) {
+    _scheduleFormUpdate((n) {
+      // Provider を更新（ioPort は互換のため同時更新）
+      n.update(ioPort: inputPorts, inputCount: inputPorts);
+
+      // UI 更新
+      setState(() {
+        _updateInputControllers(inputPorts);
+      });
+    });
+  }
+
+  // --- 新規: Output Port のみ更新 ---
+  void _updateOutputCount(int outputPorts) {
+    _scheduleFormUpdate((n) {
+      n.update(outputCount: outputPorts);
+
+      setState(() {
+        _updateOutputControllers(outputPorts);
+      });
+    });
+  }
+
   void _updateHwTriggerControllers([int? desiredCount]) {
     final target = desiredCount ?? _formState.hwPort;
 
@@ -790,10 +814,16 @@ class _MyHomePageState extends State<MyHomePage>
                 _scheduleFormUpdate((n) => n.update(triggerOption: newValue));
               }
             },
-            onIoPortChanged: (int? newValue) {
-              if (newValue != null && newValue != _formState.ioPort) {
-                _scheduleFormUpdate((n) => n.update(ioPort: newValue));
-                _updateInputOutputCounts(newValue);
+            // Input Port 変更
+            onInputPortChanged: (int? newValue) {
+              if (newValue != null && newValue != _formState.inputCount) {
+                _updateInputCount(newValue);
+              }
+            },
+            // Output Port 変更
+            onOutputPortChanged: (int? newValue) {
+              if (newValue != null && newValue != _formState.outputCount) {
+                _updateOutputCount(newValue);
               }
             },
             onHwPortChanged: (int? newValue) {
@@ -815,7 +845,7 @@ class _MyHomePageState extends State<MyHomePage>
                 _scheduleFormUpdate((n) => n.update(camera: newValue));
               }
             },
-            onUpdateChart: (signalNames, chartData, signalTypes) {
+            onUpdateChart: (signalNames, chartData, signalTypes, bool overrideFlag) {
               setState(() {
                 // --- 現在のチャート波形を取得（ユーザ編集後の最新状態を優先） ---
                 Map<String, List<int>> existingValuesMap = {};
@@ -839,41 +869,41 @@ class _MyHomePageState extends State<MyHomePage>
                   }
                 }
 
-                // 既存の手動編集内容をマージ
+                // ------- Signal 値の決定 -------
                 List<SignalData> newChartSignals = [];
 
                 for (int i = 0; i < signalNames.length; i++) {
-                  // 既存のデータがあれば再利用、なければ新規作成
                   List<int> signalValues;
 
-                  if (existingValuesMap.containsKey(signalNames[i])) {
-                    signalValues = List<int>.from(
-                      existingValuesMap[signalNames[i]]!,
-                    );
-
-                    // 長さの調整が必要な場合
-                    if (i < chartData.length &&
-                        signalValues.length != chartData[i].length) {
-                      if (signalValues.length < chartData[i].length) {
-                        signalValues.addAll(
-                          List.filled(
-                            chartData[i].length - signalValues.length,
-                            0,
-                          ),
-                        );
-                      } else {
-                        signalValues = signalValues.sublist(
-                          0,
-                          chartData[i].length,
-                        );
-                      }
+                  if (overrideFlag) {
+                    // Template など: 最新データで完全上書き
+                    if (i < chartData.length) {
+                      signalValues = List<int>.from(chartData[i]);
+                    } else {
+                      signalValues = List.filled(32, 0);
                     }
                   } else {
-                    // 新規信号
-                    signalValues =
-                        i < chartData.length
-                            ? List.from(chartData[i])
-                            : List.filled(32, 0);
+                    // Update Chart 等: 既存の手動調整を優先保持
+                    if (existingValuesMap.containsKey(signalNames[i])) {
+                      signalValues = List<int>.from(
+                        existingValuesMap[signalNames[i]]!,
+                      );
+
+                      if (i < chartData.length &&
+                          signalValues.length != chartData[i].length) {
+                        if (signalValues.length < chartData[i].length) {
+                          signalValues.addAll(List.filled(
+                              chartData[i].length - signalValues.length, 0));
+                        } else {
+                          signalValues = signalValues.sublist(
+                              0, chartData[i].length);
+                        }
+                      }
+                    } else if (i < chartData.length) {
+                      signalValues = List<int>.from(chartData[i]);
+                    } else {
+                      signalValues = List.filled(32, 0);
+                    }
                   }
 
                   newChartSignals.add(

@@ -9,7 +9,9 @@ class InputSection extends StatelessWidget {
   final List<bool> visibilityList;
   final Function(int) onVisibilityChanged;
   final String triggerOption;
-  final int ioPort;
+  // Inputポート数（総数）
+  // これまでは ioPort で保持していたが、Input/Output 分割に伴い count を直接使用
+  // final int ioPort; // 削除
 
   const InputSection({
     super.key,
@@ -18,13 +20,14 @@ class InputSection extends StatelessWidget {
     required this.visibilityList,
     required this.onVisibilityChanged,
     required this.triggerOption,
-    required this.ioPort,
   });
 
   // SignalTypeを取得する関数
   SignalType _getSignalType(int index) {
+    final totalInputs = count;
+
     if (triggerOption == 'Code Trigger') {
-      if (ioPort >= 32) {
+      if (totalInputs >= 32) {
         if (index >= 1 && index <= 8) {
           // Input2~9
           return SignalType.control;
@@ -35,7 +38,7 @@ class InputSection extends StatelessWidget {
           // Input16~21
           return SignalType.task;
         }
-      } else if (ioPort == 16) {
+      } else if (totalInputs == 16) {
         if (index >= 1 && index <= 4) {
           // Input2~5
           return SignalType.control;
@@ -53,13 +56,15 @@ class InputSection extends StatelessWidget {
 
   // Control信号の名前を取得する関数
   String _getControlSignalName(int index) {
+    final totalInputs = count;
+
     if (triggerOption == 'Code Trigger') {
-      if (ioPort >= 32) {
+      if (totalInputs >= 32) {
         if (index >= 1 && index <= 8) {
           // Input2~9 を Control Code1~8 に変換
           return 'Control Code${index}(bit)';
         }
-      } else if (ioPort == 16) {
+      } else if (totalInputs == 16) {
         if (index >= 1 && index <= 4) {
           // Input2~5 を Control Code1~4 に変換
           return 'Control Code${index}(bit)';

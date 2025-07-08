@@ -117,7 +117,17 @@ class FileUtils {
       final jsonString = await file.readAsString();
 
       // JSONからAppConfigを生成
-      return AppConfig.fromJsonString(jsonString);
+      try {
+        // まず従来形式(AppConfig JSON)を試す
+        return AppConfig.fromJsonString(jsonString);
+      } catch (_) {
+        // 失敗したら WaveDrom 形式を試す
+        try {
+          return WaveDromConverter.fromWaveDromJson(jsonString);
+        } catch (_) {
+          return null;
+        }
+      }
     } catch (e) {
       print('Error importing app config: $e');
       return null;

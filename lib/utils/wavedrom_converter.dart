@@ -3,6 +3,9 @@ import 'dart:convert';
 import '../models/backup/app_config.dart';
 import '../models/chart/signal_data.dart';
 import '../models/chart/timing_chart_annotation.dart';
+import '../models/form/form_state.dart';
+import '../models/chart/signal_type.dart';
+import '../widgets/form/form_tab.dart' show CellMode;
 
 /// AppConfig から WaveDrom 形式(JSON)へ変換するユーティリティ
 class WaveDromConverter {
@@ -143,5 +146,151 @@ class WaveDromConverter {
               .toList(),
       'rowModes': config.rowModes,
     };
+  }
+
+  /// WaveDrom 形式(JSON)から AppConfig へ変換します。
+  /// AppConfig 形式の JSON と区別するために、トップレベルに "signal" キーが存在することをチェックします。
+  static AppConfig? fromWaveDromJson(String jsonString) {
+    dynamic decoded;
+    try {
+      decoded = json.decode(jsonString);
+    } catch (_) {
+      return null; // JSON でない
+    }
+
+    if (decoded is! Map<String, dynamic> || !decoded.containsKey('signal')) {
+      return null; // WaveDrom 形式ではない
+    }
+
+    final Map<String, dynamic> map = decoded;
+
+    final List<dynamic> signalList = map['signal'] ?? [];
+    final Map<String, dynamic> cfg = Map<String, dynamic>.from(
+      map['config'] ?? {},
+    );
+
+    // --- TimingFormState ---
+    final formState = TimingFormState(
+      triggerOption: cfg['triggerOption'] ?? 'Single Trigger',
+      ioPort: cfg['ioPort'] ?? 0,
+      hwPort: cfg['hwPort'] ?? 0,
+      camera: cfg['camera'] ?? 0,
+      inputCount: cfg['inputCount'] ?? 0,
+      outputCount: cfg['outputCount'] ?? 0,
+    );
+
+    final int inputCount = formState.inputCount;
+    final int hwPort = formState.hwPort;
+    final int outputCount = formState.outputCount;
+
+    // --- 名前リスト ---
+    List<String> _safeStringList(List<dynamic>? src, int expectedLength) {
+      final list = <String>[];
+      if (src != null) {
+        list.addAll(src.map((e) => e?.toString() ?? ''));
+      }
+      // パディング
+      while (list.length < expectedLength) list.add('');
+      if (list.length > expectedLength) {
+        list.removeRange(expectedLength, list.length);
+      }
+      return list;
+    }
+
+    final inputNames = _safeStringList(
+      cfg['inputNames'] as List<dynamic>?,
+      inputCount,
+    );
+    final outputNames = _safeStringList(
+      cfg['outputNames'] as List<dynamic>?,
+      outputCount,
+    );
+    final hwTriggerNames = _safeStringList(
+      cfg['hwTriggerNames'] as List<dynamic>?,
+      hwPort,
+    );
+
+    // --- Visibility ---
+    List<bool> _visFromNames(List<String> names) =>
+        names.map((n) => n.isNotEmpty).toList();
+
+    final inputVisibility = _visFromNames(inputNames);
+    final outputVisibility = _visFromNames(outputNames);
+    final hwTriggerVisibility = _visFromNames(hwTriggerNames);
+
+    // --- RowModes ---
+    final List<String> rowModes =
+        (cfg['rowModes'] as List<dynamic>?)
+            ?.map((e) => e.toString())
+            .toList() ??
+        [];
+
+    // --- テーブルデータ (カメラテーブル) ---
+    // 循環依存を避けるため、ここでは空リストを設定し、
+    // インポート後に UI 側で再生成してもらう。
+    final List<List<CellMode>> tableData = [];
+
+    // --- 波形を数値列へ変換 ---
+    List<int> _waveToValues(String wave) {
+      final List<int> values = [];
+      int prev = 0;
+      for (final ch in wave.split('')) {
+        if (ch == '0' || ch == '1') {
+          prev = ch == '1' ? 1 : 0;
+          values.add(prev);
+        } else if (ch == '.') {
+          values.add(prev);
+        } else {
+          // 'x' などその他は 0 扱い
+          values.add(0);
+          prev = 0;
+        }
+      }
+      return values;
+    }
+
+    // --- SignalData 列を生成 ---
+    final List<SignalData> signals = [];
+    int sigIdx = 0;
+    for (final s in signalList) {
+      if (s is Map<String, dynamic>) {
+        final name = s['name']?.toString() ?? '';
+        final waveStr = s['wave']?.toString() ?? '';
+        final values = _waveToValues(waveStr);
+
+        SignalType type;
+        if (sigIdx < inputCount) {
+          type = SignalType.input;
+        } else if (sigIdx < inputCount + hwPort) {
+          type = SignalType.hwTrigger;
+        } else {
+          type = SignalType.output;
+        }
+
+        signals.add(
+          SignalData(
+            name: name.isNotEmpty ? name : '',
+            signalType: type,
+            values: values,
+            isVisible: name.toString().isNotEmpty,
+          ),
+        );
+        sigIdx++;
+      }
+    }
+
+    // --- AppConfig ---
+    return AppConfig(
+      formState: formState,
+      signals: signals,
+      tableData: tableData,
+      inputNames: inputNames,
+      outputNames: outputNames,
+      hwTriggerNames: hwTriggerNames,
+      inputVisibility: inputVisibility,
+      outputVisibility: outputVisibility,
+      hwTriggerVisibility: hwTriggerVisibility,
+      rowModes: rowModes,
+    );
   }
 }

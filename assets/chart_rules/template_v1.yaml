@@ -1,0 +1,104 @@
+# -------------------------------------------------------
+# グローバル設定
+# -------------------------------------------------------
+meta:
+  version: 1            # ルールファイルのバージョン (マイグレーション用)
+  unit: idx             # 時間単位 (idx: インデックス, ms: ミリ秒 など)
+  param:                # 可変パラメータはここに集約
+    x: 2
+    delay_after_batch: 6      # BATCH_EXPOSURE_COMPLETE↓ からの遅延サンプル数 (x+4)
+    enable_result_duration: 3 # ENABLE_RESULT_SIGNAL が High の長さ (x=3)
+    trigger_option: single          # single / code / command 等
+  # 露光スケジューリングポリシー
+  scheduling:
+    camera_order: ascending            # ascending / descending / custom
+    respect_rowmode_simultaneous: true # 行が simultaneous の場合はカメラ同時露光
+    min_gap_seq: 3                     # sequential 露光間隔 (samples)
+    custom_strategy: null              # 将来のカスタム戦略名 (plugin id 等)
+
+# -------------------------------------------------------
+# シグナル定義
+# -------------------------------------------------------
+signals:
+  # -----------------------------------------------------------------
+  # INPUT SIGNALS
+  # -----------------------------------------------------------------
+
+  TRIGGER:
+    description: "Single Trigger 時の立上り。trigger_option が 'single' の場合のみ適用"
+    init: 0
+    condition: param.trigger_option == 'single'
+    transitions:
+      - at: 3    # x=3 のタイミング
+        to: 1
+      - duration: 1  # 高パルスの長さは 1 サンプル (4 で自動 0)
+
+  BUSY:
+    init: 0
+    transitions:
+      - when: TRIGGER ↑
+        to:   1
+      - when: last_exposure_end + (x+2)
+        to:   0
+      - when: ENABLE_RESULT_SIGNAL ↓
+        to:   1
+
+  INSPECTION_BUSY:
+    alias: BUSY
+
+  CAMERA_#_IMAGE_EXPOSURE:             # # はカメラ番号を表す
+    init: 0
+    mode_map:
+      mode1:
+        pattern: seq
+        min_gap: 3
+      mode2:
+        pattern: contact_wait
+      mode3:
+        pattern: hw_trigger
+
+  CAMERA_#_IMAGE_ACQUISITION:
+    init: 0
+    transitions:
+      - when: CAMERA_#_IMAGE_EXPOSURE ↑
+        to:   1
+      - when: CAMERA_#_IMAGE_EXPOSURE ↓ + (x+1)
+        to:   0
+
+  AUTO_MODE:
+    init: 0
+    transitions:  
+      - at: 2
+        to: 1
+    sticky: true                       # 立ち下がらない
+
+  ENABLE_RESULT_SIGNAL:
+    init: 0
+    transitions:
+      - when: BATCH_EXPOSURE_COMPLETE ↓ + (x+4)
+        to:   1
+      - duration: 3                    # 1 でいる長さ
+
+  TOTAL_RESULT_OK:                  # 総合結果OK
+    alias: ENABLE_RESULT_SIGNAL     # 結果有効信号が立ち上がったら
+  TOTAL_RESULT_NG:                  # 総合結果NG
+
+  BATCH_EXPOSURE_COMPLETE:
+    # 実装側で CAMERA_#_IMAGE_ACQUISITION を監視して動的生成 
+
+  # ---------- 新規追加信号 ----------
+  CONTACT_INPUT_WAITING:
+    description: "接点入力待ち解除信号"
+    init: 0
+    transitions:
+      - when: CAMERA_#_IMAGE_EXPOSURE ↑
+        to: 1
+      - duration: 1
+
+  HW_TRIGGER#:
+    description: "ハードウェアトリガ信号 (# はポート番号)"
+    init: 0
+    transitions:
+      - when: CAMERA_#_IMAGE_EXPOSURE ↑
+        to: 1
+      - duration: 1
