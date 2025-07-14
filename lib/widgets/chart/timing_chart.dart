@@ -8,6 +8,7 @@ import '../../models/chart/signal_type.dart';
 import 'chart_annotations.dart';
 import 'chart_grid.dart';
 import 'chart_signals.dart';
+import 'chart_drawing_util.dart';
 
 class TimingChart extends StatefulWidget {
   final List<String> initialSignalNames;
@@ -15,12 +16,26 @@ class TimingChart extends StatefulWidget {
   final List<TimingChartAnnotation> initialAnnotations;
   final List<SignalType> signalTypes;
 
+  /// 画面サイズに合わせてチャート全体をフィットさせるかどうか。
+  ///
+  /// true の場合は、横幅だけでなく縦方向（信号数）も含めて
+  /// 表示領域に収まるようにセルサイズを自動調整します。
+  /// false（デフォルト）の場合は従来と同じ動作で、横方向のみ縮小し、
+  /// セル高さは固定 40px になります。
+  final bool fitToScreen;
+
+  /// Control / Group / Task 種別を含むすべての信号を描画対象にするかどうか。
+  /// 省略時は従来互換で false（これらの補助信号は描画しない）。
+  final bool showAllSignalTypes;
+
   const TimingChart({
     super.key,
     required this.initialSignalNames,
     required this.initialSignals,
     required this.initialAnnotations,
     required this.signalTypes,
+    this.fitToScreen = false,
+    this.showAllSignalTypes = false,
   });
 
   @override
@@ -36,10 +51,14 @@ class TimingChartState extends State<TimingChart>
   late List<String> signalNames;
   late List<TimingChartAnnotation> annotations;
   List<int> _highlightTimeIndices = [];
+  // 省略信号を描画する対象の時刻インデックス
+  List<int> _omissionTimeIndices = [];
   List<int> _visibleIndexes = [];
 
   double _cellWidth = 40;
-  final double cellHeight = 40;
+  // セル高さは `fitToScreen` が true の場合のみ動的に変化する。
+  // デフォルト値は従来互換用に 40 としておく。
+  double _cellHeight = 40;
 
   final double labelWidth = 200.0;
   final double commentAreaHeight = 100.0;
@@ -172,7 +191,7 @@ class TimingChartState extends State<TimingChart>
     final maxTime = signals[0].length - 1;
 
     return stSig >= 0 &&
-        edSig < signals.length &&
+        edSig < _visibleIndexes.length &&
         stTime >= 0 &&
         edTime <= maxTime;
   }
@@ -191,9 +210,9 @@ class TimingChartState extends State<TimingChart>
   @override
   int _getSignalIndexFromDy(double dy) {
     final adjustedY = dy - chartMarginTop;
-    if (cellHeight <= 0) return -1;
-    final index = (adjustedY / cellHeight).floor();
-    return index.clamp(-1, signals.length);
+    if (_cellHeight <= 0) return -1;
+    final index = (adjustedY / _cellHeight).floor();
+    return index.clamp(-1, _visibleIndexes.length);
   }
 
   @override
@@ -213,7 +232,7 @@ class TimingChartState extends State<TimingChart>
   }
 
   @override
-  void _handleTap(TapDownDetails details) {
+  void _handleTap(TapUpDetails details) {
     final box = context.findRenderObject() as RenderBox?;
     if (box == null) return;
     final localPos = box.globalToLocal(details.globalPosition);
@@ -249,7 +268,7 @@ class TimingChartState extends State<TimingChart>
     final clickSig = _getSignalIndexFromDy(localPos.dy);
     final clickTim = _getTimeIndexFromDx(localPos.dx);
 
-    if (clickTim < 0 || clickSig < 0 || clickSig >= signals.length) {
+    if (clickTim < 0 || clickSig < 0 || clickSig >= _visibleIndexes.length) {
       _clearSelection();
       return;
     }
@@ -261,9 +280,9 @@ class TimingChartState extends State<TimingChart>
       final edTimeAbs = math.max(_startTimeIndex!, _endTimeIndex!);
       final selectionRectGlobal = Rect.fromLTWH(
         chartMarginLeft + labelWidth + (stTimeAbs * _cellWidth),
-        chartMarginTop + (stSigAbs * cellHeight).toDouble(),
+        chartMarginTop + (stSigAbs * _cellHeight).toDouble(),
         (edTimeAbs - stTimeAbs + 1) * _cellWidth,
-        (edSigAbs - stSigAbs + 1) * cellHeight,
+        (edSigAbs - stSigAbs + 1) * _cellHeight,
       );
 
       if (selectionRectGlobal.contains(localPos)) {
@@ -300,7 +319,7 @@ class TimingChartState extends State<TimingChart>
     if (box == null) return;
     final localPos = box.globalToLocal(details.globalPosition);
 
-    if (localPos.dy > chartMarginTop + signals.length * cellHeight) {
+    if (localPos.dy > chartMarginTop + _visibleIndexes.length * _cellHeight) {
       _dragStartGlobal = null;
       return;
     }
@@ -308,7 +327,7 @@ class TimingChartState extends State<TimingChart>
     final sig = _getSignalIndexFromDy(localPos.dy);
     final tim = _getTimeIndexFromDx(localPos.dx);
 
-    if (tim < 0 || sig < 0 || sig >= signals.length) {
+    if (tim < 0 || sig < 0 || sig >= _visibleIndexes.length) {
       _clearSelection();
       _dragStartGlobal = null;
       return;
@@ -346,7 +365,7 @@ class TimingChartState extends State<TimingChart>
     final sig = _getSignalIndexFromDy(localPos.dy);
     final tim = _getTimeIndexFromDx(localPos.dx);
 
-    final clampedSig = sig.clamp(0, signals.length - 1);
+    final clampedSig = sig.clamp(0, _visibleIndexes.length - 1);
     final maxTimeIndex =
         signals.isEmpty
             ? -1
@@ -390,6 +409,9 @@ class TimingChartState extends State<TimingChart>
       localPos.dy - chartMarginTop,
     );
 
+    // クリックされたタイムインデックスを先に計算しておく
+    final int clickedTime = _getTimeIndexFromDx(localPos.dx);
+
     String? hitAnnId;
     for (final entry in _annotationHitRects.entries) {
       if (entry.value.contains(adjustedPos)) {
@@ -426,6 +448,7 @@ class TimingChartState extends State<TimingChart>
         const PopupMenuItem(value: 'insert', child: Text('選択範囲に0を挿入')),
         const PopupMenuItem(value: 'delete', child: Text('選択範囲を削除')),
         const PopupMenuItem(value: 'addComment', child: Text('コメントを追加')),
+        const PopupMenuItem(value: 'omit', child: Text('省略信号を描画')),
       ];
     }
 
@@ -462,6 +485,10 @@ class TimingChartState extends State<TimingChart>
           } else {
             _showAddCommentDialog();
           }
+          break;
+        case 'omit':
+          print("selectedValue = $selectedValue");
+          _toggleOmissionTime(clickedTime);
           break;
       }
     }
@@ -734,6 +761,19 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
+  /// 指定した時刻インデックスの省略信号をトグル（追加/削除）
+  void _toggleOmissionTime(int timeIndex) {
+    if (timeIndex < 0) return;
+    setState(() {
+      if (_omissionTimeIndices.contains(timeIndex)) {
+        _omissionTimeIndices.remove(timeIndex);
+      } else {
+        _omissionTimeIndices.add(timeIndex);
+      }
+      _forceRepaint();
+    });
+  }
+
   Rect _calcSelectionRectLocal() {
     if (!_hasValidSelection) return Rect.zero;
 
@@ -744,9 +784,9 @@ class TimingChartState extends State<TimingChart>
 
     return Rect.fromLTWH(
       labelWidth + (stTime * _cellWidth),
-      (stSig * cellHeight).toDouble(),
+      (stSig * _cellHeight).toDouble(),
       (edTime - stTime + 1) * _cellWidth,
-      (edSig - stSig + 1) * cellHeight,
+      (edSig - stSig + 1) * _cellHeight,
     );
   }
 
@@ -754,72 +794,122 @@ class TimingChartState extends State<TimingChart>
   Widget build(BuildContext context) {
     super.build(context);
 
-    final maxLen =
-        signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
+    // LayoutBuilder により親から渡された制約を取得し、
+    // その範囲内でセルサイズを計算する。
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxLen =
+            signals.isEmpty
+                ? 0
+                : signals.map((e) => e.length).fold(0, math.max);
 
-    final availableWidth =
-        MediaQuery.of(context).size.width - chartMarginLeft - labelWidth;
-    _cellWidth = maxLen > 0 ? math.max(availableWidth / maxLen, 20.0) : 40.0;
+        // 表示対象インデックスを抽出
+        final visibleIndexes = <int>[];
+        for (int i = 0; i < widget.signalTypes.length; i++) {
+          final t = widget.signalTypes[i];
+          if (widget.showAllSignalTypes ||
+              (t != SignalType.control &&
+                  t != SignalType.group &&
+                  t != SignalType.task)) {
+            visibleIndexes.add(i);
+          }
+        }
 
-    final double totalWidth =
-        chartMarginLeft + labelWidth + maxLen * _cellWidth;
-    final double totalHeight =
-        chartMarginTop + signals.length * cellHeight + commentAreaHeight;
+        // --- 横方向 ---
+        final availableWidth =
+            constraints.maxWidth.isFinite
+                ? constraints.maxWidth - chartMarginLeft - labelWidth
+                : MediaQuery.of(context).size.width -
+                    chartMarginLeft -
+                    labelWidth;
 
-    // 表示対象インデックスを抽出
-    final visibleIndexes = <int>[];
-    for (int i = 0; i < widget.signalTypes.length; i++) {
-      final t = widget.signalTypes[i];
-      if (t != SignalType.control &&
-          t != SignalType.group &&
-          t != SignalType.task) {
-        visibleIndexes.add(i);
-      }
-    }
+        if (widget.fitToScreen) {
+          _cellWidth =
+              maxLen > 0 ? math.max(availableWidth / maxLen, 5.0) : 40.0;
+        } else {
+          _cellWidth =
+              maxLen > 0 ? math.max(availableWidth / maxLen, 20.0) : 40.0;
+        }
 
-    // フィルタ済みリストを作成
-    final visibleSignalNames = [for (final i in visibleIndexes) signalNames[i]];
-    final visibleSignals = [for (final i in visibleIndexes) signals[i]];
-    final visibleSignalTypes = [
-      for (final i in visibleIndexes) widget.signalTypes[i],
-    ];
+        // --- 縦方向 ---
+        double constraintHeight =
+            constraints.maxHeight.isFinite
+                ? constraints.maxHeight
+                : MediaQuery.of(context).size.height;
 
-    _visibleIndexes = visibleIndexes;
+        if (widget.fitToScreen) {
+          final availableHeight =
+              constraintHeight - chartMarginTop - commentAreaHeight;
+          final visibleRowCount = visibleIndexes.length;
+          if (visibleRowCount > 0) {
+            _cellHeight = math.max(availableHeight / visibleRowCount, 5.0);
+          }
+        } else {
+          _cellHeight = 40;
+        }
 
-    return GestureDetector(
-      onPanStart: _onPanStart,
-      onPanUpdate: _onPanUpdate,
-      onPanEnd: _onPanEnd,
-      onTapDown: _handleTap,
-      onSecondaryTapDown:
-          (details) => _showContextMenu(context, details.globalPosition),
-      child: RepaintBoundary(
-        child: CustomPaint(
-          key: _customPaintKey,
-          isComplex: true,
-          willChange: true,
-          size: Size(totalWidth, totalHeight),
-          painter: _StepTimingChartPainter(
-            signals: visibleSignals,
-            signalNames: visibleSignalNames,
-            signalTypes: visibleSignalTypes,
-            annotations: annotations,
-            cellWidth: _cellWidth,
-            cellHeight: cellHeight,
-            labelWidth: labelWidth,
-            commentAreaHeight: commentAreaHeight,
-            chartMarginLeft: chartMarginLeft,
-            chartMarginTop: chartMarginTop,
-            startSignalIndex: _startSignalIndex,
-            endSignalIndex: _endSignalIndex,
-            startTimeIndex: _startTimeIndex,
-            endTimeIndex: _endTimeIndex,
-            highlightTimeIndices: _highlightTimeIndices,
-            selectedAnnotationId: _selectedAnnotationId,
-            annotationRects: _annotationHitRects,
+        final double totalWidth =
+            chartMarginLeft + labelWidth + maxLen * _cellWidth;
+        final double totalHeight =
+            chartMarginTop +
+            visibleIndexes.length * _cellHeight +
+            commentAreaHeight;
+
+        // フィルタ済みリストを作成
+        final visibleSignalNames = [
+          for (final i in visibleIndexes) signalNames[i],
+        ];
+        final visibleSignals = [for (final i in visibleIndexes) signals[i]];
+        final visibleSignalTypes = [
+          for (final i in visibleIndexes) widget.signalTypes[i],
+        ];
+
+        _visibleIndexes = visibleIndexes;
+
+        return GestureDetector(
+          onPanStart: _onPanStart,
+          onPanUpdate: _onPanUpdate,
+          onPanEnd: _onPanEnd,
+          onTapUp: _handleTap,
+          onSecondaryTapDown:
+              (details) => _showContextMenu(context, details.globalPosition),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.vertical,
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  key: _customPaintKey,
+                  isComplex: true,
+                  willChange: true,
+                  size: Size(totalWidth, totalHeight),
+                  painter: _StepTimingChartPainter(
+                    signals: visibleSignals,
+                    signalNames: visibleSignalNames,
+                    signalTypes: visibleSignalTypes,
+                    annotations: annotations,
+                    cellWidth: _cellWidth,
+                    cellHeight: _cellHeight,
+                    labelWidth: labelWidth,
+                    commentAreaHeight: commentAreaHeight,
+                    chartMarginLeft: chartMarginLeft,
+                    chartMarginTop: chartMarginTop,
+                    startSignalIndex: _startSignalIndex,
+                    endSignalIndex: _endSignalIndex,
+                    startTimeIndex: _startTimeIndex,
+                    endTimeIndex: _endTimeIndex,
+                    highlightTimeIndices: _highlightTimeIndices,
+                    omissionTimeIndices: _omissionTimeIndices,
+                    selectedAnnotationId: _selectedAnnotationId,
+                    annotationRects: _annotationHitRects,
+                    showAllSignalTypes: widget.showAllSignalTypes,
+                  ),
+                ),
+              ),
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -886,8 +976,10 @@ class _StepTimingChartPainter extends CustomPainter {
     required this.startTimeIndex,
     required this.endTimeIndex,
     required this.highlightTimeIndices,
+    required this.omissionTimeIndices,
     required this.selectedAnnotationId,
     required this.annotationRects,
+    required this.showAllSignalTypes,
   }) {
     // 各マネージャークラスを初期化
     _annotationsManager = ChartAnnotationsManager(
@@ -905,6 +997,7 @@ class _StepTimingChartPainter extends CustomPainter {
       labelWidth: labelWidth,
       signalNames: signalNames,
       signalTypes: signalTypes,
+      showAllSignalTypes: showAllSignalTypes,
     );
 
     _signalsManager = ChartSignalsManager(
@@ -912,6 +1005,7 @@ class _StepTimingChartPainter extends CustomPainter {
       cellHeight: cellHeight,
       labelWidth: labelWidth,
       signalTypes: signalTypes,
+      showAllSignalTypes: showAllSignalTypes,
     );
   }
 
@@ -920,6 +1014,7 @@ class _StepTimingChartPainter extends CustomPainter {
   final List<SignalType> signalTypes;
   final List<TimingChartAnnotation> annotations;
   final List<int> highlightTimeIndices;
+  final List<int> omissionTimeIndices;
 
   final double cellWidth;
   final double cellHeight;
@@ -935,6 +1030,7 @@ class _StepTimingChartPainter extends CustomPainter {
 
   final String? selectedAnnotationId;
   final Map<String, Rect> annotationRects;
+  final bool showAllSignalTypes;
 
   // 各種マネージャーインスタンス
   late final ChartAnnotationsManager _annotationsManager;
@@ -970,6 +1066,9 @@ class _StepTimingChartPainter extends CustomPainter {
     debugPrint('\n4. Drawing signal waveforms');
     _signalsManager.drawSignalWaveforms(canvas, signals);
 
+    debugPrint('\n4b. Drawing omission lines');
+    _drawOmissionLines(canvas, rowCount);
+
     debugPrint('\n5. Drawing selection highlight');
     _signalsManager.drawSelectionHighlight(
       canvas,
@@ -989,6 +1088,31 @@ class _StepTimingChartPainter extends CustomPainter {
     canvas.restore();
     debugPrint('Canvas restored to original state');
     debugPrint('=== TimingChart Paint End ===\n');
+  }
+
+  /// 省略信号（波線）の描画
+  void _drawOmissionLines(Canvas canvas, int rowCount) {
+    if (omissionTimeIndices.isEmpty) return;
+
+    final double chartBottom = rowCount * cellHeight;
+    final paint =
+        Paint()
+          ..color = Colors.black
+          ..strokeWidth = 2.0
+          ..style = PaintingStyle.stroke;
+
+    for (final t in omissionTimeIndices) {
+      final double x = labelWidth + t * cellWidth;
+      drawDoubleWavyVerticalLine(
+        canvas,
+        Offset(x, 0),
+        Offset(x, chartBottom),
+        paint,
+        amplitude: 12.0,
+        wavelength: 32.0,
+        gap: 8.0,
+      );
+    }
   }
 
   @override
@@ -1021,6 +1145,7 @@ class _StepTimingChartPainter extends CustomPainter {
         annotations != oldDelegate.annotations ||
         selectedAnnotationId != oldDelegate.selectedAnnotationId ||
         !listEquals(highlightTimeIndices, oldDelegate.highlightTimeIndices) ||
+        !listEquals(omissionTimeIndices, oldDelegate.omissionTimeIndices) ||
         startSignalIndex != oldDelegate.startSignalIndex ||
         endSignalIndex != oldDelegate.endSignalIndex ||
         startTimeIndex != oldDelegate.startTimeIndex ||

@@ -651,6 +651,33 @@ class _MyHomePageState extends State<MyHomePage>
         backgroundColor: Theme.of(context).colorScheme.primary,
         iconTheme: IconThemeData(color: Colors.white), // ハンバーガーメニューの色を白に設定
         title: Text(s.appTitle), // ★ l10nからタイトル取得
+        actions: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Center(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.language, color: Colors.white),
+                  const SizedBox(width: 4),
+                  Text(
+                    Provider.of<LocaleNotifier>(context).locale.languageCode ==
+                            'ja'
+                        ? 'JP'
+                        : Provider.of<LocaleNotifier>(
+                          context,
+                        ).locale.languageCode.toUpperCase(),
+                    style: GoogleFonts.notoSansJp(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           labelStyle: GoogleFonts.notoSansJp(fontSize: 20),
@@ -845,7 +872,12 @@ class _MyHomePageState extends State<MyHomePage>
                 _scheduleFormUpdate((n) => n.update(camera: newValue));
               }
             },
-            onUpdateChart: (signalNames, chartData, signalTypes, bool overrideFlag) {
+            onUpdateChart: (
+              signalNames,
+              chartData,
+              signalTypes,
+              bool overrideFlag,
+            ) {
               setState(() {
                 // --- 現在のチャート波形を取得（ユーザ編集後の最新状態を優先） ---
                 Map<String, List<int>> existingValuesMap = {};
@@ -892,11 +924,17 @@ class _MyHomePageState extends State<MyHomePage>
                       if (i < chartData.length &&
                           signalValues.length != chartData[i].length) {
                         if (signalValues.length < chartData[i].length) {
-                          signalValues.addAll(List.filled(
-                              chartData[i].length - signalValues.length, 0));
+                          signalValues.addAll(
+                            List.filled(
+                              chartData[i].length - signalValues.length,
+                              0,
+                            ),
+                          );
                         } else {
                           signalValues = signalValues.sublist(
-                              0, chartData[i].length);
+                            0,
+                            chartData[i].length,
+                          );
                         }
                       }
                     } else if (i < chartData.length) {
@@ -941,6 +979,8 @@ class _MyHomePageState extends State<MyHomePage>
             initialAnnotations: _chartAnnotations,
             // ★ SignalType を _chartSignals から取得して渡す
             signalTypes: _chartSignals.map((s) => s.signalType).toList(),
+            fitToScreen: true,
+            showAllSignalTypes: true,
           ),
         ],
       ),

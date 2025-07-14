@@ -107,3 +107,114 @@ void drawArrow(Canvas canvas, Rect arrowRect) {
   drawArrowhead(canvas, startPt, math.pi, headLength, paintArrowLine);
   drawArrowhead(canvas, endPt, 0, headLength, paintArrowLine);
 }
+
+void drawWavyVerticalLine(
+  Canvas canvas,
+  Offset start,
+  Offset end,
+  Paint paint, {
+  double amplitude = 4.0,
+  double wavelength = 12.0,
+}) {
+  // 垂直方向の波線を描画するユーティリティ関数
+  // start.dy < end.dy を前提
+  if (end.dy <= start.dy) return;
+
+  final Path path = Path()..moveTo(start.dx, start.dy);
+
+  // 半波長ごとに quadraticBezierTo を使って滑らかな曲線を描く
+  double currentY = start.dy;
+  bool toRight = true; // 最初は右に振れる
+
+  while (currentY < end.dy) {
+    final double nextY = (currentY + wavelength / 2).clamp(start.dy, end.dy);
+    final double controlY = (currentY + nextY) / 2;
+    final double controlX = start.dx + (toRight ? amplitude : -amplitude);
+
+    path.quadraticBezierTo(controlX, controlY, start.dx, nextY);
+
+    toRight = !toRight; // 向きを反転
+    currentY = nextY;
+  }
+
+  canvas.drawPath(path, paint);
+}
+
+/// 2本の波線を垂直に並べ、その間を塗りつぶして描画する
+void drawDoubleWavyVerticalLine(
+  Canvas canvas,
+  Offset start,
+  Offset end,
+  Paint strokePaint, {
+  double amplitude = 3.0,
+  double wavelength = 12.0,
+  double gap = 8.0, // 2本の波線間の距離
+  Color fillColor = Colors.white,
+}) {
+  if (end.dy <= start.dy) return;
+
+  // 左右にオフセット
+  final double halfGap = gap / 2;
+
+  final Path leftPath = Path()..moveTo(start.dx - halfGap, start.dy);
+  final Path rightPath = Path()..moveTo(start.dx + halfGap, start.dy);
+
+  // List to accumulate offsets for area fill
+  final List<Offset> leftPoints = [Offset(start.dx - halfGap, start.dy)];
+  final List<Offset> rightPoints = [Offset(start.dx + halfGap, start.dy)];
+
+  double currentY = start.dy;
+  bool toRight = true;
+
+  while (currentY < end.dy) {
+    final double nextY = (currentY + wavelength / 2).clamp(start.dy, end.dy);
+    final double controlY = (currentY + nextY) / 2;
+
+    // left
+    final double controlXLeft =
+        start.dx - halfGap + (toRight ? amplitude : -amplitude);
+    leftPath.quadraticBezierTo(
+      controlXLeft,
+      controlY,
+      start.dx - halfGap,
+      nextY,
+    );
+    leftPoints.add(Offset(start.dx - halfGap, nextY));
+
+    // right (位相は同じ向き)
+    final double controlXRight =
+        start.dx + halfGap + (toRight ? amplitude : -amplitude);
+    rightPath.quadraticBezierTo(
+      controlXRight,
+      controlY,
+      start.dx + halfGap,
+      nextY,
+    );
+    rightPoints.add(Offset(start.dx + halfGap, nextY));
+
+    toRight = !toRight;
+    currentY = nextY;
+  }
+
+  // 塗りつぶし領域を作成
+  final Path areaPath =
+      Path()..moveTo(leftPoints.first.dx, leftPoints.first.dy);
+  for (var p in leftPoints.skip(1)) {
+    areaPath.lineTo(p.dx, p.dy);
+  }
+  for (var p in rightPoints.reversed) {
+    areaPath.lineTo(p.dx, p.dy);
+  }
+  areaPath.close();
+
+  // 塗りつぶし
+  final Paint fillPaint =
+      Paint()
+        ..color = fillColor
+        ..style = PaintingStyle.fill;
+  canvas.drawPath(areaPath, fillPaint);
+
+  // 枠線（2本の波線）
+  canvas.drawPath(leftPath, strokePaint);
+  canvas.drawPath(rightPath, strokePaint);
+}

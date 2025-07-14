@@ -9,6 +9,7 @@ class ChartGridManager {
   final double labelWidth;
   final List<String> signalNames;
   final List<SignalType> signalTypes;
+  final bool showAllSignalTypes;
 
   ChartGridManager({
     required this.cellWidth,
@@ -16,6 +17,7 @@ class ChartGridManager {
     required this.labelWidth,
     required this.signalNames,
     required this.signalTypes,
+    this.showAllSignalTypes = false,
   });
 
   /// グリッド線を描画
@@ -50,9 +52,10 @@ class ChartGridManager {
               : SignalType.input;
 
       // Control、Group、Task信号は描画しない
-      if (currentSignalType == SignalType.control ||
-          currentSignalType == SignalType.group ||
-          currentSignalType == SignalType.task) {
+      if (!showAllSignalTypes &&
+          (currentSignalType == SignalType.control ||
+              currentSignalType == SignalType.group ||
+              currentSignalType == SignalType.task)) {
         continue;
       }
 
@@ -78,9 +81,10 @@ class ChartGridManager {
               : SignalType.input;
 
       // Control、Group、Task信号は描画しない
-      if (currentSignalType == SignalType.control ||
-          currentSignalType == SignalType.group ||
-          currentSignalType == SignalType.task) {
+      if (!showAllSignalTypes &&
+          (currentSignalType == SignalType.control ||
+              currentSignalType == SignalType.group ||
+              currentSignalType == SignalType.task)) {
         continue;
       }
 

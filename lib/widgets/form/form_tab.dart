@@ -133,6 +133,81 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
   bool _hwVis(int index) =>
       index < _hwTriggerVisibility.length ? _hwTriggerVisibility[index] : true;
 
+  // ===== Output マッピング: totalOutputs -> { signalId : index } =====
+  static const Map<int, Map<String, int>> _outputPresetMap = {
+    // 6 ポート機
+    6: {
+      'AUTO_MODE': 1,
+      'BUSY': 2, // Output1
+      'ENABLE_RESULT_SIGNAL': 3, // Output2
+      'TOTAL_RESULT_OK': 4, // Output3
+      'TOTAL_RESULT_NG': 5, // Output4
+    },
+    // 16 ポート機
+    16: {
+      'AUTO_MODE': 1,
+      'BUSY': 2, // Output9
+      'ENABLE_RESULT_SIGNAL': 6, // Output10
+      'TOTAL_RESULT_OK': 9, // Output11
+      'TOTAL_RESULT_NG': 10, // Output12
+    },
+    // 32 ポート機
+    32: {
+      'AUTO_MODE': 1, // Output2
+      'BUSY': 2, // Output3
+      'RECOVERY': 26, // Output27
+      'BATCH_EXPOSURE': 27, // Output28
+      'ENABLE_RESULT_SIGNAL': 28, // Output29
+      'ERROR': 29, // Output30
+      'ACQ_TRIGGER_WAITING': 30, // Output31
+      'PC_CONTROL': 31, // Output32
+    },
+  };
+
+  // プリセットマッピングからインデックスを取得（無ければ -1）
+  int _selectOutputIndex(String signalId, int totalOutputs, int totalCameras) {
+    // --- 動的割付: 32 ポート機で CAM_EXPOSURE / ACQUISITION を配置 ---
+    if (totalOutputs == 32) {
+      final expReg = RegExp(r'^CAMERA_(\d+)_IMAGE_EXPOSURE');
+      final acqReg = RegExp(r'^CAMERA_(\d+)_IMAGE_ACQUISITION');
+
+      RegExpMatch? m = expReg.firstMatch(signalId);
+      if (m != null) {
+        final cam = int.parse(m.group(1)!);
+        if (cam >= 1 && cam <= totalCameras) {
+          // Output4(index3) から順に配置
+          return 3 + (cam - 1);
+        }
+      }
+
+      m = acqReg.firstMatch(signalId);
+      if (m != null) {
+        final cam = int.parse(m.group(1)!);
+        if (cam >= 1 && cam <= totalCameras) {
+          // Exposure の後に続けて配置 (Acquisition)
+          return 3 + totalCameras + (cam - 1);
+        }
+      }
+
+      // ---- TOTAL_RESULT_OK を Acquisition 群の 2 つ後に配置 ----
+      if (signalId == 'TOTAL_RESULT_OK') {
+        // 最後の Acquisition インデックス = 3 + totalCameras*2 - 1
+        // そこから 2 つ後 ( +2 )
+        return 3 + totalCameras * 2 + 1;
+      }
+      if (signalId == 'TOTAL_RESULT_NG') {
+        // 最後の Acquisition インデックス = 3 + totalCameras*2 - 1
+        // そこから 2 つ後 ( +2 )
+        return 3 + totalCameras * 2 + 2;
+      }
+    }
+
+    // 静的プリセット
+    final preset = _outputPresetMap[totalOutputs];
+    if (preset == null) return -1;
+    return preset[signalId] ?? -1;
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -151,7 +226,8 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
     if (_prevCamera != -1 && _prevCamera != fs.camera) {
       _initializeTableData();
 
-      if (fs.hwPort > fs.camera) {
+      // HW Port が 0 またはカメラ数以外の場合は、自動的にカメラ数へ更新
+      if (fs.hwPort != 0 && fs.hwPort != fs.camera) {
         SchedulerBinding.instance.addPostFrameCallback((_) {
           widget.onHwPortChanged(fs.camera);
         });
@@ -199,7 +275,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
     // 入力信号
     for (int i = 0; i < formState.inputCount; i++) {
       SignalType signalType = SignalType.input;
-      bool isVisible = true;
+      bool isVisible = _inputVisibility[i];
 
       // Code Triggerの場合、totalIOポートの値に応じてSignalTypeを設定
       if (formState.triggerOption == 'Code Trigger') {
@@ -263,7 +339,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
             name: widget.hwTriggerControllers[i].text,
             signalType: SignalType.hwTrigger,
             values: List.filled(32, 0),
-            isVisible: _hwVis(i),
+            isVisible: _hwTriggerVisibility[i],
           ),
         );
       }
@@ -365,46 +441,50 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
   // 信号の表示/非表示を切り替え
   void _toggleSignalVisibility(int index, SignalType type) {
     setState(() {
+      // 1. チェックボックスの状態を更新
       switch (type) {
         case SignalType.input:
           _inputVisibility[index] = !_inputVisibility[index];
-
-          // SignalDataも更新
-          int signalIndex = index;
-          if (signalIndex < _signalDataList.length &&
-              _signalDataList[signalIndex].signalType == SignalType.input) {
-            _signalDataList[signalIndex] =
-                _signalDataList[signalIndex].toggleVisibility();
-          }
           break;
-
         case SignalType.output:
           _outputVisibility[index] = !_outputVisibility[index];
-
-          // SignalDataも更新
-          int signalIndex = formState.inputCount + index;
-          if (signalIndex < _signalDataList.length &&
-              _signalDataList[signalIndex].signalType == SignalType.output) {
-            _signalDataList[signalIndex] =
-                _signalDataList[signalIndex].toggleVisibility();
-          }
           break;
-
         case SignalType.hwTrigger:
           _hwTriggerVisibility[index] = !_hwTriggerVisibility[index];
-
-          // SignalDataも更新
-          int signalIndex =
-              formState.inputCount + formState.outputCount + index;
-          if (signalIndex < _signalDataList.length &&
-              _signalDataList[signalIndex].signalType == SignalType.hwTrigger) {
-            _signalDataList[signalIndex] =
-                _signalDataList[signalIndex].toggleVisibility();
-          }
           break;
-
         default:
           break;
+      }
+
+      // 2. SignalData 側を名前ベースで更新（位置ズレ対策）
+      String? targetName;
+      switch (type) {
+        case SignalType.input:
+          if (index < widget.inputControllers.length) {
+            targetName = widget.inputControllers[index].text;
+          }
+          break;
+        case SignalType.output:
+          if (index < widget.outputControllers.length) {
+            targetName = widget.outputControllers[index].text;
+          }
+          break;
+        case SignalType.hwTrigger:
+          if (index < widget.hwTriggerControllers.length) {
+            targetName = widget.hwTriggerControllers[index].text;
+          }
+          break;
+        default:
+          break;
+      }
+
+      if (targetName != null && targetName.isNotEmpty) {
+        final sigIdx = _signalDataList.indexWhere(
+          (s) => s.name == targetName && s.signalType == type,
+        );
+        if (sigIdx != -1) {
+          _signalDataList[sigIdx] = _signalDataList[sigIdx].toggleVisibility();
+        }
       }
     });
   }
@@ -440,7 +520,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
       for (int i = 0; i < formState.inputCount; i++) {
         if (widget.inputControllers[i].text.isNotEmpty) {
           SignalType signalType = SignalType.input;
-          bool isVisible = true;
+          bool isVisible = _inputVisibility[i];
 
           // Code Triggerの場合、totalIOポートの値に応じてSignalTypeを設定
           if (formState.triggerOption == 'Code Trigger') {
@@ -487,7 +567,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
             name: widget.hwTriggerControllers[i].text,
             signalType: SignalType.hwTrigger,
             values: List.filled(32, 0),
-            isVisible: _hwVis(i),
+            isVisible: _hwTriggerVisibility[i],
           );
         }
       }
@@ -904,7 +984,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
             name: widget.hwTriggerControllers[i].text,
             signalType: SignalType.hwTrigger,
             values: values,
-            isVisible: _hwVis(i),
+            isVisible: _hwTriggerVisibility[i],
           ),
         );
 
@@ -1407,16 +1487,46 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
             widget.inputControllers[targetIndex].text = name;
           }
         } else if (type == SignalType.output) {
-          int targetIndex = existingOutputMap[name] ?? -1;
+          // 1) ポート数に応じたプリセット位置を取得
+          final fs = context.read<FormStateNotifier>().state;
+          // 1) ポート数・カメラ数に応じたプリセット位置を取得
+          int targetIndex = _selectOutputIndex(name, fs.outputCount, fs.camera);
+
+          // 2) 既に同じ ID が入力済みなら、その位置を優先
           if (targetIndex == -1) {
-            // 既存位置がない場合は最初の空いている位置を使用
-            for (int j = 0; j < widget.outputControllers.length; j++) {
+            targetIndex = existingOutputMap[name] ?? -1;
+          }
+
+          // 3) まだ見つからなければ、空いている欄を探す
+          if (targetIndex == -1) {
+            int startIdx = 0;
+            if (fs.outputCount == 32) {
+              // TOTAL_RESULT_NG の直後から配置したい
+              int reservedEnd = 3 + fs.camera * 2 + 2; // TOT_NG index
+              startIdx = reservedEnd + 1;
+              if (startIdx >= widget.outputControllers.length) {
+                startIdx = 0; // フォールバック（念のため）
+              }
+            }
+
+            for (int j = startIdx; j < widget.outputControllers.length; j++) {
               if (widget.outputControllers[j].text.isEmpty) {
                 targetIndex = j;
                 break;
               }
             }
+            // 前方検索で見つからなければ先頭から再検索
+            if (targetIndex == -1) {
+              for (int j = 0; j < startIdx; j++) {
+                if (widget.outputControllers[j].text.isEmpty) {
+                  targetIndex = j;
+                  break;
+                }
+              }
+            }
           }
+
+          // 4) 決定した欄に書き込む
           if (targetIndex >= 0 &&
               targetIndex < widget.outputControllers.length) {
             widget.outputControllers[targetIndex].text = name;
@@ -1620,14 +1730,12 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
                   // HW Port
                   Expanded(
                     child: CustomDropdown<int>(
-                      value:
-                          formState.hwPort > formState.camera
-                              ? formState.camera
-                              : formState.hwPort,
-                      items: List.generate(
-                        formState.camera + 1,
-                        (index) => index,
-                      ),
+                      value: (formState.hwPort == 0 ||
+                              formState.hwPort == formState.camera)
+                          ? formState.hwPort
+                          : formState.camera,
+                      // HW Port は 0 または Camera 数と同じ値のみ選択可能
+                      items: [0, formState.camera],
                       onChanged: widget.onHwPortChanged,
                       label: 'HW Port',
                     ),

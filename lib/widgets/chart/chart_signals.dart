@@ -10,6 +10,7 @@ class ChartSignalsManager {
   final double cellHeight;
   final double labelWidth;
   final List<SignalType> signalTypes;
+  final bool showAllSignalTypes;
   static const double waveAmplitude = 10;
 
   ChartSignalsManager({
@@ -17,6 +18,7 @@ class ChartSignalsManager {
     required this.cellHeight,
     required this.labelWidth,
     required this.signalTypes,
+    this.showAllSignalTypes = false,
   });
 
   /// 信号タイプに基づいて色を返す
@@ -49,9 +51,10 @@ class ChartSignalsManager {
               : SignalType.input;
 
       // Control、Group、Task信号は描画しない
-      if (currentSignalType == SignalType.control ||
-          currentSignalType == SignalType.group ||
-          currentSignalType == SignalType.task) {
+      if (!showAllSignalTypes &&
+          (currentSignalType == SignalType.control ||
+              currentSignalType == SignalType.group ||
+              currentSignalType == SignalType.task)) {
         continue;
       }
 
