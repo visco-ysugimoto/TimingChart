@@ -10,6 +10,15 @@ class ChartGridManager {
   final List<String> signalNames;
   final List<SignalType> signalTypes;
   final bool showAllSignalTypes;
+  // IO番号(末尾の数字)を表示するかどうか。true で表示、false で非表示。
+  final bool showIoNumbers;
+  // 行ごとのポート番号 (Input/Output/HWTrigger の元番号)。
+  final List<int> portNumbers;
+  final Color labelColor;
+  // 選択範囲 (行) がある場合にラベルをハイライト
+  final int? highlightStartRow;
+  final int? highlightEndRow;
+  final Color highlightTextColor;
 
   ChartGridManager({
     required this.cellWidth,
@@ -17,7 +26,13 @@ class ChartGridManager {
     required this.labelWidth,
     required this.signalNames,
     required this.signalTypes,
+    required this.portNumbers,
     this.showAllSignalTypes = false,
+    this.showIoNumbers = true,
+    this.labelColor = Colors.black,
+    this.highlightStartRow,
+    this.highlightEndRow,
+    this.highlightTextColor = Colors.blue,
   });
 
   /// グリッド線を描画
@@ -89,9 +104,43 @@ class ChartGridManager {
       }
 
       final name = (row < signalNames.length) ? signalNames[row] : "";
+
+      // 種別番号プレフィックスを生成
+      String prefix = "";
+      if (showIoNumbers && row < portNumbers.length) {
+        final num = portNumbers[row];
+        if (num > 0) {
+          switch (currentSignalType) {
+            case SignalType.input:
+              prefix = "Input$num: ";
+              break;
+            case SignalType.output:
+              prefix = "Output$num: ";
+              break;
+            case SignalType.hwTrigger:
+              prefix = "HW$num: ";
+              break;
+            default:
+              break;
+          }
+        }
+      }
+
+      final displayName = showIoNumbers ? "$prefix$name" : name;
+
+      // ハイライト判定
+      bool isHighlighted = false;
+      if (highlightStartRow != null && highlightEndRow != null) {
+        final int minRow = highlightStartRow! < highlightEndRow! ? highlightStartRow! : highlightEndRow!;
+        final int maxRow = highlightStartRow! > highlightEndRow! ? highlightStartRow! : highlightEndRow!;
+        if (row >= minRow && row <= maxRow) {
+          isHighlighted = true;
+        }
+      }
+
       final textSpan = TextSpan(
-        text: name,
-        style: const TextStyle(color: Colors.black, fontSize: 14),
+        text: displayName,
+        style: TextStyle(color: isHighlighted ? highlightTextColor : labelColor, fontSize: 14, fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal),
       );
 
       final textPainter = TextPainter(

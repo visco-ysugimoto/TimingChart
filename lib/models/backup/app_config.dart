@@ -4,6 +4,7 @@ import '../form/form_state.dart';
 import '../chart/signal_data.dart';
 import '../chart/signal_type.dart';
 import '../../widgets/form/form_tab.dart';
+import '../chart/timing_chart_annotation.dart';
 
 /// アプリケーションの全設定を保持するクラス
 class AppConfig {
@@ -29,6 +30,10 @@ class AppConfig {
   // 行モード (none / simultaneous など)
   final List<String> rowModes;
 
+  // チャートアノテーションと省略区間
+  final List<TimingChartAnnotation> annotations;
+  final List<int> omissionIndices;
+
   const AppConfig({
     required this.formState,
     required this.signals,
@@ -40,6 +45,8 @@ class AppConfig {
     required this.outputVisibility,
     required this.hwTriggerVisibility,
     required this.rowModes,
+    this.annotations = const [],
+    this.omissionIndices = const [],
   });
 
   /// TextEditingControllerからテキスト値を抽出
@@ -61,6 +68,8 @@ class AppConfig {
     required List<bool> outputVisibility,
     required List<bool> hwTriggerVisibility,
     required List<String> rowModes,
+    List<TimingChartAnnotation> annotations = const [],
+    List<int> omissionIndices = const [],
   }) {
     return AppConfig(
       formState: formState,
@@ -73,6 +82,8 @@ class AppConfig {
       outputVisibility: outputVisibility,
       hwTriggerVisibility: hwTriggerVisibility,
       rowModes: rowModes,
+      annotations: annotations,
+      omissionIndices: omissionIndices,
     );
   }
 
@@ -109,6 +120,24 @@ class AppConfig {
       'outputVisibility': outputVisibility,
       'hwTriggerVisibility': hwTriggerVisibility,
       'rowModes': rowModes,
+      'annotations':
+          annotations
+              .map(
+                (a) => {
+                  'id': a.id,
+                  'start': a.startTimeIndex,
+                  // range でなければ null を出力（新仕様）
+                  'end': a.endTimeIndex,
+                  'text': a.text,
+                  if (a.offsetX != null) 'offsetX': a.offsetX,
+                  if (a.offsetY != null) 'offsetY': a.offsetY,
+                  if (a.arrowTipY != null) 'arrowTipY': a.arrowTipY,
+                  if (a.arrowHorizontal != null)
+                    'arrowHorizontal': a.arrowHorizontal,
+                },
+              )
+              .toList(),
+      'omissionIndices': omissionIndices,
     };
   }
 
@@ -160,6 +189,26 @@ class AppConfig {
       outputVisibility: (json['outputVisibility'] as List).cast<bool>(),
       hwTriggerVisibility: (json['hwTriggerVisibility'] as List).cast<bool>(),
       rowModes: (json['rowModes'] as List?)?.cast<String>() ?? const [],
+      annotations:
+          ((json['annotations'] ?? []) as List)
+              .map(
+                (e) => TimingChartAnnotation(
+                  id: e['id']?.toString() ?? '',
+                  startTimeIndex: e['start'] ?? 0,
+                  endTimeIndex:
+                      e['end'] == null ? null : (e['end'] as num).toInt(),
+                  text: e['text']?.toString() ?? '',
+                  offsetX: (e['offsetX'] as num?)?.toDouble(),
+                  offsetY: (e['offsetY'] as num?)?.toDouble(),
+                  arrowTipY: (e['arrowTipY'] as num?)?.toDouble(),
+                  arrowHorizontal: e['arrowHorizontal'] as bool?,
+                ),
+              )
+              .toList(),
+      omissionIndices:
+          ((json['omissionIndices'] ?? []) as List)
+              .map((e) => e as int)
+              .toList(),
     );
   }
 

@@ -7,8 +7,7 @@ import '../models/chart/signal_type.dart';
 import '../suggestion_loader.dart';
 
 class ChartTemplateEngine {
-  static const String _defaultAssetPath =
-      'assets/chart_rules/template_v1.yaml';
+  static const String _defaultAssetPath = 'assets/chart_rules/template_v1.yaml';
 
   final int sampleLength;
 
@@ -46,15 +45,20 @@ class ChartTemplateEngine {
 
     // ファーストパス: init & at/duration transitions
     signalsDef.forEach((name, def) {
+      // ----------------- Guard: condition skip -----------------
+      if (def is Map<String, dynamic> && def.containsKey('condition')) {
+        final cond = def['condition'] as String;
+        if (!_evaluateCondition(cond, triggerOption)) return;
+      }
+
+      // ----------------- Alias は後でまとめて処理 -----------------
+      if (def is Map<String, dynamic> && def.containsKey('alias')) {
+        // alias later
+        return;
+      }
+
+      // ----------------- 通常の Map 定義 -----------------
       if (def is Map<String, dynamic>) {
-        // condition 判定
-        if (def.containsKey('condition')) {
-          final cond = def['condition'] as String;
-          if (!_evaluateCondition(cond, triggerOption)) return;
-        }
-
-        if (def.containsKey('alias')) return; // alias later
-
         int initVal = def['init'] ?? 0;
         final bool sticky = def['sticky'] == true;
         List<int> arr = List.filled(sampleLength, initVal);
@@ -87,6 +91,11 @@ class ChartTemplateEngine {
         }
 
         waves[name] = arr;
+      } else {
+        // ----------------- def が null など Map でない場合 -----------------
+        // YAML で "TOTAL_RESULT_NG:" のように内容が空でも、
+        // 少なくとも 0 フィルの波形を生成しておく。
+        waves[name] = List<int>.filled(sampleLength, 0);
       }
     });
 
@@ -133,6 +142,28 @@ class ChartTemplateEngine {
           }
         }
       }
+    }
+
+    // ---- 追加: CONTACT_INPUT_WAITING / HW_TRIGGER# が指定された時刻のみ Exposure を 2 サンプル幅へ拡張 ----
+    // specialTimes = CONTACT_INPUT_WAITING または HW_TRIGGER# が High になるインデックス集合
+    final Set<int> _specialTimes = {
+      if (contactWaitTimes != null)
+        for (final lst in contactWaitTimes.values) ...lst,
+      if (hwTriggerTimes != null)
+        for (final lst in hwTriggerTimes.values) ...lst,
+    };
+    if (_specialTimes.isNotEmpty) {
+      final expRegexExtend = RegExp(r'^CAMERA_(\d+)_IMAGE_EXPOSURE');
+      waves.forEach((name, vals) {
+        if (expRegexExtend.hasMatch(name)) {
+          final orig = List<int>.from(vals);
+          for (int t = 0; t < orig.length; t++) {
+            if (orig[t] == 1 && t > 0 && _specialTimes.contains(t)) {
+              vals[t - 1] = 1; // 直前サンプルを High
+            }
+          }
+        }
+      });
     }
 
     // alias 反映
@@ -236,9 +267,8 @@ class ChartTemplateEngine {
       }
     }
 
-    if (acqWait.any((v) => v == 1)) {
-      waves['ACQ_TRIGGER_WAITING'] = acqWait;
-    }
+    // 内容がゼロのみでも Output31 へ固定配置するため常に登録する
+    waves['ACQ_TRIGGER_WAITING'] = acqWait;
 
     // BATCH_EXPOSURE 生成: 最初のEXPOSURE立上りから最後のEXPOSURE立上りまで High
     int firstExp = -1;
@@ -346,17 +376,20 @@ class ChartTemplateEngine {
     final hwIds = (await loadHwTriggerSuggestions()).map((e) => e.id).toSet();
 
     waves.forEach((name, values) {
-      final type = hwIds.contains(name)
-          ? SignalType.hwTrigger
-          : outputIds.contains(name)
+      final type =
+          hwIds.contains(name)
+              ? SignalType.hwTrigger
+              : outputIds.contains(name)
               ? SignalType.output
               : SignalType.input;
-      result.add(SignalData(
-        name: name,
-        signalType: type,
-        values: values,
-        isVisible: true,
-      ));
+      result.add(
+        SignalData(
+          name: name,
+          signalType: type,
+          values: values,
+          isVisible: true,
+        ),
+      );
     });
     // カスタム並び替え: TRIGGER → AUTO_MODE → BUSY → EXPOSURE → ACQUISITION → BATCH_EXPOSURE → その他
     int _priority(SignalData s) {
@@ -384,12 +417,14 @@ class ChartTemplateEngine {
       if (s.name.startsWith('BATCH_EXPOSURE')) return 9;
       return 10;
     }
+
     final camRegex = RegExp(r'^CAMERA_(\d+)_IMAGE_(EXPOSURE|ACQUISITION)');
     int camOrder(String name) {
       final m = camRegex.firstMatch(name);
       if (m != null) return int.parse(m.group(1)!);
       return 9999;
     }
+
     int expFirst(String name) {
       final m = camRegex.firstMatch(name);
       if (m != null) {
@@ -442,4 +477,4 @@ class ChartTemplateEngine {
   }
 
   // _detectType 削除。outputSuggestions に基づく方式へ移行
-} 
+}

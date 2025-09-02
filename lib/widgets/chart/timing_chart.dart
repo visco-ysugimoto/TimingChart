@@ -3,12 +3,21 @@ import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
+import 'dart:ui' as ui;
+import 'dart:typed_data';
+import 'package:image/image.dart' as img;
 import '../../models/chart/timing_chart_annotation.dart';
 import '../../models/chart/signal_type.dart';
 import 'chart_annotations.dart';
 import 'chart_grid.dart';
 import 'chart_signals.dart';
 import 'chart_drawing_util.dart';
+import '../../suggestion_loader.dart';
+import '../../providers/settings_notifier.dart';
+import 'package:provider/provider.dart'; // Added for Provider
+
+// Add translation support
 
 class TimingChart extends StatefulWidget {
   final List<String> initialSignalNames;
@@ -28,6 +37,12 @@ class TimingChart extends StatefulWidget {
   /// 省略時は従来互換で false（これらの補助信号は描画しない）。
   final bool showAllSignalTypes;
 
+  /// 入出力信号ラベルに番号 (Input1 などの末尾数字) を表示するかどうか。
+  /// 省略時は true (番号を表示)。
+  final bool showIoNumbers;
+
+  final List<int> portNumbers;
+
   const TimingChart({
     super.key,
     required this.initialSignalNames,
@@ -36,6 +51,8 @@ class TimingChart extends StatefulWidget {
     required this.signalTypes,
     this.fitToScreen = false,
     this.showAllSignalTypes = false,
+    this.showIoNumbers = true,
+    required this.portNumbers,
   });
 
   @override
@@ -44,6 +61,12 @@ class TimingChart extends StatefulWidget {
 
 class TimingChartState extends State<TimingChart>
     with AutomaticKeepAliveClientMixin {
+  // 保持用: ID 名リスト
+  late List<String> _idSignalNames;
+
+  // 言語変更監視用
+  late final VoidCallback _langListener;
+
   @override
   bool get wantKeepAlive => true;
 
@@ -55,13 +78,46 @@ class TimingChartState extends State<TimingChart>
   List<int> _omissionTimeIndices = [];
   List<int> _visibleIndexes = [];
 
+  // ===== ラベルドラッグ用 =====
+  bool _isLabelDrag = false;
+  int? _labelDragStartRow;
+  int? _labelDragCurrentRow;
+
   double _cellWidth = 40;
   // セル高さは `fitToScreen` が true の場合のみ動的に変化する。
   // デフォルト値は従来互換用に 40 としておく。
   double _cellHeight = 40;
 
   final double labelWidth = 200.0;
-  final double commentAreaHeight = 100.0;
+  // コメントエリアの高さ（動的計算時の下限値）
+  static const double _minCommentAreaHeight = 100.0;
+
+  // コメントが無い場合に確保する最小下余白
+  static const double _noCommentBottomMargin = 40.0;
+
+  /// コメントがはみ出さないように必要な高さを概算で計算する。
+  ///
+  /// 現在の描画ロジックでは、コメントが重なるごとに 20px ずつ下方向に
+  /// ずらしているため、
+  ///   base + 20px * (コメント数 - 1) でおおよその必要領域を見積もる。
+  /// 実際のテキスト高さを完全に反映するわけではないが、
+  /// 大量のコメント入力時でも最低限切り取られないだけの余白を確保できる。
+  double _calculateCommentAreaHeight() {
+    if (annotations.isEmpty) return _noCommentBottomMargin;
+
+    const double baseHeight = 40.0; // 1 段目の想定高さ
+    const double stepHeight = 20.0; // 衝突回避で 1 段深くするごとの増分
+
+    final int layers = annotations.length - 1;
+    final double estimated = baseHeight + stepHeight * layers;
+
+    // コメントボックス高さの1.5倍程度の余白を確保
+    final double expanded = estimated * 1.5;
+
+    // 最低でも下限値は確保しつつ、ゆとりを持たせた値を返す
+    return math.max(_minCommentAreaHeight, expanded);
+  }
+
   final double chartMarginLeft = 16.0;
   final double chartMarginTop = 16.0;
 
@@ -75,16 +131,35 @@ class TimingChartState extends State<TimingChart>
   String? _selectedAnnotationId;
 
   Map<String, Rect> _annotationHitRects = {};
+  // コメントボックスドラッグ用
+  String? _draggingAnnotationId;
+  Offset? _draggingStartLocal; // ドラッグ開始時のローカル座標
+  Offset? _draggingInitialBoxTopLeft; // ドラッグ開始時のボックス位置
 
   Offset? _dragStartGlobal;
 
   // 描画用のキー
   final GlobalKey _customPaintKey = GlobalKey();
+  final GlobalKey _repaintBoundaryKey = GlobalKey();
+  // スクロール制御
+  final ScrollController _hScrollController = ScrollController();
+  final ScrollController _vScrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
-    signalNames = List.from(widget.initialSignalNames);
+    _idSignalNames = List.from(widget.initialSignalNames);
+    signalNames = List.from(_idSignalNames); // 仮で ID 表示
+
+    // 初期翻訳
+    _translateNames();
+
+    // 言語変更リスナー
+    _langListener = () {
+      _translateNames();
+    };
+    suggestionLanguageVersion.addListener(_langListener);
+
     signals =
         widget.initialSignals.map((list) => List<int>.from(list)).toList();
     annotations = List.from(widget.initialAnnotations);
@@ -107,11 +182,30 @@ class TimingChartState extends State<TimingChart>
   }
 
   // 信号名を更新するメソッド
-  void updateSignalNames(List<String> newNames) {
+  void updateSignalNames(List<String> newIdNames) {
+    _idSignalNames = List.from(newIdNames);
+    // まずは ID 表示に差し替えておき、翻訳後に再描画
     setState(() {
-      signalNames = List.from(newNames);
+      signalNames = List.from(_idSignalNames);
       _forceRepaint();
     });
+    _translateNames();
+  }
+
+  // ID → 現在言語ラベルへ変換して UI へ反映
+  void _translateNames() async {
+    final translated = await Future.wait(
+      _idSignalNames.map((id) => labelOfId(id)),
+    );
+    if (!mounted) return;
+    setState(() {
+      signalNames = translated;
+      _forceRepaint();
+    });
+  }
+
+  void _disposeUnused() {
+    super.dispose();
   }
 
   // 現在の信号データを取得するメソッド
@@ -140,7 +234,9 @@ class TimingChartState extends State<TimingChart>
           oldWidget.initialAnnotations,
         )) {
       setState(() {
-        signalNames = List.from(widget.initialSignalNames);
+        _idSignalNames = List.from(widget.initialSignalNames);
+        signalNames = List.from(_idSignalNames); // 仮で ID 表示
+        _translateNames();
         signals =
             widget.initialSignals.map((list) => List<int>.from(list)).toList();
         annotations = List.from(widget.initialAnnotations);
@@ -198,7 +294,10 @@ class TimingChartState extends State<TimingChart>
 
   @override
   int _getTimeIndexFromDx(double dx) {
-    double adjustedX = dx - chartMarginLeft;
+    double adjustedX =
+        dx -
+        chartMarginLeft +
+        (_hScrollController.hasClients ? _hScrollController.offset : 0);
     final relativeX = adjustedX - labelWidth;
     if (relativeX < 0) {
       return -1;
@@ -209,10 +308,17 @@ class TimingChartState extends State<TimingChart>
 
   @override
   int _getSignalIndexFromDy(double dy) {
-    final adjustedY = dy - chartMarginTop;
+    final adjustedY =
+        dy -
+        chartMarginTop +
+        (_vScrollController.hasClients ? _vScrollController.offset : 0);
     if (_cellHeight <= 0) return -1;
     final index = (adjustedY / _cellHeight).floor();
-    return index.clamp(-1, _visibleIndexes.length);
+    // 有効範囲は 0..length-1。範囲外は -1 を返す想定
+    if (index < 0 || index >= _visibleIndexes.length) {
+      return -1;
+    }
+    return index;
   }
 
   @override
@@ -237,8 +343,12 @@ class TimingChartState extends State<TimingChart>
     if (box == null) return;
     final localPos = box.globalToLocal(details.globalPosition);
     final adjustedPos = Offset(
-      localPos.dx - chartMarginLeft,
-      localPos.dy - chartMarginTop,
+      localPos.dx -
+          chartMarginLeft +
+          (_hScrollController.hasClients ? _hScrollController.offset : 0),
+      localPos.dy -
+          chartMarginTop +
+          (_vScrollController.hasClients ? _vScrollController.offset : 0),
     );
 
     String? hitAnnId;
@@ -263,6 +373,39 @@ class TimingChartState extends State<TimingChart>
           _selectedAnnotationId = null;
         });
       }
+    }
+
+    // ラベル領域をクリックしているか判定
+    final bool inLabelArea =
+        localPos.dx >= chartMarginLeft &&
+        localPos.dx <= chartMarginLeft + labelWidth;
+
+    if (inLabelArea) {
+      final row = _getSignalIndexFromDy(localPos.dy);
+      if (row >= 0 && row < _visibleIndexes.length) {
+        final originalRow = _visibleIndexes[row];
+        final int maxTime =
+            signals.isNotEmpty ? signals[originalRow].length - 1 : -1;
+        if (maxTime >= 0) {
+          setState(() {
+            // すでに同じ行全体が選択されていた場合は選択解除
+            if (_startSignalIndex == row &&
+                _endSignalIndex == row &&
+                _startTimeIndex == 0 &&
+                _endTimeIndex == maxTime) {
+              _clearSelection();
+            } else {
+              _startSignalIndex = row;
+              _endSignalIndex = row;
+              _startTimeIndex = 0;
+              _endTimeIndex = maxTime;
+            }
+            _selectedAnnotationId = null;
+            _forceRepaint();
+          });
+        }
+      }
+      return; // ラベルクリックでのビット反転は行わない
     }
 
     final clickSig = _getSignalIndexFromDy(localPos.dy);
@@ -319,6 +462,53 @@ class TimingChartState extends State<TimingChart>
     if (box == null) return;
     final localPos = box.globalToLocal(details.globalPosition);
 
+    // 先にコメントボックスのヒットを判定（チャート領域外でもドラッグ可能にする）
+    final adjustedPosForAnn = Offset(
+      localPos.dx -
+          chartMarginLeft +
+          (_hScrollController.hasClients ? _hScrollController.offset : 0),
+      localPos.dy -
+          chartMarginTop +
+          (_vScrollController.hasClients ? _vScrollController.offset : 0),
+    );
+    for (final entry in _annotationHitRects.entries) {
+      final rect = entry.value;
+      if (rect.contains(adjustedPosForAnn)) {
+        setState(() {
+          _draggingAnnotationId = entry.key;
+          _draggingStartLocal = adjustedPosForAnn;
+          _draggingInitialBoxTopLeft = rect.topLeft;
+          _selectedAnnotationId = entry.key;
+        });
+        _dragStartGlobal = null;
+        return;
+      }
+    }
+
+    // --- ラベル領域でのドラッグ開始判定 ---
+    final bool inLabelArea =
+        (localPos.dx +
+                (_hScrollController.hasClients
+                    ? _hScrollController.offset
+                    : 0)) >=
+            chartMarginLeft &&
+        (localPos.dx +
+                (_hScrollController.hasClients
+                    ? _hScrollController.offset
+                    : 0)) <=
+            chartMarginLeft + labelWidth;
+
+    final sigIndex = _getSignalIndexFromDy(localPos.dy);
+    if (inLabelArea && sigIndex >= 0 && sigIndex < _visibleIndexes.length) {
+      // ラベルドラッグ開始
+      setState(() {
+        _isLabelDrag = true;
+        _labelDragStartRow = sigIndex;
+        _labelDragCurrentRow = sigIndex;
+      });
+      return; // selection 処理には入らない
+    }
+
     if (localPos.dy > chartMarginTop + _visibleIndexes.length * _cellHeight) {
       _dragStartGlobal = null;
       return;
@@ -334,15 +524,13 @@ class TimingChartState extends State<TimingChart>
     }
 
     final adjustedPos = Offset(
-      localPos.dx - chartMarginLeft,
-      localPos.dy - chartMarginTop,
+      localPos.dx -
+          chartMarginLeft +
+          (_hScrollController.hasClients ? _hScrollController.offset : 0),
+      localPos.dy -
+          chartMarginTop +
+          (_vScrollController.hasClients ? _vScrollController.offset : 0),
     );
-    for (final rect in _annotationHitRects.values) {
-      if (rect.contains(adjustedPos)) {
-        _dragStartGlobal = null;
-        return;
-      }
-    }
 
     setState(() {
       _dragStartGlobal = details.globalPosition;
@@ -356,6 +544,60 @@ class TimingChartState extends State<TimingChart>
 
   @override
   void _onPanUpdate(DragUpdateDetails details) {
+    // コメントボックスのドラッグ更新
+    if (_draggingAnnotationId != null &&
+        _draggingStartLocal != null &&
+        _draggingInitialBoxTopLeft != null) {
+      final box = context.findRenderObject() as RenderBox?;
+      if (box == null) return;
+      final localPos = box.globalToLocal(details.globalPosition);
+      final adjustedPos = Offset(
+        localPos.dx -
+            chartMarginLeft +
+            (_hScrollController.hasClients ? _hScrollController.offset : 0),
+        localPos.dy -
+            chartMarginTop +
+            (_vScrollController.hasClients ? _vScrollController.offset : 0),
+      );
+      final delta = adjustedPos - _draggingStartLocal!;
+
+      final annIndex = annotations.indexWhere(
+        (a) => a.id == _draggingAnnotationId,
+      );
+      if (annIndex != -1) {
+        final current = annotations[annIndex];
+        // offsetX/offsetY はコメントの基準位置からの差分として扱う
+        final newOffsetX = (current.offsetX ?? 0) + delta.dx;
+        final newOffsetY = (current.offsetY ?? 0) + delta.dy;
+        setState(() {
+          annotations[annIndex] = current.copyWith(
+            offsetX: newOffsetX,
+            offsetY: newOffsetY,
+          );
+          _highlightTimeIndices = [..._highlightTimeIndices];
+          _forceRepaint();
+        });
+        // 次回は差分をリセットするため、基準を更新
+        _draggingStartLocal = adjustedPos;
+        _draggingInitialBoxTopLeft = _draggingInitialBoxTopLeft! + delta;
+      }
+      return;
+    }
+    // ラベルドラッグ中は位置を追跡
+    if (_isLabelDrag) {
+      final box = context.findRenderObject() as RenderBox?;
+      if (box == null) return;
+      final localPos = box.globalToLocal(details.globalPosition);
+      int sig = _getSignalIndexFromDy(localPos.dy);
+      sig = sig.clamp(0, _visibleIndexes.length - 1);
+      if (sig != _labelDragCurrentRow) {
+        setState(() {
+          _labelDragCurrentRow = sig;
+        });
+      }
+      return; // 既存の選択ドラッグは無視
+    }
+
     if (_dragStartGlobal == null) return;
 
     final box = context.findRenderObject() as RenderBox?;
@@ -382,6 +624,36 @@ class TimingChartState extends State<TimingChart>
 
   @override
   void _onPanEnd(DragEndDetails details) {
+    // コメントドラッグ終了
+    if (_draggingAnnotationId != null) {
+      setState(() {
+        _draggingAnnotationId = null;
+        _draggingStartLocal = null;
+        _draggingInitialBoxTopLeft = null;
+      });
+      _forceRepaint();
+      return;
+    }
+    if (_isLabelDrag) {
+      if (_labelDragStartRow != null &&
+          _labelDragCurrentRow != null &&
+          _labelDragStartRow != _labelDragCurrentRow) {
+        _reorderSignalRows(_labelDragStartRow!, _labelDragCurrentRow!);
+      }
+      setState(() {
+        _isLabelDrag = false;
+        _labelDragStartRow = null;
+        _labelDragCurrentRow = null;
+        // ドラッグ後は選択状態・ハイライトもリセット
+        _startSignalIndex = null;
+        _endSignalIndex = null;
+        _startTimeIndex = null;
+        _endTimeIndex = null;
+      });
+      _forceRepaint();
+      return;
+    }
+
     if (_dragStartGlobal == null) return;
 
     if (_startSignalIndex == _endSignalIndex &&
@@ -392,6 +664,77 @@ class TimingChartState extends State<TimingChart>
     setState(() {
       _dragStartGlobal = null;
     });
+  }
+
+  // ロングプレスでのドラッグ（タッチデバイス向け）
+  void _onLongPressStart(LongPressStartDetails details) {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null) return;
+    final localPos = box.globalToLocal(details.globalPosition);
+    final adjustedPos = Offset(
+      localPos.dx -
+          chartMarginLeft +
+          (_hScrollController.hasClients ? _hScrollController.offset : 0),
+      localPos.dy -
+          chartMarginTop +
+          (_vScrollController.hasClients ? _vScrollController.offset : 0),
+    );
+    for (final entry in _annotationHitRects.entries) {
+      final rect = entry.value;
+      if (rect.contains(adjustedPos)) {
+        setState(() {
+          _draggingAnnotationId = entry.key;
+          _draggingStartLocal = adjustedPos;
+          _draggingInitialBoxTopLeft = rect.topLeft;
+          _selectedAnnotationId = entry.key;
+        });
+        return;
+      }
+    }
+  }
+
+  void _onLongPressMoveUpdate(LongPressMoveUpdateDetails details) {
+    if (_draggingAnnotationId == null || _draggingStartLocal == null) return;
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null) return;
+    final localPos = box.globalToLocal(details.globalPosition);
+    final adjustedPos = Offset(
+      localPos.dx -
+          chartMarginLeft +
+          (_hScrollController.hasClients ? _hScrollController.offset : 0),
+      localPos.dy -
+          chartMarginTop +
+          (_vScrollController.hasClients ? _vScrollController.offset : 0),
+    );
+    final delta = adjustedPos - _draggingStartLocal!;
+    final annIndex = annotations.indexWhere(
+      (a) => a.id == _draggingAnnotationId,
+    );
+    if (annIndex != -1) {
+      final current = annotations[annIndex];
+      final newOffsetX = (current.offsetX ?? 0) + delta.dx;
+      final newOffsetY = (current.offsetY ?? 0) + delta.dy;
+      setState(() {
+        annotations[annIndex] = current.copyWith(
+          offsetX: newOffsetX,
+          offsetY: newOffsetY,
+        );
+        _highlightTimeIndices = [..._highlightTimeIndices];
+        _forceRepaint();
+      });
+      _draggingStartLocal = adjustedPos;
+    }
+  }
+
+  void _onLongPressEnd(LongPressEndDetails details) {
+    if (_draggingAnnotationId != null) {
+      setState(() {
+        _draggingAnnotationId = null;
+        _draggingStartLocal = null;
+        _draggingInitialBoxTopLeft = null;
+      });
+      _forceRepaint();
+    }
   }
 
   @override
@@ -405,12 +748,22 @@ class TimingChartState extends State<TimingChart>
     if (box == null) return;
     final localPos = box.globalToLocal(position);
     final adjustedPos = Offset(
-      localPos.dx - chartMarginLeft,
-      localPos.dy - chartMarginTop,
+      localPos.dx -
+          chartMarginLeft +
+          (_hScrollController.hasClients ? _hScrollController.offset : 0),
+      localPos.dy -
+          chartMarginTop +
+          (_vScrollController.hasClients ? _vScrollController.offset : 0),
     );
 
     // クリックされたタイムインデックスを先に計算しておく
     final int clickedTime = _getTimeIndexFromDx(localPos.dx);
+
+    // 行インデックス（可視行）とラベル領域判定を事前に計算
+    final int clickedSig = _getSignalIndexFromDy(localPos.dy);
+    final bool inLabelArea =
+        localPos.dx >= chartMarginLeft &&
+        localPos.dx <= chartMarginLeft + labelWidth;
 
     String? hitAnnId;
     for (final entry in _annotationHitRects.entries) {
@@ -423,9 +776,22 @@ class TimingChartState extends State<TimingChart>
     List<PopupMenuEntry<String>> menuItems = [];
 
     if (hitAnnId != null) {
+      final ann = annotations.firstWhereOrNull((a) => a.id == hitAnnId);
+      final bool horizontalOn = ann?.arrowHorizontal != false; // null含めON
       menuItems = [
         const PopupMenuItem(value: 'editComment', child: Text('コメントを編集')),
         const PopupMenuItem(value: 'deleteComment', child: Text('コメントを削除')),
+        PopupMenuItem(
+          value: 'toggleArrowHorizontal',
+          child: Text(
+            horizontalOn ? '矢印を水平で引く: ON → OFF' : '矢印を水平で引く: OFF → ON',
+          ),
+        ),
+        if (!(horizontalOn))
+          const PopupMenuItem(
+            value: 'setArrowTipToRow',
+            child: Text('矢印先端をこの信号に設定'),
+          ),
       ];
     } else {
       setState(() {
@@ -446,15 +812,22 @@ class TimingChartState extends State<TimingChart>
 
       menuItems = [
         const PopupMenuItem(value: 'insert', child: Text('選択範囲に0を挿入')),
+        // 追加: 選択範囲を末尾に複製
+        const PopupMenuItem(value: 'duplicate', child: Text('選択範囲を末尾に複製')),
+        const PopupMenuItem(value: 'selectAll', child: Text('全ての信号を選択')),
         const PopupMenuItem(value: 'delete', child: Text('選択範囲を削除')),
         const PopupMenuItem(value: 'addComment', child: Text('コメントを追加')),
         const PopupMenuItem(value: 'omit', child: Text('省略信号を描画')),
       ];
     }
 
+    // マウス位置付近にメニューを配置するため、オーバーレイ全体を基準とした Rect を使用する
     final selectedValue = await showMenu<String>(
       context: context,
-      position: RelativeRect.fromLTRB(position.dx, position.dy, 0, 0),
+      position: RelativeRect.fromRect(
+        Rect.fromLTWH(position.dx, position.dy, 0, 0),
+        Offset.zero & overlay.size,
+      ),
       items: menuItems,
     );
 
@@ -470,9 +843,39 @@ class TimingChartState extends State<TimingChart>
         case 'deleteComment':
           if (hitAnnId != null) _deleteComment(hitAnnId);
           break;
+        case 'toggleArrowHorizontal':
+          if (hitAnnId != null) {
+            final idx = annotations.indexWhere((a) => a.id == hitAnnId);
+            if (idx != -1) {
+              final current = annotations[idx];
+              final bool horizontalOn = current.arrowHorizontal != false;
+              setState(() {
+                annotations[idx] = current.copyWith(
+                  arrowHorizontal: !horizontalOn,
+                );
+                _forceRepaint();
+              });
+            }
+          }
+          break;
+        case 'setArrowTipToRow':
+          if (hitAnnId != null &&
+              clickedSig >= 0 &&
+              clickedSig < _visibleIndexes.length) {
+            _setAnnotationArrowToSignal(hitAnnId, clickedSig);
+          }
+          break;
         case 'insert':
           print("selectedValue = $selectedValue");
           _insertZerosToSelection();
+          break;
+        case 'duplicate':
+          print("selectedValue = $selectedValue");
+          _duplicateRange();
+          break;
+        case 'selectAll':
+          print("selectedValue = $selectedValue");
+          _selectAllSignals();
           break;
         case 'delete':
           print("selectedValue = $selectedValue");
@@ -742,6 +1145,78 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
+  void _duplicateRange() {
+    if (!_hasValidSelection) return;
+
+    // 選択範囲の信号インデックスと時刻インデックスを正規化
+    final stSig = math.min(_startSignalIndex!, _endSignalIndex!);
+    final edSig = math.max(_startSignalIndex!, _endSignalIndex!);
+    final stTime = math.min(_startTimeIndex!, _endTimeIndex!);
+    final edTime = math.max(_startTimeIndex!, _endTimeIndex!);
+
+    // 選択された信号が可視範囲外の場合は処理しない
+    if (stSig < 0 || edSig >= _visibleIndexes.length) return;
+
+    // 追加: 末尾開始オフセットを計算しておく（コメント/省略記号複製用）
+    final int oldMaxLen =
+        signals.isEmpty ? 0 : signals.map((e) => e.length).reduce(math.max);
+
+    setState(() {
+      for (int visibleRow = stSig; visibleRow <= edSig; visibleRow++) {
+        final originalRow = _visibleIndexes[visibleRow];
+        final maxTimeForRow = signals[originalRow].length - 1;
+        final clampedStTime = stTime.clamp(0, maxTimeForRow);
+        final clampedEdTime = edTime.clamp(0, maxTimeForRow);
+        if (clampedStTime > clampedEdTime) continue;
+
+        // 選択範囲のスライスを取得して末尾に追加
+        final slice = signals[originalRow].sublist(
+          clampedStTime,
+          clampedEdTime + 1,
+        );
+        signals[originalRow].addAll(slice);
+      }
+
+      // ---------- アノテーションを複製 ----------
+      final List<TimingChartAnnotation> duplicatedAnnotations = [];
+      for (final ann in annotations) {
+        final annStart = ann.startTimeIndex;
+        final int annEnd = ann.endTimeIndex ?? annStart;
+
+        // 選択範囲とアノテーションが交差しているか判定
+        if (annEnd >= stTime && annStart <= edTime) {
+          final int offset = oldMaxLen - stTime;
+          final newAnn = ann.copyWith(
+            id:
+                'ann${DateTime.now().millisecondsSinceEpoch}_${duplicatedAnnotations.length}',
+            startTimeIndex: annStart + offset,
+            endTimeIndex:
+                ann.endTimeIndex != null ? ann.endTimeIndex! + offset : null,
+          );
+          duplicatedAnnotations.add(newAnn);
+        }
+      }
+      annotations.addAll(duplicatedAnnotations);
+
+      // ---------- 省略記号時刻インデックスを複製 ----------
+      final List<int> newOmissions = [];
+      for (final t in _omissionTimeIndices) {
+        if (t >= stTime && t <= edTime) {
+          newOmissions.add(t + (oldMaxLen - stTime));
+        }
+      }
+      _omissionTimeIndices.addAll(newOmissions);
+
+      // 全信号長を揃える
+      _normalizeSignalLengths();
+      // 選択状態をクリア
+      _clearSelection();
+
+      // 再描画
+      _forceRepaint();
+    });
+  }
+
   @override
   void _normalizeSignalLengths() {
     if (signals.isEmpty) return;
@@ -796,120 +1271,217 @@ class TimingChartState extends State<TimingChart>
 
     // LayoutBuilder により親から渡された制約を取得し、
     // その範囲内でセルサイズを計算する。
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final maxLen =
-            signals.isEmpty
-                ? 0
-                : signals.map((e) => e.length).fold(0, math.max);
+    return RawKeyboardListener(
+      focusNode: _focusNode,
+      autofocus: true,
+      onKey: _handleRawKeyEvent,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final maxLen =
+              signals.isEmpty
+                  ? 0
+                  : signals.map((e) => e.length).fold(0, math.max);
 
-        // 表示対象インデックスを抽出
-        final visibleIndexes = <int>[];
-        for (int i = 0; i < widget.signalTypes.length; i++) {
-          final t = widget.signalTypes[i];
-          if (widget.showAllSignalTypes ||
-              (t != SignalType.control &&
-                  t != SignalType.group &&
-                  t != SignalType.task)) {
-            visibleIndexes.add(i);
+          // 表示対象インデックスを抽出
+          final visibleIndexes = <int>[];
+          for (int i = 0; i < widget.signalTypes.length; i++) {
+            final t = widget.signalTypes[i];
+            if (widget.showAllSignalTypes ||
+                (t != SignalType.control &&
+                    t != SignalType.group &&
+                    t != SignalType.task)) {
+              visibleIndexes.add(i);
+            }
           }
-        }
 
-        // --- 横方向 ---
-        final availableWidth =
-            constraints.maxWidth.isFinite
-                ? constraints.maxWidth - chartMarginLeft - labelWidth
-                : MediaQuery.of(context).size.width -
-                    chartMarginLeft -
-                    labelWidth;
+          // --- 横方向 ---
+          final availableWidth =
+              constraints.maxWidth.isFinite
+                  ? constraints.maxWidth - chartMarginLeft - labelWidth
+                  : MediaQuery.of(context).size.width -
+                      chartMarginLeft -
+                      labelWidth;
 
-        if (widget.fitToScreen) {
-          _cellWidth =
-              maxLen > 0 ? math.max(availableWidth / maxLen, 5.0) : 40.0;
-        } else {
-          _cellWidth =
-              maxLen > 0 ? math.max(availableWidth / maxLen, 20.0) : 40.0;
-        }
-
-        // --- 縦方向 ---
-        double constraintHeight =
-            constraints.maxHeight.isFinite
-                ? constraints.maxHeight
-                : MediaQuery.of(context).size.height;
-
-        if (widget.fitToScreen) {
-          final availableHeight =
-              constraintHeight - chartMarginTop - commentAreaHeight;
-          final visibleRowCount = visibleIndexes.length;
-          if (visibleRowCount > 0) {
-            _cellHeight = math.max(availableHeight / visibleRowCount, 5.0);
+          if (widget.fitToScreen) {
+            _cellWidth =
+                maxLen > 0 ? math.max(availableWidth / maxLen, 5.0) : 40.0;
+          } else {
+            _cellWidth =
+                maxLen > 0 ? math.max(availableWidth / maxLen, 20.0) : 40.0;
           }
-        } else {
-          _cellHeight = 40;
-        }
 
-        final double totalWidth =
-            chartMarginLeft + labelWidth + maxLen * _cellWidth;
-        final double totalHeight =
-            chartMarginTop +
-            visibleIndexes.length * _cellHeight +
-            commentAreaHeight;
+          // ▼ コメントエリアの高さを動的に算出
+          final double commentAreaHeight = _calculateCommentAreaHeight();
 
-        // フィルタ済みリストを作成
-        final visibleSignalNames = [
-          for (final i in visibleIndexes) signalNames[i],
-        ];
-        final visibleSignals = [for (final i in visibleIndexes) signals[i]];
-        final visibleSignalTypes = [
-          for (final i in visibleIndexes) widget.signalTypes[i],
-        ];
+          // --- 縦方向 ---
+          double constraintHeight =
+              constraints.maxHeight.isFinite
+                  ? constraints.maxHeight
+                  : MediaQuery.of(context).size.height;
 
-        _visibleIndexes = visibleIndexes;
+          if (widget.fitToScreen) {
+            final availableHeight =
+                constraintHeight - chartMarginTop - commentAreaHeight;
+            final visibleRowCount = visibleIndexes.length;
+            if (visibleRowCount > 0) {
+              _cellHeight = math.max(availableHeight / visibleRowCount, 5.0);
+            }
+          } else {
+            _cellHeight = 40;
+          }
 
-        return GestureDetector(
-          onPanStart: _onPanStart,
-          onPanUpdate: _onPanUpdate,
-          onPanEnd: _onPanEnd,
-          onTapUp: _handleTap,
-          onSecondaryTapDown:
-              (details) => _showContextMenu(context, details.globalPosition),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
+          final double totalWidth =
+              chartMarginLeft + labelWidth + maxLen * _cellWidth;
+          final double totalHeight =
+              chartMarginTop +
+              visibleIndexes.length * _cellHeight +
+              commentAreaHeight;
+
+          // フィルタ済みリストを作成
+          final visibleSignalNames = [
+            for (final i in visibleIndexes) signalNames[i],
+          ];
+          final visibleSignals = [for (final i in visibleIndexes) signals[i]];
+          final visibleSignalTypes = [
+            for (final i in visibleIndexes) widget.signalTypes[i],
+          ];
+          final visiblePortNumbers = [
+            for (final i in visibleIndexes) widget.portNumbers[i],
+          ];
+
+          _visibleIndexes = visibleIndexes;
+
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onPanDown: (details) {
+              final box = context.findRenderObject() as RenderBox?;
+              if (box == null) return;
+              final localPos = box.globalToLocal(details.globalPosition);
+              final adjustedPos = Offset(
+                localPos.dx -
+                    chartMarginLeft +
+                    (_hScrollController.hasClients
+                        ? _hScrollController.offset
+                        : 0),
+                localPos.dy -
+                    chartMarginTop +
+                    (_vScrollController.hasClients
+                        ? _vScrollController.offset
+                        : 0),
+              );
+              for (final entry in _annotationHitRects.entries) {
+                final rect = entry.value;
+                if (rect.contains(adjustedPos)) {
+                  setState(() {
+                    _draggingAnnotationId = entry.key;
+                    _draggingStartLocal = adjustedPos;
+                    _draggingInitialBoxTopLeft = rect.topLeft;
+                    _selectedAnnotationId = entry.key;
+                  });
+                  break;
+                }
+              }
+            },
+            onPanStart: _onPanStart,
+            onPanUpdate: _onPanUpdate,
+            onPanEnd: _onPanEnd,
+            onLongPressStart: _onLongPressStart,
+            onLongPressMoveUpdate: _onLongPressMoveUpdate,
+            onLongPressEnd: _onLongPressEnd,
+            onTapUp: _handleTap,
+            onSecondaryTapDown:
+                (details) => _showContextMenu(context, details.globalPosition),
             child: SingleChildScrollView(
-              scrollDirection: Axis.vertical,
-              child: RepaintBoundary(
-                child: CustomPaint(
-                  key: _customPaintKey,
-                  isComplex: true,
-                  willChange: true,
-                  size: Size(totalWidth, totalHeight),
-                  painter: _StepTimingChartPainter(
-                    signals: visibleSignals,
-                    signalNames: visibleSignalNames,
-                    signalTypes: visibleSignalTypes,
-                    annotations: annotations,
-                    cellWidth: _cellWidth,
-                    cellHeight: _cellHeight,
-                    labelWidth: labelWidth,
-                    commentAreaHeight: commentAreaHeight,
-                    chartMarginLeft: chartMarginLeft,
-                    chartMarginTop: chartMarginTop,
-                    startSignalIndex: _startSignalIndex,
-                    endSignalIndex: _endSignalIndex,
-                    startTimeIndex: _startTimeIndex,
-                    endTimeIndex: _endTimeIndex,
-                    highlightTimeIndices: _highlightTimeIndices,
-                    omissionTimeIndices: _omissionTimeIndices,
-                    selectedAnnotationId: _selectedAnnotationId,
-                    annotationRects: _annotationHitRects,
-                    showAllSignalTypes: widget.showAllSignalTypes,
+              controller: _hScrollController,
+              scrollDirection: Axis.horizontal,
+              physics:
+                  _draggingAnnotationId != null
+                      ? const NeverScrollableScrollPhysics()
+                      : null,
+              child: SingleChildScrollView(
+                controller: _vScrollController,
+                scrollDirection: Axis.vertical,
+                physics:
+                    _draggingAnnotationId != null
+                        ? const NeverScrollableScrollPhysics()
+                        : null,
+                child: RepaintBoundary(
+                  key: _repaintBoundaryKey,
+                  child: CustomPaint(
+                    key: _customPaintKey,
+                    isComplex: true,
+                    willChange: true,
+                    size: Size(totalWidth, totalHeight),
+                    painter: _StepTimingChartPainter(
+                      signals: visibleSignals,
+                      signalNames: visibleSignalNames,
+                      signalTypes: visibleSignalTypes,
+                      annotations: annotations,
+                      cellWidth: _cellWidth,
+                      cellHeight: _cellHeight,
+                      labelWidth: labelWidth,
+                      commentAreaHeight: commentAreaHeight,
+                      chartMarginLeft: chartMarginLeft,
+                      chartMarginTop: chartMarginTop,
+                      startSignalIndex: _startSignalIndex,
+                      endSignalIndex: _endSignalIndex,
+                      startTimeIndex: _startTimeIndex,
+                      endTimeIndex: _endTimeIndex,
+                      highlightTimeIndices: _highlightTimeIndices,
+                      omissionTimeIndices: _omissionTimeIndices,
+                      selectedAnnotationId: _selectedAnnotationId,
+                      annotationRects: _annotationHitRects,
+                      showAllSignalTypes: widget.showAllSignalTypes,
+                      showIoNumbers: widget.showIoNumbers,
+                      portNumbers: visiblePortNumbers,
+                      labelColor:
+                          Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white
+                              : Colors.black,
+                      dashedColor:
+                          Theme.of(context).brightness == Brightness.dark &&
+                                  Provider.of<SettingsNotifier>(
+                                        context,
+                                      ).commentDashedColor ==
+                                      Colors.black
+                              ? Colors.white
+                              : Provider.of<SettingsNotifier>(
+                                context,
+                              ).commentDashedColor,
+                      arrowColor:
+                          Theme.of(context).brightness == Brightness.dark &&
+                                  Provider.of<SettingsNotifier>(
+                                        context,
+                                      ).commentArrowColor ==
+                                      Colors.black
+                              ? Colors.white
+                              : Provider.of<SettingsNotifier>(
+                                context,
+                              ).commentArrowColor,
+                      omissionColor:
+                          Theme.of(context).brightness == Brightness.dark &&
+                                  Provider.of<SettingsNotifier>(
+                                        context,
+                                      ).omissionLineColor ==
+                                      Colors.black
+                              ? Colors.white
+                              : Provider.of<SettingsNotifier>(
+                                context,
+                              ).omissionLineColor,
+                      omissionFillColor:
+                          Theme.of(context).scaffoldBackgroundColor,
+                      signalColors:
+                          Provider.of<SettingsNotifier>(context).signalColors,
+                      draggingStartRow: _labelDragStartRow,
+                      draggingCurrentRow: _labelDragCurrentRow,
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 
@@ -918,6 +1490,95 @@ class TimingChartState extends State<TimingChart>
     final customPaint = _customPaintKey.currentContext?.findRenderObject();
     if (customPaint is RenderCustomPaint) {
       customPaint.markNeedsPaint();
+    }
+  }
+
+  /// チャート領域全体をPNGとしてキャプチャして返す
+  Future<Uint8List?> captureChartPng({double? pixelRatio}) async {
+    try {
+      final boundary =
+          _repaintBoundaryKey.currentContext?.findRenderObject()
+              as RenderRepaintBoundary?;
+      if (boundary == null) return null;
+      final double pr =
+          pixelRatio ?? MediaQuery.of(context).devicePixelRatio.clamp(1.0, 4.0);
+      final ui.Image image = await boundary.toImage(pixelRatio: pr);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      return byteData?.buffer.asUint8List();
+    } catch (e) {
+      debugPrint('Error capturing chart PNG: $e');
+      return null;
+    }
+  }
+
+  /// チャート領域全体をJPEGとしてキャプチャして返す（背景色・品質指定）
+  Future<Uint8List?> captureChartJpeg({
+    double? pixelRatio,
+    Color? backgroundColor,
+    int quality = 90,
+  }) async {
+    try {
+      final boundary =
+          _repaintBoundaryKey.currentContext?.findRenderObject()
+              as RenderRepaintBoundary?;
+      if (boundary == null) return null;
+      final double pr =
+          pixelRatio ?? MediaQuery.of(context).devicePixelRatio.clamp(1.0, 4.0);
+
+      // まずPNGとして取得（RGBA）
+      final ui.Image image = await boundary.toImage(pixelRatio: pr);
+      final byteData = await image.toByteData(
+        format: ui.ImageByteFormat.rawRgba,
+      );
+      if (byteData == null) return null;
+
+      final width = image.width;
+      final height = image.height;
+      final rgbaBytes = byteData.buffer.asUint8List();
+
+      // 背景色を決定（未指定ならテーマから）
+      final bg =
+          backgroundColor ??
+          (Theme.of(context).brightness == Brightness.dark
+              ? Colors.black
+              : Colors.white);
+
+      // RGBAを背景合成しつつRGBへ変換
+      final int rBg = bg.red;
+      final int gBg = bg.green;
+      final int bBg = bg.blue;
+
+      final Uint8List rgbBytes = Uint8List(width * height * 3);
+      int si = 0; // source index
+      int di = 0; // dest index
+      for (int i = 0; i < width * height; i++) {
+        final int r = rgbaBytes[si];
+        final int g = rgbaBytes[si + 1];
+        final int b = rgbaBytes[si + 2];
+        final int a = rgbaBytes[si + 3];
+        // aは0..255。アルファ合成: out = src * a + bg * (1 - a)
+        final int outR = ((r * a + rBg * (255 - a)) / 255).round();
+        final int outG = ((g * a + gBg * (255 - a)) / 255).round();
+        final int outB = ((b * a + bBg * (255 - a)) / 255).round();
+        rgbBytes[di] = outR;
+        rgbBytes[di + 1] = outG;
+        rgbBytes[di + 2] = outB;
+        si += 4;
+        di += 3;
+      }
+
+      // JPEGエンコード（package:image）
+      final img.Image rgbImage = img.Image.fromBytes(
+        width: width,
+        height: height,
+        bytes: rgbBytes.buffer,
+        numChannels: 3,
+      );
+      final jpg = img.encodeJpg(rgbImage, quality: quality);
+      return Uint8List.fromList(jpg);
+    } catch (e) {
+      debugPrint('Error capturing chart JPEG: $e');
+      return null;
     }
   }
 
@@ -951,6 +1612,122 @@ class TimingChartState extends State<TimingChart>
 
   /// 現在のアノテーション一覧を取得
   List<TimingChartAnnotation> getAnnotations() => List.from(annotations);
+
+  /// 現在チャートで表示されている信号 ID 順序を返す
+  List<String> getSignalIdNames() => List.from(_idSignalNames);
+
+  /// 省略信号(非表示区間)が描画されている時刻インデックス
+  List<int> getOmissionTimeIndices() => List.from(_omissionTimeIndices);
+
+  void setOmission(List<int> indices) {
+    setState(() {
+      _omissionTimeIndices = List<int>.from(indices);
+      _forceRepaint();
+    });
+  }
+
+  // 指定アノテーションの矢印先端を、可視行 index の水平中央に設定
+  void _setAnnotationArrowToSignal(String annId, int visibleRowIndex) {
+    if (visibleRowIndex < 0 || visibleRowIndex >= _visibleIndexes.length)
+      return;
+    final absoluteRowIndex = _visibleIndexes[visibleRowIndex];
+    setState(() {
+      final idx = annotations.indexWhere((a) => a.id == annId);
+      if (idx != -1) {
+        final rowCenterY = (absoluteRowIndex + 0.5) * _cellHeight;
+        annotations[idx] = annotations[idx].copyWith(arrowTipY: rowCenterY);
+        _forceRepaint();
+      }
+    });
+  }
+
+  // ======== キーボードショートカット関連 ========
+  late final FocusNode _focusNode = FocusNode();
+
+  @override
+  void dispose() {
+    suggestionLanguageVersion.removeListener(_langListener);
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _handleRawKeyEvent(RawKeyEvent event) {
+    if (event is! RawKeyDownEvent) return;
+    // Ctrl + A (Mac では Meta + A) を検出
+    final bool isModifierPressed =
+        event.isControlPressed || event.isMetaPressed;
+    if (isModifierPressed && event.logicalKey == LogicalKeyboardKey.keyA) {
+      _selectAllSignals();
+    }
+  }
+
+  // すべての信号を選択する
+  void _selectAllSignals() {
+    if (signals.isEmpty || _visibleIndexes.isEmpty) return;
+    setState(() {
+      _startSignalIndex = 0;
+      _endSignalIndex = _visibleIndexes.length - 1;
+      _startTimeIndex = 0;
+      _endTimeIndex = signals[0].length - 1;
+      _forceRepaint();
+    });
+  }
+
+  // ================= 行入れ替え =================
+  void _moveSignal(int visibleIndex, int direction) {
+    // direction -1: 上へ, 1: 下へ
+    final int targetVisible = visibleIndex + direction;
+    if (targetVisible < 0 || targetVisible >= _visibleIndexes.length) return;
+
+    final int srcIdx = _visibleIndexes[visibleIndex];
+    final int dstIdx = _visibleIndexes[targetVisible];
+
+    setState(() {
+      // --- 値をスワップ ---
+      final tmpSignal = signals[srcIdx];
+      signals[srcIdx] = signals[dstIdx];
+      signals[dstIdx] = tmpSignal;
+
+      final tmpName = signalNames[srcIdx];
+      signalNames[srcIdx] = signalNames[dstIdx];
+      signalNames[dstIdx] = tmpName;
+
+      // widget.signalTypes は final だが List 自体は可変。
+      final tmpType = widget.signalTypes[srcIdx];
+      widget.signalTypes[srcIdx] = widget.signalTypes[dstIdx];
+      widget.signalTypes[dstIdx] = tmpType;
+
+      // ポート番号も同期して入れ替え
+      if (widget.portNumbers.length > srcIdx &&
+          widget.portNumbers.length > dstIdx) {
+        final tmpPort = widget.portNumbers[srcIdx];
+        widget.portNumbers[srcIdx] = widget.portNumbers[dstIdx];
+        widget.portNumbers[dstIdx] = tmpPort;
+      }
+
+      // --- ID 順序も同期 ---
+      final tmpId = _idSignalNames[srcIdx];
+      _idSignalNames[srcIdx] = _idSignalNames[dstIdx];
+      _idSignalNames[dstIdx] = tmpId;
+
+      _forceRepaint();
+    });
+  }
+
+  // -------- 行を任意位置へ移動 --------
+  void _reorderSignalRows(int fromVisible, int toVisible) {
+    if (fromVisible == toVisible) return;
+
+    if (fromVisible < toVisible) {
+      for (int i = fromVisible; i < toVisible; i++) {
+        _moveSignal(i, 1);
+      }
+    } else {
+      for (int i = fromVisible; i > toVisible; i--) {
+        _moveSignal(i, -1);
+      }
+    }
+  }
 }
 
 /// タイミングチャートを描画するカスタムペインター
@@ -980,6 +1757,16 @@ class _StepTimingChartPainter extends CustomPainter {
     required this.selectedAnnotationId,
     required this.annotationRects,
     required this.showAllSignalTypes,
+    required this.showIoNumbers,
+    required this.portNumbers,
+    required this.labelColor,
+    required this.dashedColor,
+    required this.omissionColor,
+    required this.omissionFillColor,
+    required this.arrowColor,
+    required this.signalColors,
+    this.draggingStartRow,
+    this.draggingCurrentRow,
   }) {
     // 各マネージャークラスを初期化
     _annotationsManager = ChartAnnotationsManager(
@@ -989,6 +1776,8 @@ class _StepTimingChartPainter extends CustomPainter {
       labelWidth: labelWidth,
       highlightTimeIndices: highlightTimeIndices,
       selectedAnnotationId: selectedAnnotationId,
+      dashedColor: dashedColor,
+      arrowColor: arrowColor,
     );
 
     _gridManager = ChartGridManager(
@@ -998,6 +1787,12 @@ class _StepTimingChartPainter extends CustomPainter {
       signalNames: signalNames,
       signalTypes: signalTypes,
       showAllSignalTypes: showAllSignalTypes,
+      showIoNumbers: showIoNumbers,
+      portNumbers: portNumbers,
+      labelColor: labelColor,
+      highlightStartRow: startSignalIndex,
+      highlightEndRow: endSignalIndex,
+      highlightTextColor: arrowColor, // 矢印色と統一
     );
 
     _signalsManager = ChartSignalsManager(
@@ -1006,6 +1801,7 @@ class _StepTimingChartPainter extends CustomPainter {
       labelWidth: labelWidth,
       signalTypes: signalTypes,
       showAllSignalTypes: showAllSignalTypes,
+      signalColors: signalColors,
     );
   }
 
@@ -1031,6 +1827,20 @@ class _StepTimingChartPainter extends CustomPainter {
   final String? selectedAnnotationId;
   final Map<String, Rect> annotationRects;
   final bool showAllSignalTypes;
+  final bool showIoNumbers;
+  final List<int> portNumbers;
+  final Map<SignalType, Color> signalColors;
+
+  // Colors
+  final Color labelColor;
+  final Color dashedColor;
+  final Color omissionColor;
+  final Color omissionFillColor;
+  final Color arrowColor;
+
+  // --- ラベルドラッグ用ハイライト ---
+  final int? draggingStartRow;
+  final int? draggingCurrentRow;
 
   // 各種マネージャーインスタンス
   late final ChartAnnotationsManager _annotationsManager;
@@ -1039,6 +1849,9 @@ class _StepTimingChartPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // 描画範囲幅（マージン部分を除いたエリア）
+    final double drawAreaWidth = size.width - chartMarginLeft;
+
     debugPrint('\n=== TimingChart Paint Start ===');
     debugPrint('Canvas Size: $size');
     debugPrint('Chart Margin: Left=$chartMarginLeft, Top=$chartMarginTop');
@@ -1050,6 +1863,38 @@ class _StepTimingChartPainter extends CustomPainter {
 
     // signals, signalNames, signalTypesの長さはすべて一致している前提
     final rowCount = signals.length;
+
+    // 0. ドラッグハイライト（背景）
+    if (draggingStartRow != null) {
+      final paintBg =
+          Paint()
+            ..color = Colors.yellow.withOpacity(0.25)
+            ..style = PaintingStyle.fill;
+      canvas.drawRect(
+        Rect.fromLTWH(
+          0,
+          draggingStartRow! * cellHeight,
+          drawAreaWidth,
+          cellHeight,
+        ),
+        paintBg,
+      );
+    }
+    if (draggingCurrentRow != null) {
+      final paintBg =
+          Paint()
+            ..color = Colors.blue.withOpacity(0.25)
+            ..style = PaintingStyle.fill;
+      canvas.drawRect(
+        Rect.fromLTWH(
+          0,
+          draggingCurrentRow! * cellHeight,
+          drawAreaWidth,
+          cellHeight,
+        ),
+        paintBg,
+      );
+    }
 
     // 描画順序は背景から前景へ：
     debugPrint('\n1. Drawing signal labels');
@@ -1097,7 +1942,7 @@ class _StepTimingChartPainter extends CustomPainter {
     final double chartBottom = rowCount * cellHeight;
     final paint =
         Paint()
-          ..color = Colors.black
+          ..color = omissionColor
           ..strokeWidth = 2.0
           ..style = PaintingStyle.stroke;
 
@@ -1111,6 +1956,7 @@ class _StepTimingChartPainter extends CustomPainter {
         amplitude: 12.0,
         wavelength: 32.0,
         gap: 8.0,
+        fillColor: omissionFillColor,
       );
     }
   }
@@ -1143,12 +1989,20 @@ class _StepTimingChartPainter extends CustomPainter {
     return signalsChanged ||
         signalNames != oldDelegate.signalNames ||
         annotations != oldDelegate.annotations ||
+        labelColor != oldDelegate.labelColor ||
+        dashedColor != oldDelegate.dashedColor ||
+        omissionColor != oldDelegate.omissionColor ||
+        omissionFillColor != oldDelegate.omissionFillColor ||
+        arrowColor != oldDelegate.arrowColor ||
+        !mapEquals(signalColors, oldDelegate.signalColors) ||
         selectedAnnotationId != oldDelegate.selectedAnnotationId ||
         !listEquals(highlightTimeIndices, oldDelegate.highlightTimeIndices) ||
         !listEquals(omissionTimeIndices, oldDelegate.omissionTimeIndices) ||
         startSignalIndex != oldDelegate.startSignalIndex ||
         endSignalIndex != oldDelegate.endSignalIndex ||
         startTimeIndex != oldDelegate.startTimeIndex ||
-        endTimeIndex != oldDelegate.endTimeIndex;
+        endTimeIndex != oldDelegate.endTimeIndex ||
+        showIoNumbers != oldDelegate.showIoNumbers ||
+        portNumbers != oldDelegate.portNumbers;
   }
 }

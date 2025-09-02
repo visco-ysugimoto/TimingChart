@@ -105,7 +105,9 @@ class InputSection extends StatelessWidget {
                               vertical: 10.0,
                             ),
                             filled: true,
-                            fillColor: Colors.grey.shade200,
+                            fillColor: Theme.of(context).brightness == Brightness.dark
+                                ? Colors.grey.shade800
+                                : Colors.grey.shade200,
                             hintText: 'Locked',
                           ),
                         )

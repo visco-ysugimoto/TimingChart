@@ -2,6 +2,20 @@ import 'dart:convert';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter/foundation.dart';
 
+// ==========================================================
+// suggestion_loader.dart の概要と処理フロー
+// 目的: 入力/出力/HWトリガの候補リストをJSONから読み込み、ID→表示名の変換を提供する。
+// 主要機能:
+// - 言語切替: setSuggestionLanguage + ValueNotifier でUI側へ変更通知
+// - ロード手順: 言語別パス → ルート直下のフォールバック の順に探索
+// - フォーマット対応: 新(リスト/オブジェクト)・旧({suggestions: [...]})の両方を許容
+// - 変換キャッシュ: 言語ごとにメモ化し、labelOfId は最初の呼び出し時に3種の候補を結合して辞書化
+// 典型フロー:
+// 1) setSuggestionLanguage で言語を変更 → suggestionLanguageVersion がインクリメントされUIが購読可能
+// 2) loadInput/Output/HwTriggerSuggestions で候補を取得（言語/フォールバック）
+// 3) labelOfId で ID を表示名へ変換（キャッシュが無ければ候補をまとめてロード）
+// ==========================================================
+
 /// 利用可能な言語コード
 enum SuggestionLanguage { en, ja }
 
@@ -21,12 +35,12 @@ void setSuggestionLanguage(SuggestionLanguage lang) {
   suggestionLanguageVersion.value++;
 }
 
+/// 選択中の言語に対応するフォルダ名(ja/en)を返す
 String _folderByLang() {
   switch (_currentLang) {
     case SuggestionLanguage.ja:
       return 'ja';
     case SuggestionLanguage.en:
-    default:
       return 'en';
   }
 }
@@ -44,6 +58,7 @@ class SuggestionItem {
 
 // --------------------- Loader -------------------------
 
+/// JSON(新/旧フォーマット)を SuggestionItem のリストに変換
 List<SuggestionItem> _parseJsonToItems(dynamic decoded) {
   if (decoded is List) {
     // 新フォーマット: List<dynamic>
@@ -69,12 +84,14 @@ List<SuggestionItem> _parseJsonToItems(dynamic decoded) {
   return [];
 }
 
+/// 指定パスのJSONを読み取り、候補に変換
 Future<List<SuggestionItem>> _tryLoad(String path) async {
   final jsonString = await rootBundle.loadString(path);
   final decoded = json.decode(jsonString);
   return _parseJsonToItems(decoded);
 }
 
+/// 言語別→ルートの順に読み込み、最初に見つかった候補を返す
 Future<List<SuggestionItem>> _loadSuggestions(String filename) async {
   // 1. language specific path
   final langPath = 'assets/suggestions/${_folderByLang()}/$filename';

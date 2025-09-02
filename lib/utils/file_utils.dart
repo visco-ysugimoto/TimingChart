@@ -3,11 +3,13 @@ import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:cross_file/cross_file.dart';
+import 'package:excel/excel.dart' as excel;
+// Remove unused imports and dependencies on Flutter Material for this utility file
 import '../models/backup/app_config.dart';
 import '../models/chart/timing_chart_annotation.dart';
-import 'wavedrom_converter.dart';
-import '../suggestion_loader.dart';
 import '../models/chart/signal_data.dart';
+import 'wavedrom_converter.dart';
+import 'dart:typed_data';
 
 /// ファイル操作ユーティリティクラス
 class FileUtils {
@@ -138,43 +140,15 @@ class FileUtils {
   static Future<bool> exportWaveDrom(
     AppConfig config, {
     List<TimingChartAnnotation>? annotations,
+    List<int>? omissionIndices,
     String? customFileName,
   }) async {
-    // --- 追加: ID を現在の言語のラベルへ置き換えた Config を作成 ---
-    Future<AppConfig> _translatedConfig(AppConfig cfg) async {
-      // 信号名を変換
-      final translatedSignals = <SignalData>[];
-      for (final s in cfg.signals) {
-        translatedSignals.add(s.copyWith(name: await labelOfId(s.name)));
-      }
-
-      // 各名前リストを変換
-      Future<List<String>> _translateList(List<String> list) async {
-        return Future.wait(list.map((id) => labelOfId(id)));
-      }
-
-      final inputNames = await _translateList(cfg.inputNames);
-      final outputNames = await _translateList(cfg.outputNames);
-      final hwTriggerNames = await _translateList(cfg.hwTriggerNames);
-
-      return AppConfig(
-        formState: cfg.formState,
-        signals: translatedSignals,
-        tableData: cfg.tableData,
-        inputNames: inputNames,
-        outputNames: outputNames,
-        hwTriggerNames: hwTriggerNames,
-        inputVisibility: cfg.inputVisibility,
-        outputVisibility: cfg.outputVisibility,
-        hwTriggerVisibility: cfg.hwTriggerVisibility,
-        rowModes: cfg.rowModes,
-      );
-    }
+    // 以前は UI 言語に応じてラベルへ変換していたが、
+    // デスクトップ運用では ID をそのまま保持した方が
+    // インポート／エクスポート往復時に情報欠落がないため
+    // 変換処理をスキップする。
 
     try {
-      // まず変換済み Config を取得
-      final translated = await _translatedConfig(config);
-
       // ファイル名生成
       final now = DateTime.now();
       final formattedDate =
@@ -182,10 +156,11 @@ class FileUtils {
       final defaultFileName = 'timing_wave_$formattedDate.json';
       final fileName = customFileName ?? defaultFileName;
 
-      // WaveDrom JSON 文字列を取得
+      // WaveDrom JSON 文字列を取得（ID そのまま）
       final wavedromJson = WaveDromConverter.toWaveDromJson(
-        translated,
+        config,
         annotations: annotations,
+        omissionIndices: omissionIndices,
       );
 
       // 保存先選択
@@ -212,6 +187,253 @@ class FileUtils {
       return true;
     } catch (e) {
       print('Error exporting WaveDrom: $e');
+      return false;
+    }
+  }
+
+  /// PNG バイト列を保存する（保存ダイアログあり）
+  static Future<bool> exportPngBytes(
+    Uint8List bytes, {
+    String? customFileName,
+  }) async {
+    try {
+      final now = DateTime.now();
+      final formattedDate =
+          '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}';
+      final defaultFileName = 'timing_chart_$formattedDate.png';
+      final fileName = customFileName ?? defaultFileName;
+
+      String? outputFile = await FilePicker.platform.saveFile(
+        dialogTitle: 'チャート画像 (PNG) の保存先を選択',
+        fileName: fileName,
+        allowedExtensions: ['png'],
+        type: FileType.custom,
+      );
+
+      if (outputFile == null) return false;
+      if (!outputFile.toLowerCase().endsWith('.png')) {
+        outputFile += '.png';
+      }
+
+      final file = File(outputFile);
+      await file.writeAsBytes(bytes);
+      return true;
+    } catch (e) {
+      print('Error exporting PNG: $e');
+      return false;
+    }
+  }
+
+  /// JPEG バイト列を保存する（保存ダイアログあり）
+  static Future<bool> exportJpegBytes(
+    Uint8List bytes, {
+    String? customFileName,
+  }) async {
+    try {
+      final now = DateTime.now();
+      final formattedDate =
+          '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}';
+      final defaultFileName = 'timing_chart_$formattedDate.jpg';
+      final fileName = customFileName ?? defaultFileName;
+
+      String? outputFile = await FilePicker.platform.saveFile(
+        dialogTitle: 'チャート画像 (JPEG) の保存先を選択',
+        fileName: fileName,
+        allowedExtensions: ['jpg', 'jpeg'],
+        type: FileType.custom,
+      );
+
+      if (outputFile == null) return false;
+      final lower = outputFile.toLowerCase();
+      if (!lower.endsWith('.jpg') && !lower.endsWith('.jpeg')) {
+        outputFile += '.jpg';
+      }
+
+      final file = File(outputFile);
+      await file.writeAsBytes(bytes);
+      return true;
+    } catch (e) {
+      print('Error exporting JPEG: $e');
+      return false;
+    }
+  }
+
+  /// XLSX形式でIO情報とチャートデータをエクスポート
+  static Future<bool> exportXlsx({
+    required List<String> inputNames,
+    required List<String> outputNames,
+    required List<String> hwTriggerNames,
+    required List<SignalData> chartSignals,
+    String? customFileName,
+  }) async {
+    try {
+      final now = DateTime.now();
+      final formattedDate =
+          '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}';
+      final defaultFileName = 'timing_chart_export_$formattedDate.xlsx';
+      final fileName = customFileName ?? defaultFileName;
+
+      // Excel ワークブックを作成
+      final excelFile = excel.Excel.createExcel();
+      final sheet = excelFile['Sheet1'];
+
+      // ヘッダー行の設定
+      sheet
+          .cell(excel.CellIndex.indexByString('A1'))
+          .value = excel.TextCellValue('IO番号');
+      sheet
+          .cell(excel.CellIndex.indexByString('B1'))
+          .value = excel.TextCellValue('Input');
+      sheet
+          .cell(excel.CellIndex.indexByString('C1'))
+          .value = excel.TextCellValue('Output');
+      sheet
+          .cell(excel.CellIndex.indexByString('D1'))
+          .value = excel.TextCellValue('HW Trigger');
+
+      // チャート信号名のヘッダーを10列目（J列）から開始
+      int chartStartCol = 9; // J列のインデックス（0ベース）
+      sheet
+          .cell(
+            excel.CellIndex.indexByColumnRow(
+              columnIndex: chartStartCol,
+              rowIndex: 0,
+            ),
+          )
+          .value = excel.TextCellValue('Signal Names');
+
+      // 1. IO情報の記載（1-4列目）
+      final maxIoRows = [
+        inputNames.length,
+        outputNames.length,
+        hwTriggerNames.length,
+      ].reduce((a, b) => a > b ? a : b);
+
+      for (int i = 0; i < maxIoRows; i++) {
+        // IO番号（A列）- 1から開始
+        sheet
+            .cell(
+              excel.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: i + 1),
+            )
+            .value = excel.IntCellValue(i + 1);
+
+        // Input名前（B列）
+        if (i < inputNames.length && inputNames[i].isNotEmpty) {
+          sheet
+              .cell(
+                excel.CellIndex.indexByColumnRow(
+                  columnIndex: 1,
+                  rowIndex: i + 1,
+                ),
+              )
+              .value = excel.TextCellValue(inputNames[i]);
+        }
+
+        // Output名前（C列）
+        if (i < outputNames.length && outputNames[i].isNotEmpty) {
+          sheet
+              .cell(
+                excel.CellIndex.indexByColumnRow(
+                  columnIndex: 2,
+                  rowIndex: i + 1,
+                ),
+              )
+              .value = excel.TextCellValue(outputNames[i]);
+        }
+
+        // HW Trigger名前（D列）
+        if (i < hwTriggerNames.length && hwTriggerNames[i].isNotEmpty) {
+          sheet
+              .cell(
+                excel.CellIndex.indexByColumnRow(
+                  columnIndex: 3,
+                  rowIndex: i + 1,
+                ),
+              )
+              .value = excel.TextCellValue(hwTriggerNames[i]);
+        }
+      }
+
+      // 2. チャート情報の記載（10列目以降）
+      if (chartSignals.isNotEmpty) {
+        // 信号名をJ列（10列目）に記載
+        for (int i = 0; i < chartSignals.length; i++) {
+          sheet
+              .cell(
+                excel.CellIndex.indexByColumnRow(
+                  columnIndex: chartStartCol,
+                  rowIndex: i + 1,
+                ),
+              )
+              .value = excel.TextCellValue(chartSignals[i].name);
+        }
+
+        // 各信号の波形をK列（11列目）以降に描画
+        int maxSignalLength =
+            chartSignals.isNotEmpty
+                ? chartSignals
+                    .map((s) => s.values.length)
+                    .reduce((a, b) => a > b ? a : b)
+                : 0;
+
+        for (
+          int signalIndex = 0;
+          signalIndex < chartSignals.length;
+          signalIndex++
+        ) {
+          final signal = chartSignals[signalIndex];
+          int rowIndex = signalIndex + 1;
+
+          for (int timeIndex = 0; timeIndex < maxSignalLength; timeIndex++) {
+            int colIndex = chartStartCol + 1 + timeIndex; // K列から開始
+
+            bool isHigh = false;
+            if (timeIndex < signal.values.length) {
+              isHigh = signal.values[timeIndex] != 0;
+            }
+
+            // セルの値を設定（1=High, 0=Low）
+            final cellIndex = excel.CellIndex.indexByColumnRow(
+              columnIndex: colIndex,
+              rowIndex: rowIndex,
+            );
+            sheet.cell(cellIndex).value = excel.IntCellValue(isHigh ? 1 : 0);
+
+            // セルの背景色でHigh/Lowを表現（スタイル設定は複雑なため、基本的な値のみ設定）
+            // High=1, Low=0として値を設定することで、Excelでユーザが条件付き書式を適用可能
+            // 必要に応じて後でスタイル設定を追加可能
+          }
+        }
+      }
+
+      // ファイル保存ダイアログを表示
+      String? outputFile = await FilePicker.platform.saveFile(
+        dialogTitle: 'XLSXファイルの保存先を選択',
+        fileName: fileName,
+        allowedExtensions: ['xlsx'],
+        type: FileType.custom,
+      );
+
+      if (outputFile == null) {
+        return false; // ユーザーがキャンセルした場合
+      }
+
+      // 拡張子の確認と追加
+      if (!outputFile.toLowerCase().endsWith('.xlsx')) {
+        outputFile += '.xlsx';
+      }
+
+      // ファイルへの書き込み
+      final fileBytes = excelFile.save();
+      if (fileBytes != null) {
+        final file = File(outputFile);
+        await file.writeAsBytes(fileBytes);
+        return true;
+      } else {
+        return false;
+      }
+    } catch (e) {
+      print('Error exporting XLSX: $e');
       return false;
     }
   }

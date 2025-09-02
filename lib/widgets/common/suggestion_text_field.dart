@@ -97,7 +97,7 @@ class _SuggestionTextFieldState extends State<SuggestionTextField> {
   @override
   void dispose() {
     widget.controller.removeListener(_onExternalControllerChanged);
-    
+
     // 他のコントローラーのリスナーを削除
     if (widget.enableDuplicateCheck && widget.excludeControllers != null) {
       for (var controller in widget.excludeControllers!) {
@@ -106,7 +106,7 @@ class _SuggestionTextFieldState extends State<SuggestionTextField> {
         }
       }
     }
-    
+
     _detachSyncListener();
     _internalController.dispose();
     suggestionLanguageVersion.removeListener(_langListener);
@@ -118,14 +118,14 @@ class _SuggestionTextFieldState extends State<SuggestionTextField> {
     if (!widget.enableDuplicateCheck || widget.excludeControllers == null) {
       return <String>{};
     }
-    
+
     Set<String> usedValues = {};
     for (var controller in widget.excludeControllers!) {
       if (controller != widget.controller && controller.text.isNotEmpty) {
         usedValues.add(controller.text);
       }
     }
-    
+
     // デバッグログ
     print('重複チェック - 使用済み値: $usedValues');
     return usedValues;
@@ -136,14 +136,19 @@ class _SuggestionTextFieldState extends State<SuggestionTextField> {
     if (!widget.enableDuplicateCheck) {
       return suggestions;
     }
-    
+
     final usedValues = _getUsedValues();
-    final filtered = suggestions.where((item) => !usedValues.contains(item.id)).toList();
-    
+    final filtered =
+        suggestions.where((item) => !usedValues.contains(item.id)).toList();
+
     // デバッグログ
-    print('候補フィルタリング - 元の候補数: ${suggestions.length}, フィルタ後: ${filtered.length}');
-    print('除外された候補: ${suggestions.where((item) => usedValues.contains(item.id)).map((e) => e.label).toList()}');
-    
+    print(
+      '候補フィルタリング - 元の候補数: ${suggestions.length}, フィルタ後: ${filtered.length}',
+    );
+    print(
+      '除外された候補: ${suggestions.where((item) => usedValues.contains(item.id)).map((e) => e.label).toList()}',
+    );
+
     return filtered;
   }
 
@@ -152,15 +157,15 @@ class _SuggestionTextFieldState extends State<SuggestionTextField> {
     if (!widget.enableDuplicateCheck || labelValue.isEmpty) {
       return false;
     }
-    
+
     // 入力されたlabelをidに変換
     final inputId = _labelToId(labelValue);
     final usedValues = _getUsedValues();
     final isDuplicate = usedValues.contains(inputId);
-    
+
     // デバッグログ
     print('重複チェック - 入力: "$labelValue", ID: "$inputId", 重複: $isDuplicate');
-    
+
     return isDuplicate;
   }
 
@@ -205,9 +210,11 @@ class _SuggestionTextFieldState extends State<SuggestionTextField> {
       builder: (context, snapshot) {
         List<SuggestionItem> suggestions = snapshot.data ?? [];
         _latestItems = suggestions;
-        
+
         // 重複チェックが有効な場合は候補をフィルタリング
-        List<SuggestionItem> filteredSuggestions = _filterSuggestions(suggestions);
+        List<SuggestionItem> filteredSuggestions = _filterSuggestions(
+          suggestions,
+        );
 
         return Autocomplete<SuggestionItem>(
           key: ValueKey(
@@ -255,16 +262,27 @@ class _SuggestionTextFieldState extends State<SuggestionTextField> {
               builder: (context, value, child) {
                 // 重複チェック
                 bool isDuplicate = _isDuplicate(value.text);
-                
+
+                final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
+                // デフォルトの塗りつぶし色（テーマ優先）
+                final defaultFill = Theme.of(context).inputDecorationTheme.fillColor ??
+                    (isDark ? Colors.grey.shade800 : Colors.white);
+
+                // 値が入力されている／重複している場合のハイライト色を決定
                 Color backgroundColor;
                 if (isDuplicate) {
-                  backgroundColor = Colors.red.withOpacity(0.2); // 重複時は赤
+                  backgroundColor = isDark
+                      ? Colors.red.withOpacity(0.35)
+                      : Colors.red.withOpacity(0.2);
                 } else if (value.text.isNotEmpty) {
-                  backgroundColor = Colors.lightBlueAccent.withOpacity(0.2);
+                  // アクセントカラーを利用して入力済みをハイライト
+                  final accent = Theme.of(context).colorScheme.secondary;
+                  backgroundColor = accent.withOpacity(isDark ? 0.35 : 0.2);
                 } else {
-                  backgroundColor = Colors.white;
+                  backgroundColor = defaultFill;
                 }
-                
+
                 return Container(
                   color: backgroundColor,
                   child: TextField(
@@ -274,7 +292,8 @@ class _SuggestionTextFieldState extends State<SuggestionTextField> {
                       labelText: widget.label,
                       border: const OutlineInputBorder(),
                       filled: true,
-                      fillColor: Colors.transparent,
+                      // テキストフィールド本体の塗りつぶし色にも同じ色を適用
+                      fillColor: backgroundColor,
                       errorText: isDuplicate ? '重複した値です' : null,
                     ),
                     onSubmitted: (_) => onFieldSubmitted(),

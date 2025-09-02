@@ -13,7 +13,7 @@ meta:
   scheduling:
     camera_order: ascending            # ascending / descending / custom
     respect_rowmode_simultaneous: true # 行が simultaneous の場合はカメラ同時露光
-    min_gap_seq: 3                     # sequential 露光間隔 (samples)
+    min_gap_seq: 4                    # sequential 露光間隔 (samples)
     custom_strategy: null              # 将来のカスタム戦略名 (plugin id 等)
 
 # -------------------------------------------------------
@@ -51,7 +51,7 @@ signals:
     mode_map:
       mode1:
         pattern: seq
-        min_gap: 3
+        min_gap: 4
       mode2:
         pattern: contact_wait
       mode3:
@@ -68,7 +68,7 @@ signals:
   AUTO_MODE:
     init: 0
     transitions:  
-      - at: 2
+      - at: 1
         to: 1
     sticky: true                       # 立ち下がらない
 

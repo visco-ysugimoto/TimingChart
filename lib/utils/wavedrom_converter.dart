@@ -16,34 +16,30 @@ class WaveDromConverter {
   static String toWaveDromJson(
     AppConfig config, {
     List<TimingChartAnnotation>? annotations,
+    List<int>? omissionIndices,
   }) {
-    // 1. 信号部（入力 → HWトリガ → 出力 の順で、欠番も保持）
+    // 1. 波形長を決定
     final int defaultLength =
-        config.signals.isNotEmpty ? config.signals.first.values.length : 32;
+        config.signals.isNotEmpty
+            ? config.signals
+                .map((s) => s.values.length)
+                .reduce((a, b) => a > b ? a : b)
+            : 32;
 
-    final Map<String, SignalData> _sigMap = {
-      for (final s in config.signals) s.name: s,
-    };
-
+    // 2. チャート画面順で wave を生成
     List<Map<String, dynamic>> waveSignal = [];
 
-    // ヘルパー
-    String _waveForName(String name) {
-      if (name.isNotEmpty && _sigMap.containsKey(name)) {
-        return _valuesToWave(_sigMap[name]!.values);
+    String _padAndConvert(List<int> original) {
+      final padded = List<int>.from(original);
+      while (padded.length < defaultLength) {
+        padded.add(0);
       }
-      return _valuesToWave(List.filled(defaultLength, 0));
+      return _valuesToWave(padded);
     }
 
-    void _appendSignals(List<String> names) {
-      for (final name in names) {
-        waveSignal.add({'name': name, 'wave': _waveForName(name)});
-      }
+    for (final s in config.signals) {
+      waveSignal.add({'name': s.name, 'wave': _padAndConvert(s.values)});
     }
-
-    _appendSignals(config.inputNames);
-    _appendSignals(config.hwTriggerNames);
-    _appendSignals(config.outputNames);
 
     // 2. アノテーションを node/edge で表現 (WaveDrom v1)
     if (annotations != null &&
@@ -97,17 +93,65 @@ class WaveDromConverter {
         'node': nodeString,
       });
 
+      // このブロックは annotations が非null・非空であることが事前条件
+      final List<TimingChartAnnotation> annList = annotations;
+      final List<int> omitList =
+          (omissionIndices != null) ? omissionIndices : config.omissionIndices;
+
       final wavedromJson = {
         'signal': waveSignal,
         'edge': edgeList,
-        'config': _buildConfig(config),
+        if (omitList.isNotEmpty) 'omission': omitList,
+        // config には最新の annotations を入れる（引数優先）
+        'config': _buildConfig(
+          AppConfig(
+            formState: config.formState,
+            signals: config.signals,
+            tableData: config.tableData,
+            inputNames: config.inputNames,
+            outputNames: config.outputNames,
+            hwTriggerNames: config.hwTriggerNames,
+            inputVisibility: config.inputVisibility,
+            outputVisibility: config.outputVisibility,
+            hwTriggerVisibility: config.hwTriggerVisibility,
+            rowModes: config.rowModes,
+            annotations: annList,
+            omissionIndices: omitList,
+          ),
+        ),
       };
 
       return const JsonEncoder.withIndent('  ').convert(wavedromJson);
     }
 
     // アノテーションなしの場合
-    final wavedromJson = {'signal': waveSignal, 'config': _buildConfig(config)};
+    final List<TimingChartAnnotation> annList2 =
+        (annotations != null && annotations.isNotEmpty)
+            ? annotations
+            : config.annotations;
+    final List<int> omitList2 =
+        (omissionIndices != null) ? omissionIndices : config.omissionIndices;
+
+    final wavedromJson = {
+      'signal': waveSignal,
+      if (omitList2.isNotEmpty) 'omission': omitList2,
+      'config': _buildConfig(
+        AppConfig(
+          formState: config.formState,
+          signals: config.signals,
+          tableData: config.tableData,
+          inputNames: config.inputNames,
+          outputNames: config.outputNames,
+          hwTriggerNames: config.hwTriggerNames,
+          inputVisibility: config.inputVisibility,
+          outputVisibility: config.outputVisibility,
+          hwTriggerVisibility: config.hwTriggerVisibility,
+          rowModes: config.rowModes,
+          annotations: annList2,
+          omissionIndices: omitList2,
+        ),
+      ),
+    };
     return const JsonEncoder.withIndent('  ').convert(wavedromJson);
   }
 
@@ -131,6 +175,25 @@ class WaveDromConverter {
   /// エクスポート用の設定メタデータを生成
   static Map<String, dynamic> _buildConfig(AppConfig config) {
     return {
+      'chartOrder': config.signals.map((s) => s.name).toList(),
+      'annotations':
+          config.annotations
+              .map(
+                (a) => {
+                  'id': a.id,
+                  'start': a.startTimeIndex,
+                  // range でなければ null を出力（新仕様）
+                  'end': a.endTimeIndex,
+                  'text': a.text,
+                  if (a.offsetX != null) 'offsetX': a.offsetX,
+                  if (a.offsetY != null) 'offsetY': a.offsetY,
+                  if (a.arrowTipY != null) 'arrowTipY': a.arrowTipY,
+                  if (a.arrowHorizontal != null)
+                    'arrowHorizontal': a.arrowHorizontal,
+                },
+              )
+              .toList(),
+      'omissionIndices': config.omissionIndices,
       'triggerOption': config.formState.triggerOption,
       'ioPort': config.formState.ioPort,
       'hwPort': config.formState.hwPort,
@@ -168,6 +231,7 @@ class WaveDromConverter {
     final Map<String, dynamic> cfg = Map<String, dynamic>.from(
       map['config'] ?? {},
     );
+    final List<dynamic> edgeList = map['edge'] ?? []; // Get edge list
 
     // --- TimingFormState ---
     final formState = TimingFormState(
@@ -225,10 +289,101 @@ class WaveDromConverter {
             .toList() ??
         [];
 
-    // --- テーブルデータ (カメラテーブル) ---
-    // 循環依存を避けるため、ここでは空リストを設定し、
-    // インポート後に UI 側で再生成してもらう。
-    final List<List<CellMode>> tableData = [];
+    // --- アノテーション ---
+    List<TimingChartAnnotation> annotations =
+        ((cfg['annotations'] ?? []) as List)
+            .map(
+              (e) => TimingChartAnnotation(
+                id: e['id']?.toString() ?? '',
+                startTimeIndex: e['start'] ?? 0,
+                endTimeIndex: e['end'],
+                text: e['text']?.toString() ?? '',
+                offsetX: (e['offsetX'] as num?)?.toDouble(),
+                offsetY: (e['offsetY'] as num?)?.toDouble(),
+                arrowTipY: (e['arrowTipY'] as num?)?.toDouble(),
+                arrowHorizontal: e['arrowHorizontal'] as bool?,
+              ),
+            )
+            .toList();
+
+    // config に annotations がない場合、v1互換の node/edge から読み取りを試みる
+    if (annotations.isEmpty && edgeList.isNotEmpty) {
+      String? nodeString;
+      for (final s in signalList) {
+        if (s is Map<String, dynamic> && s.containsKey('node')) {
+          nodeString = s['node'] as String?;
+          break;
+        }
+      }
+
+      if (nodeString != null) {
+        final nodeMap = <String, int>{};
+        for (int i = 0; i < nodeString.length; i++) {
+          final char = nodeString[i];
+          if (char != '.') {
+            nodeMap[char] = i;
+          }
+        }
+
+        int annIdCounter = 0;
+        for (final edge in edgeList.cast<String>()) {
+          final parts = edge.split(RegExp(r'\s+'));
+          if (parts.isEmpty) continue;
+
+          final nodes = parts[0];
+          final text = parts.length > 1 ? parts.sublist(1).join(' ') : '';
+
+          if (nodes.contains('<->')) {
+            final markers = nodes.split('<->');
+            if (markers.length == 2) {
+              final startMarker = markers[0];
+              final endMarker = markers[1];
+              final startIdx = nodeMap[startMarker];
+              final endIdx = nodeMap[endMarker];
+
+              if (startIdx != null && endIdx != null) {
+                annotations.add(
+                  TimingChartAnnotation(
+                    id: 'ann${annIdCounter++}',
+                    startTimeIndex: startIdx,
+                    endTimeIndex: endIdx,
+                    text: text,
+                  ),
+                );
+              }
+            }
+          } else {
+            final marker = nodes;
+            final idx = nodeMap[marker];
+            if (idx != null) {
+              annotations.add(
+                TimingChartAnnotation(
+                  id: 'ann${annIdCounter++}',
+                  startTimeIndex: idx,
+                  endTimeIndex: idx, // Point annotation
+                  text: text,
+                ),
+              );
+            }
+          }
+        }
+      }
+    }
+
+    // --- 省略区間 ---
+    final List<int> omissionIndices =
+        ((map['omission'] ?? cfg['omissionIndices'] ?? []) as List)
+            .map((e) => e as int)
+            .toList();
+
+    // --- カメラテーブル ---
+    final List<List<CellMode>> tableData =
+        ((cfg['cameraTable'] ?? []) as List)
+            .map(
+              (row) =>
+                  (row as List).map((idx) => CellMode.values[idx]).toList(),
+            )
+            .toList();
 
     // --- 波形を数値列へ変換 ---
     List<int> _waveToValues(String wave) {
@@ -250,9 +405,54 @@ class WaveDromConverter {
     }
 
     // --- SignalData 列を生成 ---
+    // config.chartOrder を元に表示順を並べ替え
+    List<dynamic> effectiveSignalList = signalList;
+    final List<dynamic>? chartOrder = cfg['chartOrder'] as List<dynamic>?;
+
+    if (chartOrder != null && chartOrder.isNotEmpty) {
+      final List<String> order = chartOrder.cast<String>();
+      final List<dynamic> sortedSignalList = [];
+
+      final Map<String, Map<String, dynamic>> signalMap = {};
+      final List<Map<String, dynamic>> signalsWithNoNameOrNode = [];
+      for (var s in signalList) {
+        if (s is Map<String, dynamic>) {
+          final name = s['name']?.toString() ?? '';
+          // node を持つ信号は特別扱いして、最後に回す
+          if (name.isNotEmpty) {
+            signalMap[name] = s;
+          } else {
+            signalsWithNoNameOrNode.add(s);
+          }
+        }
+      }
+
+      final Set<String> addedSignals = {};
+
+      // chartOrder に従って信号を追加
+      for (final name in order) {
+        if (signalMap.containsKey(name)) {
+          sortedSignalList.add(signalMap[name]!);
+          addedSignals.add(name);
+        }
+      }
+
+      // chartOrder に含まれなかった残りの信号を追加
+      for (final entry in signalMap.entries) {
+        if (!addedSignals.contains(entry.key)) {
+          sortedSignalList.add(entry.value);
+        }
+      }
+
+      // 名無し信号 (アノテーション行など) を最後に追加
+      sortedSignalList.addAll(signalsWithNoNameOrNode);
+
+      effectiveSignalList = sortedSignalList;
+    }
+
     final List<SignalData> signals = [];
     int sigIdx = 0;
-    for (final s in signalList) {
+    for (final s in effectiveSignalList) {
       if (s is Map<String, dynamic>) {
         final name = s['name']?.toString() ?? '';
         final waveStr = s['wave']?.toString() ?? '';
@@ -291,6 +491,8 @@ class WaveDromConverter {
       outputVisibility: outputVisibility,
       hwTriggerVisibility: hwTriggerVisibility,
       rowModes: rowModes,
+      annotations: annotations,
+      omissionIndices: omissionIndices,
     );
   }
 }

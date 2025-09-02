@@ -11,6 +11,7 @@ class ChartSignalsManager {
   final double labelWidth;
   final List<SignalType> signalTypes;
   final bool showAllSignalTypes;
+  final Map<SignalType, Color> signalColors;
   static const double waveAmplitude = 10;
 
   ChartSignalsManager({
@@ -18,21 +19,13 @@ class ChartSignalsManager {
     required this.cellHeight,
     required this.labelWidth,
     required this.signalTypes,
+    required this.signalColors,
     this.showAllSignalTypes = false,
   });
 
   /// 信号タイプに基づいて色を返す
   Color _getColorForSignalType(SignalType type) {
-    switch (type) {
-      case SignalType.input:
-        return Colors.blue;
-      case SignalType.output:
-        return Colors.red;
-      case SignalType.hwTrigger:
-        return Colors.green;
-      default:
-        return Colors.grey;
-    }
+    return signalColors[type] ?? Colors.grey;
   }
 
   /// 信号波形を描画
@@ -42,7 +35,11 @@ class ChartSignalsManager {
 
     for (int row = 0; row < signals.length; row++) {
       final rowData = signals[row];
-      final yOffset = visibleRow * cellHeight + (cellHeight / 2);
+      // 各行内でのHigh/Low位置を計算
+      final double yLow =
+          visibleRow * cellHeight + cellHeight * 0.75; // 行下端から25%
+      final double yHigh =
+          visibleRow * cellHeight + cellHeight * 0.25; // 現行位置（上端から25%）
 
       // 信号タイプに基づいて色を設定
       final currentSignalType =
@@ -71,9 +68,8 @@ class ChartSignalsManager {
         final xStart = labelWidth + t * cellWidth;
         final xEnd = labelWidth + (t + 1) * cellWidth;
 
-        final yCurrent =
-            (currentValue == 1) ? (yOffset - waveAmplitude) : yOffset;
-        final yNext = (nextValue == 1) ? (yOffset - waveAmplitude) : yOffset;
+        final yCurrent = (currentValue != 0) ? yHigh : yLow;
+        final yNext = (nextValue != 0) ? yHigh : yLow;
 
         // 水平線
         canvas.drawLine(
@@ -98,7 +94,7 @@ class ChartSignalsManager {
         final lastValue = rowData[lastIndex];
         final xStart = labelWidth + lastIndex * cellWidth;
         final xEnd = labelWidth + (lastIndex + 1) * cellWidth;
-        final yLast = (lastValue == 1) ? (yOffset - waveAmplitude) : yOffset;
+        final yLast = (lastValue != 0) ? yHigh : yLow;
         canvas.drawLine(Offset(xStart, yLast), Offset(xEnd, yLast), paintLine);
       }
 
@@ -270,7 +266,7 @@ class _ChartSignalsPainter extends CustomPainter {
 
       final x = mapper.mapTimeToX(time);
       final y =
-          value == 1
+          value != 0
               ? mapper.getSignalHighY(signalIndex)
               : mapper.getSignalLowY(signalIndex);
 
@@ -361,15 +357,15 @@ class ChartSignalsPainter extends CustomPainter {
           final currentX = mapper.mapTimeToX(currentTime);
 
           // Y座標を計算
-          final currentY = (currentValue == 1) ? signalYHigh : signalYLow;
-          final lastY = (lastValue == 1) ? signalYHigh : signalYLow;
+          final currentY = (currentValue != 0) ? signalYHigh : signalYLow;
+          final lastY = (lastValue != 0) ? signalYHigh : signalYLow;
 
           // 水平線を描画
           if (t > 0) {
             canvas.drawLine(
               Offset(lastX, lastY),
               Offset(currentX, lastY),
-              (lastValue == 1) ? highPaint : lowPaint,
+              (lastValue != 0) ? highPaint : lowPaint,
             );
           }
 
@@ -389,11 +385,11 @@ class ChartSignalsPainter extends CustomPainter {
         // 最後の値から右端までの線を描画
         final endX = mapper.leftPadding + mapper.chartAreaWidth;
         if (endX > lastX) {
-          final lastY = (lastValue == 1) ? signalYHigh : signalYLow;
+          final lastY = (lastValue != 0) ? signalYHigh : signalYLow;
           canvas.drawLine(
             Offset(lastX, lastY),
             Offset(endX, lastY),
-            (lastValue == 1) ? highPaint : lowPaint,
+            (lastValue != 0) ? highPaint : lowPaint,
           );
         }
       }

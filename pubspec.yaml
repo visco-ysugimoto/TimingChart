@@ -50,6 +50,9 @@ dependencies:
   cross_file: ^0.3.3+7
   # モダンなフォント用
   google_fonts: ^6.1.0
+  # XLSXファイル作成用
+  excel: ^4.0.6
+  image: ^4.1.7
 
 dev_dependencies:
   flutter_test:

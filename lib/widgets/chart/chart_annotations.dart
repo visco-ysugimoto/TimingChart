@@ -4,6 +4,18 @@ import 'chart_coordinate_mapper.dart';
 import 'dart:math' as math;
 import 'chart_drawing_util.dart';
 
+// コメントボックス再描画用データクラス
+class _CommentBoxData {
+  final Rect rect;
+  final TextPainter painter;
+  final String annId;
+  const _CommentBoxData({
+    required this.rect,
+    required this.painter,
+    required this.annId,
+  });
+}
+
 /// アノテーション（コメント）管理とレンダリングを担当するクラス
 class ChartAnnotationsManager {
   // アノテーションの描画に必要な設定
@@ -12,6 +24,8 @@ class ChartAnnotationsManager {
   final double cellHeight;
   final double labelWidth;
   final List<int> highlightTimeIndices;
+  final Color dashedColor;
+  final Color arrowColor;
 
   // 選択中のアノテーションID
   final String? selectedAnnotationId;
@@ -27,6 +41,8 @@ class ChartAnnotationsManager {
     required this.labelWidth,
     required this.highlightTimeIndices,
     this.selectedAnnotationId,
+    this.dashedColor = Colors.black,
+    this.arrowColor = Colors.blue,
   });
 
   /// アノテーションの描画
@@ -51,6 +67,9 @@ class ChartAnnotationsManager {
 
     // 衝突回避用のリスト
     final List<Rect> placedCommentRects = [];
+
+    // コメントボックス再描画用に記録するリスト
+    final List<_CommentBoxData> _commentBoxDrawData = [];
 
     // 境界線描画用のペイント
     final double dashWidth = 5;
@@ -115,25 +134,43 @@ class ChartAnnotationsManager {
         arrowRect = currentArrowRect;
         _placedArrowRects.add(arrowRect);
 
-        commentY = arrowRect.bottom + 5;
+        // コメントボックス配置ロジック
+        // 1) ボックス幅が矢印幅以下 → 矢印の中心に重ねる
+        // 2) ボックス幅が矢印幅より大きい → 矢印の下に配置
+
+        if (boxWidth <= arrowRect.width) {
+          // 矢印中心に配置（上下中央合わせ）
+          commentY = arrowRect.center.dy - boxHeight / 2;
+          if (commentY < 0) {
+            // 画面外に出る場合は下に配置
+            commentY = arrowRect.bottom + 5;
+          }
+        } else {
+          // 矢印の下に配置
+          commentY = arrowRect.bottom + 5;
+        }
         commentX = arrowRect.center.dx - boxWidth / 2;
         commentRect = Rect.fromLTWH(commentX, commentY, boxWidth, boxHeight);
       } else {
         // 単一ポイントコメントの場合
         commentY = baseCommentY;
-        commentX =
-            labelWidth +
-            ann.startTimeIndex * cellWidth +
-            cellWidth / 2 -
-            boxWidth / 2;
+        // セル左端に合わせてボックス左を配置
+        commentX = labelWidth + ann.startTimeIndex * cellWidth;
         commentRect = Rect.fromLTWH(commentX, commentY, boxWidth, boxHeight);
+      }
+
+      // ユーザー移動オフセットを適用
+      if (ann.offsetX != null || ann.offsetY != null) {
+        commentRect = commentRect.shift(
+          Offset(ann.offsetX ?? 0, ann.offsetY ?? 0),
+        );
       }
 
       int attempts = 0;
       while (placedCommentRects.any((r) => r.overlaps(commentRect)) &&
           attempts < 15) {
-        commentY += 20;
-        commentRect = Rect.fromLTWH(commentX, commentY, boxWidth, boxHeight);
+        // ユーザーが動かした場合はY方向にのみ最小調整（衝突しない位置へ）
+        commentRect = commentRect.translate(0, 20);
         attempts++;
       }
 
@@ -143,20 +180,69 @@ class ChartAnnotationsManager {
 
       placedCommentRects.add(commentRect);
 
+      // 矢印や矢印-コメント間の領域を占有扱いにして、
+      // 後続のコメントボックスが割り込まないようにする
+      if (arrowRect != null) {
+        // 矢印本体
+        placedCommentRects.add(arrowRect);
+
+        // 矢印とコメントボックスの間に隙間がある場合はその領域も予約
+        if (commentRect.top > arrowRect.bottom) {
+          final double gapLeft = math.min(arrowRect.left, commentRect.left);
+          final double gapRight = math.max(arrowRect.right, commentRect.right);
+          final Rect gapRect = Rect.fromLTRB(
+            gapLeft,
+            arrowRect.bottom,
+            gapRight,
+            commentRect.top,
+          );
+          placedCommentRects.add(gapRect);
+        } else if (commentRect.bottom < arrowRect.top) {
+          // ボックスが矢印の上にあるケース（理論上）
+          final double gapLeft = math.min(arrowRect.left, commentRect.left);
+          final double gapRight = math.max(arrowRect.right, commentRect.right);
+          final Rect gapRect = Rect.fromLTRB(
+            gapLeft,
+            commentRect.bottom,
+            gapRight,
+            arrowRect.top,
+          );
+          placedCommentRects.add(gapRect);
+        } else {
+          // ボックスが矢印と重なっている場合 → 矢印直下の一定領域を予約
+          final Rect reserved = Rect.fromLTRB(
+            arrowRect.left,
+            arrowRect.bottom,
+            arrowRect.right,
+            arrowRect.bottom + boxHeight + 10,
+          );
+          placedCommentRects.add(reserved);
+        }
+      }
+
       // アノテーションIDに対応するRectを保存 (ここが重要！)
       annotationRects[ann.id] = commentRect;
 
       // 先に境界線を描画
-      // 左側の垂直線
-      final double startX = labelWidth + ann.startTimeIndex * cellWidth;
-      final double boundaryEndY = commentRect.top;
+      // 単一点コメントの場合はセル中央に破線を置く
+      double startX = labelWidth + ann.startTimeIndex * cellWidth;
+      // 破線終点の見直し:
+      // - 水平ON: コメントボックス中心Yまで常に延長（チャート外でも）
+      // - 水平OFF: 先端がチャート内ならその先端Yまで、外ならチャート下端まで
+      final bool useHorizontalForDashed = ann.arrowHorizontal != false;
+      final double anchorYForDashed =
+          useHorizontalForDashed
+              ? commentRect.center.dy
+              : (ann.arrowTipY ?? commentRect.top);
+      // 破線は常にチャート下端までは描画。先端が下側に外れていればその先まで延長
+      final double boundaryEndY = math.max(chartBottomY, anchorYForDashed);
 
       debugPrint('左境界線: x=$startX, y1=0, y2=$boundaryEndY');
 
       // 境界線の色を設定
       final boundaryPaint =
           Paint()
-            ..color = Colors.black.withOpacity(0.7)
+            ..color = dashedColor.withOpacity(0.5)
             ..strokeWidth = 2.0
             ..style = PaintingStyle.stroke;
 
@@ -185,13 +271,56 @@ class ChartAnnotationsManager {
         );
       }
 
-      // コメントボックスの描画
-      drawCommentBox(canvas, commentRect, textPainter, ann.id, selectedAnnotationId);
+      // コメントボックスは最後にまとめて描画するため記録のみ行う
+      _commentBoxDrawData.add(
+        _CommentBoxData(rect: commentRect, painter: textPainter, annId: ann.id),
+      );
 
       // 矢印の描画
       if (arrowRect != null) {
-        drawArrow(canvas, arrowRect);
+        drawArrow(canvas, arrowRect, color: arrowColor);
       }
+
+      // X方向にコメントが移動している場合は、破線位置とコメントボックスを結ぶ矢印を追加
+      final double originalCommentCenterX =
+          ann.endTimeIndex != null
+              ? (labelWidth +
+                      ann.startTimeIndex * cellWidth +
+                      labelWidth +
+                      (ann.endTimeIndex! + 1) * cellWidth) /
+                  2
+              : (labelWidth + ann.startTimeIndex * cellWidth);
+      final double movedCenterX = commentRect.center.dx;
+      final bool movedInX = (movedCenterX - originalCommentCenterX).abs() > 1.0;
+      if (movedInX) {
+        final double dashedX = originalCommentCenterX;
+        // 水平ON時はコメントボックス中心Yへ完全追従（チャート外でも追従）
+        // 水平OFF時は既存仕様（arrowTipY なければ boundaryEndY）
+        final bool useHorizontal = ann.arrowHorizontal != false;
+        final double anchorY =
+            useHorizontal
+                ? commentRect.center.dy
+                : (ann.arrowTipY ?? boundaryEndY);
+        final Offset end = Offset(dashedX, anchorY);
+
+        final Offset start =
+            useHorizontal
+                ? Offset(commentRect.right, anchorY)
+                : commentRect.topCenter;
+
+        drawArrowLine(canvas, start, end, color: arrowColor, strokeWidth: 2.0);
+      }
+    }
+
+    // --- 全アノテーションの破線・矢印を描画し終えた後でコメントボックスを前面に描画 ---
+    for (final data in _commentBoxDrawData) {
+      drawCommentBox(
+        canvas,
+        data.rect,
+        data.painter,
+        data.annId,
+        selectedAnnotationId,
+      );
     }
   }
 
@@ -199,26 +328,30 @@ class ChartAnnotationsManager {
   List<TimingChartAnnotation> _sortAnnotations() {
     final sortedAnnotations = [...annotations];
     sortedAnnotations.sort((a, b) {
-      // 単一セルと範囲コメントを区別
-      if (a.endTimeIndex == null && b.endTimeIndex != null) {
-        return -1; // 単一セルを優先
-      } else if (a.endTimeIndex != null && b.endTimeIndex == null) {
-        return 1;
+      // 並び順の優先度:
+      // 1) 範囲コメント (endTimeIndex != null)
+      // 2) 単一セルコメント (endTimeIndex == null)
+
+      final bool aIsRange = a.endTimeIndex != null;
+      final bool bIsRange = b.endTimeIndex != null;
+
+      if (aIsRange && !bIsRange) {
+        return -1; // a が範囲, b が単一 → a を先に
+      } else if (!aIsRange && bIsRange) {
+        return 1; // b が範囲 → b を先に
+      }
+
+      // 同タイプ同士
+      if (aIsRange) {
+        // 両方とも範囲コメント
+        // endTimeIndex → startTimeIndex の順で比較
+        final cmpEnd = a.endTimeIndex!.compareTo(b.endTimeIndex!);
+        return cmpEnd != 0
+            ? cmpEnd
+            : a.startTimeIndex.compareTo(b.startTimeIndex);
       } else {
-        // 同じタイプ同士の場合
-        if (a.endTimeIndex == null && b.endTimeIndex == null) {
-          // 単一セルの場合はstartTimeIndexで昇順
-          return a.startTimeIndex.compareTo(b.startTimeIndex);
-        } else {
-          // 範囲コメントの場合
-          if (a.endTimeIndex == b.endTimeIndex) {
-            // endTimeIndexが同じ場合はstartTimeIndexで昇順
-            return a.startTimeIndex.compareTo(b.startTimeIndex);
-          } else {
-            // endTimeIndexで昇順
-            return a.endTimeIndex!.compareTo(b.endTimeIndex!);
-          }
-        }
+        // 単一セルコメント
+        return a.startTimeIndex.compareTo(b.startTimeIndex);
       }
     });
     return sortedAnnotations;

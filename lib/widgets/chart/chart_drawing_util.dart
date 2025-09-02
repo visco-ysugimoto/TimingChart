@@ -70,6 +70,26 @@ void drawArrowhead(
   canvas.drawLine(tip, rightEnd, paint);
 }
 
+/// 任意の2点間に矢印付きの直線を描画
+void drawArrowLine(
+  Canvas canvas,
+  Offset start,
+  Offset end, {
+  Color color = Colors.blue,
+  double strokeWidth = 2.0,
+}) {
+  final Paint linePaint =
+      Paint()
+        ..color = color
+        ..strokeWidth = strokeWidth
+        ..style = PaintingStyle.stroke;
+
+  canvas.drawLine(start, end, linePaint);
+
+  final double angle = math.atan2(end.dy - start.dy, end.dx - start.dx);
+  drawArrowhead(canvas, end, angle, 8.0, linePaint);
+}
+
 /// コメントボックスを描画
 void drawCommentBox(
   Canvas canvas,
@@ -78,26 +98,39 @@ void drawCommentBox(
   String annId,
   String? selectedAnnotationId, // Added to handle selection state
 ) {
-  final isSelected = selectedAnnotationId == annId;
-  final paintBg =
+  final bool isSelected = selectedAnnotationId == annId;
+
+  // 1. 白のベースを先に塗り arrow 等を完全に隠す
+  final Paint paintBase =
       Paint()
-        ..color = isSelected ? Colors.yellow.withOpacity(0.3) : Colors.white
+        ..color = Colors.white
         ..style = PaintingStyle.fill;
-  final paintBorder =
+  canvas.drawRect(rect, paintBase);
+
+  // 2. 選択時はその上にハイライト用の半透明色を重ねる
+  if (isSelected) {
+    final Paint paintHighlight =
+        Paint()
+          ..color = const Color.fromARGB(255, 201, 192, 119)
+          ..style = PaintingStyle.fill;
+    canvas.drawRect(rect, paintHighlight);
+  }
+
+  // 3. 枠線
+  final Paint paintBorder =
       Paint()
         ..color = Colors.black
         ..style = PaintingStyle.stroke
         ..strokeWidth = isSelected ? 2.0 : 1.0;
-  canvas.drawRect(rect, paintBg);
   canvas.drawRect(rect, paintBorder);
   textPainter.paint(canvas, rect.topLeft.translate(4, 4));
 }
 
 /// 矢印を描画
-void drawArrow(Canvas canvas, Rect arrowRect) {
+void drawArrow(Canvas canvas, Rect arrowRect, {Color color = Colors.blue}) {
   final paintArrowLine =
       Paint()
-        ..color = Colors.blue
+        ..color = color
         ..strokeWidth = 4;
   final startPt = Offset(arrowRect.left, arrowRect.center.dy);
   final endPt = Offset(arrowRect.right, arrowRect.center.dy);
