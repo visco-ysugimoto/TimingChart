@@ -88,7 +88,7 @@ class InputSection extends StatelessWidget {
         // Control信号の自動命名は外部で行うため、ここでは書き換えない
 
         return Padding(
-          padding: const EdgeInsets.only(bottom: 12.0),
+          padding: const EdgeInsets.only(bottom: 6.0),
           child: Row(
             children: [
               Expanded(
@@ -100,14 +100,16 @@ class InputSection extends StatelessWidget {
                           decoration: InputDecoration(
                             labelText: 'Input ${index + 1}',
                             border: const OutlineInputBorder(),
+                            isDense: true,
                             contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12.0,
-                              vertical: 10.0,
+                              horizontal: 10.0,
+                              vertical: 6.0,
                             ),
                             filled: true,
-                            fillColor: Theme.of(context).brightness == Brightness.dark
-                                ? Colors.grey.shade800
-                                : Colors.grey.shade200,
+                            fillColor:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.grey.shade800
+                                    : Colors.grey.shade200,
                             hintText: 'Locked',
                           ),
                         )
@@ -119,7 +121,7 @@ class InputSection extends StatelessWidget {
                           enableDuplicateCheck: true,
                         ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               if (!isLocked) // ロックされていない場合のみチェックボックスを表示
                 Checkbox(
                   value: visibilityList[index],

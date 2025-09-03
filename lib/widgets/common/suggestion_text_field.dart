@@ -263,18 +263,21 @@ class _SuggestionTextFieldState extends State<SuggestionTextField> {
                 // 重複チェック
                 bool isDuplicate = _isDuplicate(value.text);
 
-                final bool isDark = Theme.of(context).brightness == Brightness.dark;
+                final bool isDark =
+                    Theme.of(context).brightness == Brightness.dark;
 
                 // デフォルトの塗りつぶし色（テーマ優先）
-                final defaultFill = Theme.of(context).inputDecorationTheme.fillColor ??
+                final defaultFill =
+                    Theme.of(context).inputDecorationTheme.fillColor ??
                     (isDark ? Colors.grey.shade800 : Colors.white);
 
                 // 値が入力されている／重複している場合のハイライト色を決定
                 Color backgroundColor;
                 if (isDuplicate) {
-                  backgroundColor = isDark
-                      ? Colors.red.withOpacity(0.35)
-                      : Colors.red.withOpacity(0.2);
+                  backgroundColor =
+                      isDark
+                          ? Colors.red.withOpacity(0.35)
+                          : Colors.red.withOpacity(0.2);
                 } else if (value.text.isNotEmpty) {
                   // アクセントカラーを利用して入力済みをハイライト
                   final accent = Theme.of(context).colorScheme.secondary;
@@ -291,6 +294,11 @@ class _SuggestionTextFieldState extends State<SuggestionTextField> {
                     decoration: InputDecoration(
                       labelText: widget.label,
                       border: const OutlineInputBorder(),
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 10.0,
+                        vertical: 6.0,
+                      ),
                       filled: true,
                       // テキストフィールド本体の塗りつぶし色にも同じ色を適用
                       fillColor: backgroundColor,
@@ -328,18 +336,21 @@ class _SuggestionTextFieldState extends State<SuggestionTextField> {
             AutocompleteOnSelected<SuggestionItem> onSelected,
             Iterable<SuggestionItem> options,
           ) {
+            const double itemExtent = 36.0; // 候補1件あたりの高さ（コンパクト）
+            final double maxHeight = itemExtent * 5; // 5件表示分の高さ
             return Align(
               alignment: Alignment.topLeft,
               child: Material(
                 elevation: 4.0,
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(
+                  constraints: BoxConstraints(
                     maxWidth: 400,
-                    maxHeight: 200,
+                    maxHeight: maxHeight,
                   ),
                   child: ListView.builder(
                     padding: EdgeInsets.zero,
                     shrinkWrap: true,
+                    itemExtent: itemExtent,
                     itemCount: options.length,
                     itemBuilder: (BuildContext context, int index) {
                       final SuggestionItem option = options.elementAt(index);
@@ -357,7 +368,10 @@ class _SuggestionTextFieldState extends State<SuggestionTextField> {
                                   highlight
                                       ? Theme.of(context).focusColor
                                       : null,
-                              padding: const EdgeInsets.all(16.0),
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 6.0,
+                                horizontal: 12.0,
+                              ),
                               child: Text(option.label),
                             );
                           },

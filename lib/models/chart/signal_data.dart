@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'signal_type.dart';
 
 class SignalData {

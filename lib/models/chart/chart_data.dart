@@ -1,4 +1,3 @@
-import 'signal_type.dart';
 import 'timing_chart_annotation.dart';
 import 'signal_data.dart';
 

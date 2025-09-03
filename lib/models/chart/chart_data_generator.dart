@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../widgets/form/form_tab.dart';
-import '../../widgets/chart/chart_signals.dart';
+
 import '../form/form_state.dart';
 import 'signal_type.dart';
 
@@ -82,75 +82,6 @@ class ChartDataGenerator {
     return chartData;
   }
 
-  /// 2つの信号名が関連しているかをチェック
-  static bool _areSignalsRelated(String name1, String name2) {
-    // 名前のパターンマッチングに基づく簡易的な関連性チェック
-
-    // 対応関係マッピング
-    const relatedPatterns = {
-      'CLK': ['DATA', 'ENABLE', 'VALID'],
-      'DATA': ['VALID', 'READY'],
-      'ADDR': ['DATA', 'WE', 'OE'],
-      'WE': ['DATA', 'ADDR'],
-      'CS': ['DATA', 'READY'],
-      'RESET': ['READY', 'STATUS'],
-      'SCLK': ['MOSI', 'MISO'],
-      'MOSI': ['MISO'],
-      'TRIGGER': ['READY', 'DATA'],
-    };
-
-    // 名前からキーワードを抽出
-    String key1 = _extractKeyword(name1);
-    String key2 = _extractKeyword(name2);
-
-    // 関連性チェック
-    if (relatedPatterns.containsKey(key1)) {
-      return relatedPatterns[key1]!.any((pattern) => key2.contains(pattern));
-    }
-
-    // 逆方向の関連性もチェック
-    if (relatedPatterns.containsKey(key2)) {
-      return relatedPatterns[key2]!.any((pattern) => key1.contains(pattern));
-    }
-
-    return false;
-  }
-
-  /// 信号名からキーワードを抽出
-  static String _extractKeyword(String signalName) {
-    // 値の部分を除去（「:」以降を取り除く）
-    String nameOnly = signalName.split(':').first.trim();
-
-    // よくある信号名パターンを抽出
-    for (final pattern in [
-      'CLK',
-      'CLOCK',
-      'SCLK',
-      'DATA',
-      'ADDR',
-      'ADDRESS',
-      'WE',
-      'OE',
-      'CS',
-      'ENABLE',
-      'READY',
-      'VALID',
-      'STATUS',
-      'RESET',
-      'MOSI',
-      'MISO',
-      'TRIGGER',
-      'START',
-      'STOP',
-    ]) {
-      if (nameOnly.toUpperCase().contains(pattern)) {
-        return pattern;
-      }
-    }
-
-    return nameOnly.toUpperCase();
-  }
-
   // 信号名リストを生成
   static List<String> generateSignalNames({
     required List<TextEditingController> inputControllers,
@@ -227,13 +158,7 @@ class _SignalInfo {
   final String name;
   final int index;
   final SignalType type;
-  CellMode mode;
   int phase = 0;
 
-  _SignalInfo({
-    required this.name,
-    required this.index,
-    required this.type,
-    this.mode = CellMode.none,
-  });
+  _SignalInfo({required this.name, required this.index, required this.type});
 }

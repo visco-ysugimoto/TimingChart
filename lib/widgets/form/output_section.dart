@@ -23,7 +23,7 @@ class OutputSection extends StatelessWidget {
       children: List.generate(
         count,
         (index) => Padding(
-          padding: const EdgeInsets.only(bottom: 12.0),
+          padding: const EdgeInsets.only(bottom: 6.0),
           child: Row(
             children: [
               Expanded(
@@ -35,7 +35,7 @@ class OutputSection extends StatelessWidget {
                   enableDuplicateCheck: true,
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Checkbox(
                 value: visibilityList[index],
                 onChanged: (value) {

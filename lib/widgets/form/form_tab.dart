@@ -10,8 +10,8 @@ import 'input_section.dart';
 import 'output_section.dart';
 import 'hw_trigger_section.dart';
 import '../common/custom_dropdown.dart';
-import '../../common_padding.dart';
-import '../chart/chart_signals.dart'; // チャート信号関連のクラスをインポート
+// import '../../common_padding.dart';
+// import '../chart/chart_signals.dart'; // 未使用のため一時的に無効化
 import '../../providers/form_state_notifier.dart';
 import 'package:provider/provider.dart';
 import '../../utils/chart_template_engine.dart';
@@ -45,8 +45,6 @@ const cellModeLabels = {
   CellMode.mode1: "順次取込",
   CellMode.mode2: "接点入力",
   CellMode.mode3: "HWトリガ",
-  CellMode.mode4: "複数回取込",
-  CellMode.mode5: "取込拡張",
 };
 
 class FormTab extends StatefulWidget {
@@ -139,8 +137,8 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
   // PLC / EIP オプション
   String _plcEipOption = 'None';
 
-  bool _hwVis(int index) =>
-      index < _hwTriggerVisibility.length ? _hwTriggerVisibility[index] : true;
+  // bool _hwVis(int index) =>
+  //     index < _hwTriggerVisibility.length ? _hwTriggerVisibility[index] : true;
 
   // ===== Output マッピング: totalOutputs -> { signalId : index } =====
   static const Map<int, Map<String, int>> _outputPresetMap = {
@@ -379,6 +377,22 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
           0,
           SignalData(
             name: 'CODE_OPTION',
+            signalType: SignalType.input,
+            values: List.filled(32, 0),
+            isVisible: true,
+          ),
+        );
+      }
+    }
+
+    // === Command Option 追加 (Command Trigger モード専用) ===
+    if (formState.triggerOption == 'Command Trigger') {
+      final exists = _signalDataList.any((s) => s.name == 'Command Option');
+      if (!exists) {
+        _signalDataList.insert(
+          0,
+          SignalData(
+            name: 'Command Option',
             signalType: SignalType.input,
             values: List.filled(32, 0),
             isVisible: true,
@@ -684,7 +698,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
         });
       }
 
-      // === CODE_OPTION を必ず含める ===
+      // === CODE_OPTION / Command Option を必ず含める ===
       if (formState.triggerOption == 'Code Trigger' &&
           !_signalDataList.any((s) => s.name == 'CODE_OPTION')) {
         _signalDataList.insert(
@@ -694,6 +708,21 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
             signalType: SignalType.input,
             values:
                 prevValueMap['CODE_OPTION'] ??
+                List.filled(defaultWaveLength, 0),
+            isVisible: true,
+          ),
+        );
+      }
+
+      if (formState.triggerOption == 'Command Trigger' &&
+          !_signalDataList.any((s) => s.name == 'Command Option')) {
+        _signalDataList.insert(
+          0,
+          SignalData(
+            name: 'Command Option',
+            signalType: SignalType.input,
+            values:
+                prevValueMap['Command Option'] ??
                 List.filled(defaultWaveLength, 0),
             isVisible: true,
           ),
@@ -859,12 +888,55 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
         chartData.insert(0, codeWave);
       }
 
-      // BUSY/TRIGGER/EXPOSURE 調整
-      _applyCodeTriggerPostRules(names, chartData, types, ports);
+      // BUSY/TRIGGER/EXPOSURE 調整（共通ルール）
+      _applyOptionPostRules(names, chartData, types, ports, 'CODE_OPTION');
+    }
+
+    // === Command Option 波形生成 ===
+    if (formState.triggerOption == 'Command Trigger') {
+      final autoIdx = names.indexOf('AUTO_MODE');
+      final cmdIdx = names.indexOf('Command Option');
+
+      int waveLength = chartData.isNotEmpty ? chartData[0].length : 32;
+      List<int> cmdWave = List<int>.filled(waveLength, 0);
+
+      if (autoIdx != -1) {
+        final autoWave = chartData[autoIdx];
+        cmdWave = _generateCodeOptionWave(autoWave, waveLength);
+      }
+
+      if (cmdIdx != -1) {
+        chartData[cmdIdx] = cmdWave;
+      } else {
+        // 先頭に追加して 1番目の行に表示する
+        names.insert(0, 'Command Option');
+        types.insert(0, SignalType.input);
+        ports.insert(0, 0);
+        chartData.insert(0, cmdWave);
+      }
+
+      // BUSY/TRIGGER/EXPOSURE 調整（共通ルール）
+      _applyOptionPostRules(names, chartData, types, ports, 'Command Option');
+    }
+
+    // === 可視状態で最終フィルタ ===
+    final visibleNameSet =
+        _signalDataList.where((s) => s.isVisible).map((s) => s.name).toSet();
+
+    List<String> outNames = [];
+    List<SignalType> outTypes = [];
+    List<List<int>> outChartData = [];
+
+    for (int i = 0; i < names.length; i++) {
+      if (visibleNameSet.contains(names[i])) {
+        outNames.add(names[i]);
+        outTypes.add(types[i]);
+        outChartData.add(chartData[i]);
+      }
     }
 
     // チャートデータを保存（エクスポート用）
-    _actualChartData = List.from(chartData);
+    _actualChartData = List.from(outChartData);
 
     // デバッグ出力
     print('チャート更新時のデータ:');
@@ -879,7 +951,35 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
     }
 
     // チャートを更新 (ID → ラベルへ変換)
-    widget.onUpdateChart(names, chartData, types, ports, false);
+    // names と types の順序に合わせたポート番号リストを生成（可視フィルタ後）
+    ports = [];
+    for (int i = 0; i < outNames.length; i++) {
+      int idx;
+      switch (outTypes[i]) {
+        case SignalType.input:
+          idx = widget.inputControllers.indexWhere(
+            (c) => c.text == outNames[i],
+          );
+          ports.add(idx >= 0 ? idx + 1 : 0);
+          break;
+        case SignalType.hwTrigger:
+          idx = widget.hwTriggerControllers.indexWhere(
+            (c) => c.text == outNames[i],
+          );
+          ports.add(idx >= 0 ? idx + 1 : 0);
+          break;
+        case SignalType.output:
+          idx = widget.outputControllers.indexWhere(
+            (c) => c.text == outNames[i],
+          );
+          ports.add(idx >= 0 ? idx + 1 : 0);
+          break;
+        default:
+          ports.add(0);
+      }
+    }
+
+    widget.onUpdateChart(outNames, outChartData, outTypes, ports, false);
 
     // --- 追加: 完了通知 ---
     ScaffoldMessenger.of(
@@ -1005,6 +1105,30 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
               .toList();
     }
 
+    // --- Camera Configuration Table から Mode 有無を判定 ---
+    bool hasContactInputMode = false; // Mode2
+    bool hasHwTriggerMode = false; // Mode3
+    for (int r = 0; r < _tableData.length; r++) {
+      for (int c = 0; c < _tableData[r].length; c++) {
+        if (_tableData[r][c] == CellMode.mode2) hasContactInputMode = true;
+        if (_tableData[r][c] == CellMode.mode3) hasHwTriggerMode = true;
+      }
+    }
+
+    // --- Mode が無い場合は不要な信号を除外 ---
+    if (!hasContactInputMode) {
+      filteredSignals =
+          filteredSignals
+              .where((sig) => sig.name != 'CONTACT_INPUT_WAITING')
+              .toList();
+    }
+    if (!(hasContactInputMode || hasHwTriggerMode)) {
+      filteredSignals =
+          filteredSignals
+              .where((sig) => sig.name != 'ACQ_TRIGGER_WAITING')
+              .toList();
+    }
+
     // 生成された信号をフォームのテキストフィールドおよび内部状態へ反映
     updateSignalDataFromChartData(
       filteredSignals.map((e) => e.values).toList(),
@@ -1038,7 +1162,29 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
       values.insert(0, codeWave);
 
       // BUSY/TRIGGER/EXPOSURE 調整
-      _applyCodeTriggerPostRules(names, values, types, ports);
+      _applyOptionPostRules(names, values, types, ports, 'CODE_OPTION');
+    }
+
+    // === Command Option 波形生成 (Template) ===
+    if (formState.triggerOption == 'Command Trigger') {
+      final autoIdx = names.indexOf('AUTO_MODE');
+      int waveLength = values.isNotEmpty ? values[0].length : 32;
+
+      List<int> commandWave = List<int>.filled(waveLength, 0);
+
+      if (autoIdx != -1) {
+        final autoWave = values[autoIdx];
+        // Code Trigger と同様の波形生成を適用
+        commandWave = _generateCodeOptionWave(autoWave, waveLength);
+      }
+
+      // 先頭に追加（仮想的に Input0 として扱う）
+      names.insert(0, 'Command Option');
+      types.insert(0, SignalType.input);
+      values.insert(0, commandWave);
+
+      // BUSY/TRIGGER/EXPOSURE 調整（Code Trigger と同様）
+      _applyOptionPostRules(names, values, types, ports, 'Command Option');
     }
 
     // === 追加: ポート番号リストを CODE_OPTION を含む形で再生成 ===
@@ -1050,31 +1196,51 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
       _updateSignalDataList();
     }
 
-    // names と types の順序に合わせたポート番号リストを生成
-    ports.clear();
+    // === 可視状態で最終フィルタ（Template経路） ===
+    final visibleNameSet =
+        _signalDataList.where((s) => s.isVisible).map((s) => s.name).toSet();
+
+    List<String> outNames = [];
+    List<SignalType> outTypes = [];
+    List<List<int>> outValues = [];
+    List<int> outPorts = [];
+
     for (int i = 0; i < names.length; i++) {
-      int idx;
-      switch (types[i]) {
-        case SignalType.input:
-          idx = widget.inputControllers.indexWhere((c) => c.text == names[i]);
-          ports.add(idx >= 0 ? idx + 1 : 0);
-          break;
-        case SignalType.hwTrigger:
-          idx = widget.hwTriggerControllers.indexWhere(
-            (c) => c.text == names[i],
-          );
-          ports.add(idx >= 0 ? idx + 1 : 0);
-          break;
-        case SignalType.output:
-          idx = widget.outputControllers.indexWhere((c) => c.text == names[i]);
-          ports.add(idx >= 0 ? idx + 1 : 0);
-          break;
-        default:
-          ports.add(0);
+      if (visibleNameSet.contains(names[i])) {
+        outNames.add(names[i]);
+        outTypes.add(types[i]);
+        outValues.add(values[i]);
       }
     }
 
-    widget.onUpdateChart(names, values, types, ports, true);
+    // ports 再計算（可視フィルタ後）
+    for (int i = 0; i < outNames.length; i++) {
+      int idx;
+      switch (outTypes[i]) {
+        case SignalType.input:
+          idx = widget.inputControllers.indexWhere(
+            (c) => c.text == outNames[i],
+          );
+          outPorts.add(idx >= 0 ? idx + 1 : 0);
+          break;
+        case SignalType.hwTrigger:
+          idx = widget.hwTriggerControllers.indexWhere(
+            (c) => c.text == outNames[i],
+          );
+          outPorts.add(idx >= 0 ? idx + 1 : 0);
+          break;
+        case SignalType.output:
+          idx = widget.outputControllers.indexWhere(
+            (c) => c.text == outNames[i],
+          );
+          outPorts.add(idx >= 0 ? idx + 1 : 0);
+          break;
+        default:
+          outPorts.add(0);
+      }
+    }
+
+    widget.onUpdateChart(outNames, outValues, outTypes, outPorts, true);
 
     // --- 追加: ユーザーへ完了通知 ---
     ScaffoldMessenger.of(
@@ -1107,9 +1273,6 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
 
     // 更新されたSignalDataリストを作成
     List<SignalData> updatedSignals = [];
-    int inputIndex = 0;
-    int outputIndex = 0;
-    int hwTriggerIndex = 0;
     int dataIndex = 0;
 
     // 入力信号
@@ -1134,7 +1297,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
           ),
         );
 
-        inputIndex++;
+        // indexは未使用のため削除済み
       }
     }
 
@@ -1160,7 +1323,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
           ),
         );
 
-        outputIndex++;
+        // indexは未使用のため削除済み
       }
     }
 
@@ -1189,7 +1352,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
           ),
         );
 
-        hwTriggerIndex++;
+        // indexは未使用のため削除済み
       }
     }
 
@@ -1663,7 +1826,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
       for (int i = 0; i < chartData.length; i++) {
         final name = i < signalNames.length ? signalNames[i] : 'Signal $i';
         final type = i < signalTypes.length ? signalTypes[i] : SignalType.input;
-        final values = List.from(chartData[i]);
+        final values = List<int>.from(chartData[i]); // 以後の書き込みで使用するため保持
 
         // コントローラーへ反映（既存の位置を優先使用）
         if (type == SignalType.input ||
@@ -1776,7 +1939,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
           SignalData(
             name: name,
             signalType: type,
-            values: List<int>.from(chartData[i]),
+            values: values,
             isVisible: true,
           ),
         );
@@ -1823,17 +1986,20 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
     return wave;
   }
 
-  // ----------------- 追加: Code Trigger 専用ポスト処理 -----------------
-  void _applyCodeTriggerPostRules(
+  // （削除）Code Trigger 専用ポスト処理は _applyOptionPostRules に統合
+
+  // --- 追加: オプション信号（CODE_OPTION / Command Option）共通のポスト処理 ---
+  void _applyOptionPostRules(
     List<String> names,
     List<List<int>> values,
     List<SignalType> types,
     List<int> ports,
+    String optionSignalName,
   ) {
     final waveLen = values.isNotEmpty ? values[0].length : 0;
     if (waveLen == 0) return;
 
-    final codeIdx = names.indexOf('CODE_OPTION');
+    final codeIdx = names.indexOf(optionSignalName);
     if (codeIdx == -1) return;
 
     final codeWave = values[codeIdx];
@@ -1860,7 +2026,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
       }
     }
 
-    // ---------- BUSY: CODE_OPTION と同じ High 区間 ----------
+    // ---------- BUSY: オプション波形と同じ High 区間 ----------
     int busyIdx = names.indexOf('BUSY');
     if (busyIdx != -1) {
       values[busyIdx] = List<int>.from(codeWave);
@@ -1939,7 +2105,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
     // AutomaticKeepAliveClientMixin を使う場合は super.build(context) が必要
     super.build(context);
 
-    // UI 更新用に Provider を購読
+    // UI 更新用に Provider を購読（ビルドと依存関係更新をトリガ）
     final watchedState = context.watch<FormStateNotifier>().state;
 
     // 共通ボタンスタイルを作成
@@ -1952,7 +2118,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
         vertical: _buttonVerticalPadding,
       ),
     );
-
+    // Update Chart ボタン用スタイル
     final updateButtonStyle = ElevatedButton.styleFrom(
       backgroundColor: Colors.blue.shade100,
       foregroundColor: Colors.blue.shade900,
@@ -1973,7 +2139,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
         vertical: _buttonVerticalPadding,
       ),
     );
-
+    // Add Row ボタン用スタイル
     final addRowButtonStyle = ElevatedButton.styleFrom(
       backgroundColor: Colors.green.shade100,
       foregroundColor: Colors.green.shade900,
@@ -1983,7 +2149,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
         vertical: _buttonVerticalPadding,
       ),
     );
-
+    // Remove Row ボタン用スタイル
     final removeRowButtonStyle = ElevatedButton.styleFrom(
       backgroundColor: Colors.red.shade100,
       foregroundColor: Colors.red.shade900,
@@ -2121,7 +2287,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
                   // Camera
                   Expanded(
                     child: CustomDropdown<int>(
-                      value: formState.camera,
+                      value: watchedState.camera,
                       items: List.generate(8, (index) => index + 1),
                       onChanged: widget.onCameraChanged,
                       label: 'Camera',
@@ -2289,6 +2455,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
                               child: Padding(
                                 padding: const EdgeInsets.only(right: 8.0),
                                 child: SingleChildScrollView(
+                                  padding: const EdgeInsets.only(bottom: 640.0),
                                   child: InputSection(
                                     controllers: widget.inputControllers,
                                     count: formState.inputCount,
@@ -2309,6 +2476,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
                               child: Padding(
                                 padding: const EdgeInsets.only(right: 8.0),
                                 child: SingleChildScrollView(
+                                  padding: const EdgeInsets.only(bottom: 640.0),
                                   child: OutputSection(
                                     controllers: widget.outputControllers,
                                     count: formState.outputCount,
@@ -2328,6 +2496,9 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
                               child:
                                   formState.hwPort > 0
                                       ? SingleChildScrollView(
+                                        padding: const EdgeInsets.only(
+                                          bottom: 640.0,
+                                        ),
                                         child: HwTriggerSection(
                                           controllers:
                                               widget.hwTriggerControllers,
@@ -2563,6 +2734,18 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
     // HW Trigger 用ポートが 0 の場合は HW トリガ (mode3) を無効化
     final bool _canSelectHwTrigger = formState.hwPort > 0;
 
+    // 許可するモード（mode4, mode5 を除外し、必要なら mode3 も除外）
+    final List<CellMode> allowedModes =
+        CellMode.values
+            .where((m) => m != CellMode.mode4 && m != CellMode.mode5)
+            .where((m) => _canSelectHwTrigger || m != CellMode.mode3)
+            .toList();
+
+    final CellMode currentValue =
+        allowedModes.contains(_tableData[row][col])
+            ? _tableData[row][col]
+            : CellMode.none;
+
     return Container(
       height: kMinInteractiveDimension,
       decoration: BoxDecoration(
@@ -2571,7 +2754,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
       ),
       padding: const EdgeInsets.symmetric(horizontal: 4.0), // パディングを縮小
       child: DropdownButton<CellMode>(
-        value: _tableData[row][col],
+        value: currentValue,
         isExpanded: true,
         isDense: true, // よりコンパクトなドロップダウン
         underline: Container(), // 下線を非表示
@@ -2584,11 +2767,15 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
               // 必要に応じて SnackBar などでユーザーへ通知することも可能
               return;
             }
+            // mode4, mode5 は無効化
+            if (newValue == CellMode.mode4 || newValue == CellMode.mode5) {
+              return;
+            }
             _changeCellMode(row, col, newValue);
           }
         },
         items:
-            CellMode.values.map((CellMode mode) {
+            allowedModes.map((CellMode mode) {
               return DropdownMenuItem<CellMode>(
                 value: mode,
                 // コンテンツの高さを調整して全体の高さを確保
@@ -2634,17 +2821,24 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
             : CellMode.none]
         ?.withOpacity(0.3);
 
+    // 許可するモード（mode4, mode5 を除外）
+    final List<CellMode> allowedModes =
+        CellMode.values
+            .where((m) => m != CellMode.mode4 && m != CellMode.mode5)
+            .toList();
+
     return PopupMenuButton<CellMode>(
       onSelected: (CellMode mode) {
         // HWポートが無い場合は mode3 を無視
         if (!_canSelectHwTrigger && mode == CellMode.mode3) return;
+        if (mode == CellMode.mode4 || mode == CellMode.mode5) return;
         _changeColumnMode(col, mode);
       },
       itemBuilder: (context) {
         final modes =
             _canSelectHwTrigger
-                ? CellMode.values
-                : CellMode.values.where((m) => m != CellMode.mode3).toList();
+                ? allowedModes
+                : allowedModes.where((m) => m != CellMode.mode3).toList();
         return modes
             .map(
               (mode) => PopupMenuItem<CellMode>(

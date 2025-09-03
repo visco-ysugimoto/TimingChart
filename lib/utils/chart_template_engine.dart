@@ -369,6 +369,31 @@ class ChartTemplateEngine {
       });
     }
 
+    // ----- 可変信号のゼロ波形を除外（CONTACT_INPUT_WAITING, HW_TRIGGER#）-----
+    // Camera Configuration Table に接点入力/ハードトリガ指定が無い場合、
+    // YAML 初期生成のゼロ配列が残らないように取り除く。
+    final bool hasContactTimes =
+        contactWaitTimes != null && contactWaitTimes.isNotEmpty;
+    if (!hasContactTimes) {
+      final contactWave = waves['CONTACT_INPUT_WAITING'];
+      if (contactWave != null && !contactWave.any((v) => v != 0)) {
+        waves.remove('CONTACT_INPUT_WAITING');
+      }
+    }
+
+    final bool hasHwTriggerTimes =
+        hwTriggerTimes != null && hwTriggerTimes.isNotEmpty;
+    if (!hasHwTriggerTimes) {
+      final hwKeysToRemove =
+          waves.keys
+              .where((k) => RegExp(r'^HW_TRIGGER\d+ ?').hasMatch(k))
+              .where((k) => !(waves[k]?.any((v) => v != 0) ?? false))
+              .toList();
+      for (final k in hwKeysToRemove) {
+        waves.remove(k);
+      }
+    }
+
     // SignalData へ
     List<SignalData> result = [];
     // Suggestion IDs を取得して色分けに利用

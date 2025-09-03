@@ -131,8 +131,14 @@ class ChartGridManager {
       // ハイライト判定
       bool isHighlighted = false;
       if (highlightStartRow != null && highlightEndRow != null) {
-        final int minRow = highlightStartRow! < highlightEndRow! ? highlightStartRow! : highlightEndRow!;
-        final int maxRow = highlightStartRow! > highlightEndRow! ? highlightStartRow! : highlightEndRow!;
+        final int minRow =
+            highlightStartRow! < highlightEndRow!
+                ? highlightStartRow!
+                : highlightEndRow!;
+        final int maxRow =
+            highlightStartRow! > highlightEndRow!
+                ? highlightStartRow!
+                : highlightEndRow!;
         if (row >= minRow && row <= maxRow) {
           isHighlighted = true;
         }
@@ -140,7 +146,11 @@ class ChartGridManager {
 
       final textSpan = TextSpan(
         text: displayName,
-        style: TextStyle(color: isHighlighted ? highlightTextColor : labelColor, fontSize: 14, fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal),
+        style: TextStyle(
+          color: isHighlighted ? highlightTextColor : labelColor,
+          fontSize: 14,
+          fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal,
+        ),
       );
 
       final textPainter = TextPainter(
@@ -172,42 +182,6 @@ class ChartGridManager {
       final x = labelWidth + index * cellWidth;
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), paintHighlight);
     }
-  }
-
-  /// 破線を描画するユーティリティメソッド
-  void _drawDashedLine(
-    Canvas canvas,
-    Offset start,
-    Offset end,
-    Paint paint, {
-    double dashWidth = 5,
-    double dashSpace = 3,
-  }) {
-    if ((start - end).distance < 0.1) return;
-
-    final totalDistance = (end - start).distance;
-    final patternLength = dashWidth + dashSpace;
-    if (patternLength <= 0) return;
-
-    final path = Path();
-    final dashCount = (totalDistance / patternLength).floor();
-    final delta = end - start;
-
-    Offset currentPoint = start;
-    for (int i = 0; i < dashCount; i++) {
-      final nextPoint = currentPoint + delta * (dashWidth / totalDistance);
-      path.moveTo(currentPoint.dx, currentPoint.dy);
-      path.lineTo(nextPoint.dx, nextPoint.dy);
-      currentPoint = nextPoint + delta * (dashSpace / totalDistance);
-    }
-
-    final remainingDistance = (end - currentPoint).distance;
-    if (remainingDistance > 0.1) {
-      path.moveTo(currentPoint.dx, currentPoint.dy);
-      path.lineTo(end.dx, end.dy);
-    }
-
-    canvas.drawPath(path, paint);
   }
 }
 

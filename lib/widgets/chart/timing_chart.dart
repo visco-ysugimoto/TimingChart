@@ -204,10 +204,6 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  void _disposeUnused() {
-    super.dispose();
-  }
-
   // 現在の信号データを取得するメソッド
   List<List<int>> getChartData() {
     print('===== チャートデータ取得 =====');
@@ -268,7 +264,6 @@ class TimingChartState extends State<TimingChart>
     return true;
   }
 
-  @override
   bool get _hasValidSelection {
     if (_startSignalIndex == null ||
         _endSignalIndex == null ||
@@ -292,7 +287,6 @@ class TimingChartState extends State<TimingChart>
         edTime <= maxTime;
   }
 
-  @override
   int _getTimeIndexFromDx(double dx) {
     double adjustedX =
         dx -
@@ -306,7 +300,6 @@ class TimingChartState extends State<TimingChart>
     return (relativeX / _cellWidth).floor();
   }
 
-  @override
   int _getSignalIndexFromDy(double dy) {
     final adjustedY =
         dy -
@@ -321,7 +314,6 @@ class TimingChartState extends State<TimingChart>
     return index;
   }
 
-  @override
   void _clearSelection() {
     if (_startSignalIndex == null &&
         _startTimeIndex == null &&
@@ -337,7 +329,6 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  @override
   void _handleTap(TapUpDetails details) {
     final box = context.findRenderObject() as RenderBox?;
     if (box == null) return;
@@ -456,7 +447,6 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  @override
   void _onPanStart(DragStartDetails details) {
     final box = context.findRenderObject() as RenderBox?;
     if (box == null) return;
@@ -523,15 +513,6 @@ class TimingChartState extends State<TimingChart>
       return;
     }
 
-    final adjustedPos = Offset(
-      localPos.dx -
-          chartMarginLeft +
-          (_hScrollController.hasClients ? _hScrollController.offset : 0),
-      localPos.dy -
-          chartMarginTop +
-          (_vScrollController.hasClients ? _vScrollController.offset : 0),
-    );
-
     setState(() {
       _dragStartGlobal = details.globalPosition;
       _startSignalIndex = sig;
@@ -542,7 +523,6 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  @override
   void _onPanUpdate(DragUpdateDetails details) {
     // コメントボックスのドラッグ更新
     if (_draggingAnnotationId != null &&
@@ -622,7 +602,6 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  @override
   void _onPanEnd(DragEndDetails details) {
     // コメントドラッグ終了
     if (_draggingAnnotationId != null) {
@@ -737,7 +716,6 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  @override
   void _showContextMenu(BuildContext context, Offset position) async {
     final RenderBox overlay =
         Overlay.of(context).context.findRenderObject() as RenderBox;
@@ -761,9 +739,6 @@ class TimingChartState extends State<TimingChart>
 
     // 行インデックス（可視行）とラベル領域判定を事前に計算
     final int clickedSig = _getSignalIndexFromDy(localPos.dy);
-    final bool inLabelArea =
-        localPos.dx >= chartMarginLeft &&
-        localPos.dx <= chartMarginLeft + labelWidth;
 
     String? hitAnnId;
     for (final entry in _annotationHitRects.entries) {
@@ -897,7 +872,6 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  @override
   Future<void> _showAddCommentDialog() async {
     if (_lastRightClickPos == null) return;
 
@@ -956,7 +930,6 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  @override
   Future<void> _showAddRangeCommentDialog() async {
     if (!_hasValidSelection) return;
 
@@ -1010,13 +983,11 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  @override
   void _editComment(String annId) async {
     final ann = annotations.firstWhereOrNull((a) => a.id == annId);
     if (ann == null) return;
 
     String newText = ann.text;
-    bool changed = false;
 
     final result = await showDialog<bool>(
       context: context,
@@ -1050,19 +1021,12 @@ class TimingChartState extends State<TimingChart>
       setState(() {
         final index = annotations.indexWhere((a) => a.id == annId);
         if (index != -1) {
-          annotations[index] = TimingChartAnnotation(
-            id: ann.id,
-            startTimeIndex: ann.startTimeIndex,
-            endTimeIndex: ann.endTimeIndex,
-            text: newText,
-          );
-          changed = true;
+          annotations[index] = ann.copyWith(text: newText);
         }
       });
     }
   }
 
-  @override
   void _deleteComment(String annId) {
     final index = annotations.indexWhere((a) => a.id == annId);
     if (index == -1) return;
@@ -1075,7 +1039,6 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  @override
   void _toggleSignalsInSelection() {
     if (!_hasValidSelection) return;
     final stSig = math.min(_startSignalIndex!, _endSignalIndex!);
@@ -1099,7 +1062,6 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  @override
   void _insertZerosToSelection() {
     if (!_hasValidSelection) return;
     final stSig = math.min(_startSignalIndex!, _endSignalIndex!);
@@ -1123,7 +1085,6 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  @override
   void _deleteRange() {
     if (!_hasValidSelection) return;
     final stSig = math.min(_startSignalIndex!, _endSignalIndex!);
@@ -1217,7 +1178,6 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  @override
   void _normalizeSignalLengths() {
     if (signals.isEmpty) return;
 
@@ -1249,32 +1209,16 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  Rect _calcSelectionRectLocal() {
-    if (!_hasValidSelection) return Rect.zero;
-
-    final stSig = math.min(_startSignalIndex!, _endSignalIndex!);
-    final edSig = math.max(_startSignalIndex!, _endSignalIndex!);
-    final stTime = math.min(_startTimeIndex!, _endTimeIndex!);
-    final edTime = math.max(_startTimeIndex!, _endTimeIndex!);
-
-    return Rect.fromLTWH(
-      labelWidth + (stTime * _cellWidth),
-      (stSig * _cellHeight).toDouble(),
-      (edTime - stTime + 1) * _cellWidth,
-      (edSig - stSig + 1) * _cellHeight,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     super.build(context);
 
     // LayoutBuilder により親から渡された制約を取得し、
     // その範囲内でセルサイズを計算する。
-    return RawKeyboardListener(
+    return KeyboardListener(
       focusNode: _focusNode,
       autofocus: true,
-      onKey: _handleRawKeyEvent,
+      onKeyEvent: _handleKeyEvent,
       child: LayoutBuilder(
         builder: (context, constraints) {
           final maxLen =
@@ -1651,11 +1595,12 @@ class TimingChartState extends State<TimingChart>
     super.dispose();
   }
 
-  void _handleRawKeyEvent(RawKeyEvent event) {
-    if (event is! RawKeyDownEvent) return;
+  void _handleKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent) return;
     // Ctrl + A (Mac では Meta + A) を検出
     final bool isModifierPressed =
-        event.isControlPressed || event.isMetaPressed;
+        HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed;
     if (isModifierPressed && event.logicalKey == LogicalKeyboardKey.keyA) {
       _selectAllSignals();
     }
