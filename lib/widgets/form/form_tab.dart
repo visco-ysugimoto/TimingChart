@@ -1,3 +1,25 @@
+/*
+FormTab（フォーム入力タブ）
+
+この画面でできること
+- 入出力/HW Trigger の信号名を入力・表示/非表示を切替
+- カメラ数や各種ポート数、Trigger モード（Single/Code/Command）を選択
+- Camera Configuration Table で取込スケジュール（各カメラのモード）を設計
+- Template/Update ボタンで波形を生成し、チャートへ反映
+- 設定のインポート/エクスポート（必要に応じて）
+
+全体のデータの流れ（概略）
+1) 画面上の TextEditingController 群がユーザー入力を保持
+2) 「Update Chart」を押すと、現在のフォーム状態 → SignalData に反映
+3) 可視フィルタやポート番号を計算して、親（MyHomePage）へ onUpdateChart で送信
+4) 親側は TimingChart に表示用データを渡し、必要に応じて FormTab 側へも値を戻す
+
+重要な設計ポイント
+- AutomaticKeepAliveClientMixin によりタブ切替でも入力が消えない
+- Provider(FormStateNotifier) の値と TextEditingController の長さをこまめに同期
+- Post-frame（WidgetsBinding）での更新を用いて build 中の通知を避け、例外や描画ズレを回避
+- 「Code/Command Trigger」時は補助信号（Control/Group/Task/CODE_OPTION 等）を自動生成
+*/
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import '../../models/form/form_state.dart';
@@ -104,6 +126,9 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
   // タブを切り替えても入力状態を保持するために true を返す
   @override
   bool get wantKeepAlive => true;
+
+  // 言語表示（日本語/英語）に応じて UI ラベルを切り替えるヘルパ
+  // LocaleNotifier から現在の言語コードを取得し、適切な文字列を返す
 
   String _labelForRowMode(BuildContext context, RowMode mode) {
     final String lang = context.read<LocaleNotifier>().locale.languageCode;

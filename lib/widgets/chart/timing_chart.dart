@@ -1,3 +1,23 @@
+/*
+TimingChart（タイミングチャート描画）
+
+このウィジェットでできること
+- デジタル信号の波形（0/1）をグリッド上に描画
+- ラベルのドラッグで行の並び替え、範囲選択で一括反転/挿入/削除/複製
+- 右クリックメニューからコメント追加・編集・削除、波線（省略区間）の描画
+- 画像出力（PNG/JPEG）用のキャプチャ
+
+入力と出力（親からの受け取り / 親へ提供する情報）
+- initialSignalNames/initialSignals/initialAnnotations/signalTypes/portNumbers を受け取り表示
+- getChartData(), getAnnotations(), getSignalIdNames(), getOmissionTimeIndices() で親が取得可能
+- updateSignals()/updateSignalNames()/updateAnnotations() で親が再描画要求可能
+
+設計の要点
+- 画面サイズに合わせたセル幅/セル高の動的計算（fitToScreen）
+- SignalType で補助信号(control/group/task)を描く/描かないを切替
+- ラベルは ID から現在言語のラベルへ翻訳（SuggestionLoader 経由）
+- CustomPainter へ責務分割（グリッド/波形/コメント）して見通し改善
+*/
 import 'dart:math' as math;
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
@@ -152,6 +172,7 @@ class TimingChartState extends State<TimingChart>
     _idSignalNames = List.from(widget.initialSignalNames);
     signalNames = List.from(_idSignalNames); // 仮で ID 表示
 
+    // 初期化時に ID → 現在言語ラベルへ変換してから描画する
     // 初期翻訳
     _translateNames();
 
@@ -185,7 +206,7 @@ class TimingChartState extends State<TimingChart>
   // 信号名を更新するメソッド
   void updateSignalNames(List<String> newIdNames) {
     _idSignalNames = List.from(newIdNames);
-    // まずは ID 表示に差し替えておき、翻訳後に再描画
+    // まずは ID 表示に差し替えておき、翻訳後に再描画（ちらつきを減らす）
     setState(() {
       signalNames = List.from(_idSignalNames);
       _forceRepaint();
