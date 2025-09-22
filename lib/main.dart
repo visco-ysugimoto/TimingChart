@@ -1,3 +1,21 @@
+/*
+main.dart（アプリの入り口）
+
+このファイルで分かること（初心者向けの道しるべ）
+1) アプリ起動と初期化: Provider を使ってグローバル状態を準備し、runApp で描画開始
+2) テーマと多言語: MaterialTheme + l10n を適用（英語/日本語切替）
+3) 画面構成: 2つのタブ（FormTab / TimingChart）で入力と可視化を行う
+4) データの流れ: FormTab ↔ TimingChart 間の同期、エクスポート/インポートの前後関係
+
+基本的な操作の流れ
+- フォームに信号名などを入力 → 「Update Chart」でチャートへ反映 → 必要ならエクスポート
+- 既存設定(ZIP/ziq)を読み込む → 自動でフォーム/チャートに反映 → 必要なら編集してエクスポート
+
+キーワードの簡単説明
+- Provider: アプリ全体で共有したい状態（フォームの設定など）を購読・通知する仕組み
+- TextEditingController: 各テキスト入力の現在値を保持し、UIと同期させる仕組み
+- Post-frame コールバック: 画面の描画（build）完了直後に安全に状態を更新するための呼び出し
+*/
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart'; // 多言語対応に必要
 import 'package:flutter/scheduler.dart'; // SchedulerBinding用のインポート
@@ -67,6 +85,7 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // アプリ全体のテーマと言語設定を組み立てて返す
     return Consumer2<LocaleNotifier, SettingsNotifier>(
       builder: (context, localeNotifier, settings, child) {
         final brightness =
@@ -224,6 +243,7 @@ class _MyHomePageState extends State<MyHomePage>
     _tabController = TabController(length: 2, vsync: this);
 
     // 初期ステートを Provider に設定
+    // ポイント: Provider には実アプリの初期設定（ポート数など）を入れておく
     final initial = const TimingFormState(
       triggerOption: 'Single Trigger',
       ioPort: 32,
@@ -235,6 +255,7 @@ class _MyHomePageState extends State<MyHomePage>
 
     _scheduleFormUpdate((n) => n.replace(initial));
 
+    // 画面上のテキスト入力用コントローラ群も、初期値に合わせて数を揃える
     _initializeControllers(
       initial.inputCount,
       initial.outputCount,
@@ -245,10 +266,11 @@ class _MyHomePageState extends State<MyHomePage>
     _chartAnnotations = [];
 
     // タブ切り替え時のリスナー登録
+    // フォーム→チャート移動時にアノテーション反映、チャート→フォームでは位置保持などを行う
     _tabController.addListener(_handleTabChange);
 
     // 初期値を Provider に同期
-    // initState では context が使えるため listen: false で呼び出し
+    // 注意: build 中の状態更新を避けるため、フレーム終了後に実行
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _formNotifier.replace(_formState);
     });
@@ -585,6 +607,8 @@ class _MyHomePageState extends State<MyHomePage>
   // 設定をエクスポート
   Future<void> _exportConfig() async {
     // --- 先に TimingChart の最新値だけを FormTab に反映（名前位置は保持） ---
+    // ポイント: エクスポートは「チャートに見えている最新の波形」で出すため、
+    //           FormTab にも最新データを一旦コピーしてから AppConfig を作る
     if (_timingChartKey.currentState != null &&
         _formTabKey.currentState != null) {
       final chartData = _timingChartKey.currentState!.getChartData();
@@ -595,6 +619,7 @@ class _MyHomePageState extends State<MyHomePage>
     await SchedulerBinding.instance.endOfFrame;
 
     // エクスポート前の確認
+    // 入力が空などの場合、利用者に「Update Chart」実行を案内
     final shouldContinue = await _confirmExport();
     if (!shouldContinue) return;
 
@@ -610,6 +635,7 @@ class _MyHomePageState extends State<MyHomePage>
     await SchedulerBinding.instance.endOfFrame;
 
     // さらに1フレーム待ってからエクスポート処理を実行
+    // （フレーム順序を分けることで、UI更新とファイル出力の競合を避ける）
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final config = await _createAppConfig();
       final success = await FileUtils.exportWaveDrom(
@@ -737,6 +763,7 @@ class _MyHomePageState extends State<MyHomePage>
   Future<void> _exportXlsx() async {
     try {
       // 最新のチャートデータを同期
+      // XLSX も画面に表示中の順序・波形をソースにする
       if (_timingChartKey.currentState != null &&
           _formTabKey.currentState != null) {
         final chartData = _timingChartKey.currentState!.getChartData();
@@ -746,7 +773,7 @@ class _MyHomePageState extends State<MyHomePage>
       // 1フレーム待って状態を反映
       await SchedulerBinding.instance.endOfFrame;
 
-      // IO情報を収集し、ID名をlabel名に変換
+      // IO情報を収集し、ID名をlabel名に変換（表示名として分かりやすく）
       print('=== IO Information: ID to Label conversion ===');
 
       // Input情報をID名からlabel名に変換
@@ -791,6 +818,7 @@ class _MyHomePageState extends State<MyHomePage>
       print('=== End IO conversion ===');
 
       // チャート信号データを収集し、ID名をlabel名に変換
+      // チャートタブの表示順を優先して並べ替える
       List<SignalData> signalData = [];
 
       if (_timingChartKey.currentState != null) {
@@ -882,7 +910,7 @@ class _MyHomePageState extends State<MyHomePage>
 
   @override
   Widget build(BuildContext context) {
-    // l10nのための S オブジェクトを取得
+    // l10nのための S オブジェクトを取得（画面テキストを多言語化するヘルパー）
     final s = S.of(context);
 
     return Scaffold(
@@ -890,7 +918,7 @@ class _MyHomePageState extends State<MyHomePage>
         //backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         backgroundColor: Theme.of(context).colorScheme.primary,
         iconTheme: IconThemeData(color: Colors.white), // ハンバーガーメニューの色を白に設定
-        title: Text(s.appTitle), // ★ l10nからタイトル取得
+        title: Text(s.appTitle), // ★ l10nからタイトル取得（固定文言を直書きしない）
         actions: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -918,6 +946,7 @@ class _MyHomePageState extends State<MyHomePage>
             ),
           ),
         ],
+        // 2つのタブ（フォーム入力 / タイミングチャート）
         bottom: TabBar(
           controller: _tabController,
           labelStyle: GoogleFonts.notoSansJp(fontSize: 20),
@@ -937,6 +966,7 @@ class _MyHomePageState extends State<MyHomePage>
           ],
         ),
       ),
+      // サイドメニュー（インポート/エクスポート、言語切替、設定など）
       drawer: Drawer(
         child: ListView(
           padding: EdgeInsets.zero,
@@ -954,7 +984,7 @@ class _MyHomePageState extends State<MyHomePage>
                 ),
               ),
             ),
-            // インポート
+            // インポート（前に保存した設定を読み込む）
             ListTile(
               leading: Icon(Icons.file_download),
               title: Text(s.drawer_import),
@@ -963,7 +993,7 @@ class _MyHomePageState extends State<MyHomePage>
                 _importConfig();
               },
             ),
-            // インポート(ziq)
+            // インポート(ziq) - vxVisMgr.ini などを含む ZIP から解析して取り込む
             ListTile(
               leading: Icon(Icons.archive_outlined),
               title: Text(s.drawer_import_ziq),
