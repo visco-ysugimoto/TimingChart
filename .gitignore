@@ -43,3 +43,23 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Additional for Flutter/Platforms/IDE
+coverage/
+android/.gradle/
+android/local.properties
+ios/Pods/
+ios/.symlinks/
+macos/Pods/
+linux/build/
+windows/build/
+.vscode/
+Thumbs.db
+
+# Signing / Secrets
+**/*.keystore
+**/*.jks
+**/*.p12
+**/*.pem
+**/*.key
+**/*.cer
