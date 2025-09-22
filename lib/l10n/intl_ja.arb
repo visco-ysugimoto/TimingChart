@@ -1,6 +1,6 @@
 {
   "@@locale": "ja",
-  "appTitle": "タイミングチャートジェネレータ",
+  "appTitle": "Timing Chart Generator",
   "formTabTitle": "入力フォーム",
   "chartTabTitle": "タイミングチャート",
   "menu_file": "ファイル",
@@ -13,7 +13,7 @@
   "menu_item_copy": "コピー",
   "menu_item_paste": "貼り付け",
   "menu_help": "ヘルプ",
-  "menu_item_about": "このアプリについて",
+  "menu_item_about": "About",
   "chartNameLabel": "チャート名",
   "triggerOptionLabel": "Trigger Option",
   "ioPortLabel": "Total I/O Port",
@@ -26,8 +26,7 @@
   "hwTriggerSectionTitle": "HW Trigger Signals",
   "hwTriggerPrefix": "HW Trigger",
   "createTemplateButton": "テンプレート作成",
-  "updateChartButton": "チャート更新"
-,
+  "updateChartButton": "チャート更新",
   "drawer_import": "インポート",
   "drawer_import_ziq": "インポート(ziq)",
   "drawer_import_ziq_cancelled": ".ziq の選択がキャンセルされました",
@@ -63,5 +62,22 @@
   "hint_filename_prefix": "prefix_",
   "dark_mode": "ダークモード",
   "accent_color": "アクセントカラー",
-  "importing_wait": "インポート中... しばらくお待ちください"
+  "importing_wait": "インポート中... しばらくお待ちください",
+  "ctx_edit_comment": "コメントを編集",
+  "ctx_delete_comment": "コメントを削除",
+  "ctx_arrow_horizontal_on_to_off": "矢印を水平で引く: ON → OFF",
+  "ctx_arrow_horizontal_off_to_on": "矢印を水平で引く: OFF → ON",
+  "ctx_set_arrow_tip_to_row": "矢印先端をこの信号に設定",
+  "ctx_insert_zeros": "選択範囲に0を挿入",
+  "ctx_duplicate_to_tail": "選択範囲を末尾に複製",
+  "ctx_select_all_signals": "全ての信号を選択",
+  "ctx_delete_selection": "選択範囲を削除",
+  "ctx_add_comment": "コメントを追加",
+  "ctx_draw_omission": "省略信号を描画"
+  ,
+  "comment_add_title": "コメントを追加",
+  "comment_add_range_title": "選択範囲にコメントを追加",
+  "comment_input_hint": "コメントを入力",
+  "comment_edit_title": "コメントを編集"
 }
+

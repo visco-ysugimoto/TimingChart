@@ -15,6 +15,10 @@ import 'utils/file_utils.dart'; // FileUtilsをインポート
 import 'widgets/form/form_tab.dart';
 import 'widgets/chart/timing_chart.dart';
 import 'widgets/settings/settings_window.dart';
+import 'utils/vxvismgr_parser.dart';
+import 'utils/vxvismgr_mapping_loader.dart';
+import 'utils/csv_io_log_parser.dart';
+import 'models/chart/signal_type.dart';
 // import 'widgets/chart/chart_signals.dart'; // SignalType を含むファイルをインポートから削除
 
 import 'providers/form_state_notifier.dart';
@@ -147,6 +151,49 @@ class _MyHomePageState extends State<MyHomePage>
   List<SignalData> _chartSignals = [];
   List<int> _chartPortNumbers = [];
   List<TimingChartAnnotation> _chartAnnotations = [];
+
+  // ziq(zip) から読み取ったファイル内容の保持先
+  String? _vxVisMgrIniContent;
+  String? _dioMonitorLogCsvContent;
+  String? _plcDioMonitorLogCsvContent;
+  // 解析結果: [StatusSignalSetting] の xxx.Enable=1 の xxx 一覧
+  List<String> _enabledStatusSignals = [];
+  // 解析結果: Enable=1 の構造一覧 (name, portNo[0] 等)
+  List<StatusSignalSetting> _enabledSignalStructures = [];
+
+  // name -> suggestionId のマッピング
+  Map<String, String> _vxvisNameToSuggestionId = {};
+
+  // 出力割り当て: Port.No 0 = n → outputIndex = n+1 に割り当て予定
+  List<_OutputAssignment> _outputAssignments = [];
+
+  // （デバッグ用出力は未使用のため削除）
+
+  // ziq 読み込み・解析中インジケータ
+  bool _isImportingZiq = false;
+
+  Future<void> _applyOutputAssignments() async {
+    // 必要な出力数を確保
+    int maxIndex = 0;
+    for (final a in _outputAssignments) {
+      if (a.outputIndex1Based > maxIndex) maxIndex = a.outputIndex1Based;
+    }
+    if (maxIndex > _formState.outputCount) {
+      _updateOutputCount(maxIndex);
+      // コントローラ更新を待つ
+      await SchedulerBinding.instance.endOfFrame;
+    }
+
+    setState(() {
+      for (final a in _outputAssignments) {
+        if (a.suggestionId.isEmpty) continue;
+        final idx = a.outputIndex1Based - 1;
+        if (idx >= 0 && idx < _outputControllers.length) {
+          _outputControllers[idx].text = a.suggestionId;
+        }
+      }
+    });
+  }
 
   // タイミングチャートの参照を保持する変数を追加
   final GlobalKey<TimingChartState> _timingChartKey =
@@ -296,7 +343,8 @@ class _MyHomePageState extends State<MyHomePage>
       for (int i = target; i < _inputControllers.length; i++) {
         _inputControllers[i].dispose();
       }
-      _inputControllers = _inputControllers.sublist(0, target);
+      // 重要: 新しいリストに置き換えず、同一インスタンスのまま短縮する
+      _inputControllers.removeRange(target, _inputControllers.length);
     } else if (_inputControllers.length < target) {
       _inputControllers.addAll(
         List.generate(
@@ -312,7 +360,8 @@ class _MyHomePageState extends State<MyHomePage>
       for (int i = target; i < _outputControllers.length; i++) {
         _outputControllers[i].dispose();
       }
-      _outputControllers = _outputControllers.sublist(0, target);
+      // 重要: 新しいリストに置き換えず、同一インスタンスのまま短縮する
+      _outputControllers.removeRange(target, _outputControllers.length);
     } else if (_outputControllers.length < target) {
       _outputControllers.addAll(
         List.generate(
@@ -354,7 +403,8 @@ class _MyHomePageState extends State<MyHomePage>
       for (int i = target; i < _hwTriggerControllers.length; i++) {
         _hwTriggerControllers[i].dispose();
       }
-      _hwTriggerControllers = _hwTriggerControllers.sublist(0, target);
+      // 重要: 新しいリストに置き換えず、同一インスタンスのまま短縮する
+      _hwTriggerControllers.removeRange(target, _hwTriggerControllers.length);
     } else if (_hwTriggerControllers.length < target) {
       _hwTriggerControllers.addAll(
         List.generate(
@@ -390,6 +440,25 @@ class _MyHomePageState extends State<MyHomePage>
       // コメント(アノテーション)もクリア
       _timingChartKey.currentState!.updateAnnotations([]);
     }
+
+    // === 追加: ドロップダウン（フォーム状態）も初期値に戻す ===
+    _scheduleFormUpdate((n) {
+      n.replace(
+        const TimingFormState(
+          triggerOption: 'Single Trigger',
+          ioPort: 32,
+          hwPort: 0,
+          camera: 1,
+          inputCount: 32,
+          outputCount: 32,
+        ),
+      );
+    });
+
+    // コントローラ数も初期値へ再調整
+    _updateInputControllers(32);
+    _updateOutputControllers(32);
+    _updateHwTriggerControllers(0);
   }
 
   // AppConfigを現在の状態から作成
@@ -565,6 +634,11 @@ class _MyHomePageState extends State<MyHomePage>
     final config = await FileUtils.importAppConfig();
 
     if (config == null) return;
+
+    // 設定適用の前に Clear 相当を実行（テキスト/テーブル/ドロップダウン初期化）
+    if (_formTabKey.currentState != null) {
+      _formTabKey.currentState!.clearAllForImport();
+    }
 
     // Provider を更新
     _scheduleFormUpdate((n) => n.replace(config.formState));
@@ -882,17 +956,508 @@ class _MyHomePageState extends State<MyHomePage>
             ),
             // インポート
             ListTile(
-              leading: Icon(Icons.file_upload),
-              title: Text('インポート'),
+              leading: Icon(Icons.file_download),
+              title: Text(s.drawer_import),
               onTap: () {
                 Navigator.pop(context);
                 _importConfig();
               },
             ),
+            // インポート(ziq)
+            ListTile(
+              leading: Icon(Icons.archive_outlined),
+              title: Text(s.drawer_import_ziq),
+              onTap: () async {
+                Navigator.pop(context);
+                final zipPath = await FileUtils.pickZiqAndConvertToZipPath();
+                if (!mounted) return;
+                if (zipPath == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(s.drawer_import_ziq_cancelled),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                  return;
+                }
+                setState(() => _isImportingZiq = true);
+                // 解析前に Clear 相当を実行
+                if (_formTabKey.currentState != null) {
+                  _formTabKey.currentState!.clearAllForImport();
+                }
+                try {
+                  final files = await FileUtils.readRequiredFilesFromZip(
+                    zipPath,
+                  );
+                  if (!mounted) return;
+
+                  // マッピングを読み込む（assets）
+                  final mapping = await VxVisMgrMappingLoader.loadMapping();
+
+                  setState(() {
+                    _vxVisMgrIniContent = files['vxVisMgr.ini'];
+                    _dioMonitorLogCsvContent = files['DioMonitorLog.csv'];
+                    _plcDioMonitorLogCsvContent =
+                        files['Plc_DioMonitorLog.csv'];
+                    _vxvisNameToSuggestionId = mapping;
+                    // ini を解析
+                    if (_vxVisMgrIniContent == null) {
+                      _enabledStatusSignals = [];
+                      _enabledSignalStructures = [];
+                      _outputAssignments = [];
+                    } else {
+                      // 1) まず IOActive を反映（Input/Output ポート数）
+                      final ioActive = VxVisMgrParser.parseIOActive(
+                        _vxVisMgrIniContent!,
+                      );
+                      if (ioActive != null) {
+                        if (ioActive.pinPorts > 0 &&
+                            ioActive.pinPorts != _formState.inputCount) {
+                          _updateInputCount(ioActive.pinPorts);
+                        }
+                        if (ioActive.poutPorts > 0 &&
+                            ioActive.poutPorts != _formState.outputCount) {
+                          _updateOutputCount(ioActive.poutPorts);
+                        }
+                      }
+
+                      final all = VxVisMgrParser.parseStatusSignalSettings(
+                        _vxVisMgrIniContent!,
+                      );
+                      _enabledSignalStructures =
+                          all.where((s) => s.enabled).toList();
+                      _enabledStatusSignals =
+                          _enabledSignalStructures.map((e) => e.name).toList();
+
+                      // Port.No 0 をもつものだけを対象に、UI 用の割り当てを作成
+                      _outputAssignments =
+                          _enabledSignalStructures
+                              .where((s) => s.portNoByIndex.containsKey(0))
+                              .map((s) {
+                                // INI の Port.No 0 = n は 0-based（Port1 は n=0）
+                                // UI は 1-based で扱うため +1
+                                final n0 = s.portNoByIndex[0]!; // 0-based
+                                final outputIndex = n0 + 1; // UI 1-based index
+                                final suggestionId =
+                                    _vxvisNameToSuggestionId[s.name] ?? '';
+                                return _OutputAssignment(
+                                  name: s.name,
+                                  suggestionId: suggestionId,
+                                  portNo0: n0 + 1, // CSV 列参照用の 1-based
+                                  outputIndex1Based: outputIndex,
+                                );
+                              })
+                              .toList();
+
+                      // 先に Output テキスト欄へラベルを反映（同期版）
+                      // マッピングが無ければ INI の信号名を使用
+                      for (final a in _outputAssignments) {
+                        final idx = a.outputIndex1Based - 1;
+                        if (idx >= 0 && idx < _outputControllers.length) {
+                          _outputControllers[idx].text =
+                              a.suggestionId.isNotEmpty
+                                  ? a.suggestionId
+                                  : a.name;
+                        }
+                      }
+
+                      // [IOSetting] を解析して TriggerOption と PLC/EIP を反映
+                      final ioSetting = VxVisMgrParser.parseIOSetting(
+                        _vxVisMgrIniContent!,
+                      );
+                      if (ioSetting != null) {
+                        // TriggerOption
+                        final triggerOption =
+                            ioSetting.triggerMode == 0
+                                ? 'Code Trigger'
+                                : 'Single Trigger';
+                        _scheduleFormUpdate(
+                          (n) => n.update(triggerOption: triggerOption),
+                        );
+                        // 入力欄の自動設定（Templateと同じ規則）
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (!mounted) return;
+                          if (_formTabKey.currentState != null) {
+                            // 入力名の自動設定のみ行う（テンプレゼロ波形での上書きを防止）
+                            _formTabKey.currentState!
+                                .applyInputNamesForTriggerOption();
+                          }
+                        });
+
+                        // PLC / EIP (UseVirtualIO_on_Trigger: 0 => None, 1 => PLC)
+                        final plcEip =
+                            ioSetting.useVirtualIoOnTrigger == 1
+                                ? 'PLC'
+                                : 'None';
+                        // FormTab へ反映（UI）
+                        if (_formTabKey.currentState != null) {
+                          _formTabKey.currentState!.setPlcEipOption(plcEip);
+                        }
+
+                        // === CSV ログを解析してチャートへ反映 ===
+                        final csvText =
+                            ioSetting.useVirtualIoOnTrigger == 1
+                                ? _plcDioMonitorLogCsvContent
+                                : _dioMonitorLogCsvContent;
+                        if (csvText != null && csvText.isNotEmpty) {
+                          // タイムライン（CSV行順）で IN/OUT を統合
+                          final timeline = CsvIoLogParser.parseTimeline(
+                            csvText,
+                          );
+
+                          // === Output の取り込み（IN行では前回値を保持） ===
+                          final int timeLength = timeline.entries.length;
+                          // OUT 結果を後段で使うための一時保持領域（スコープ外に宣言）
+                          final outNames = <String>[];
+                          final outTypes = <SignalType>[];
+                          final outPorts = <int>[];
+                          final outValues = <List<int>>[];
+                          if (timeLength > 0) {
+                            int outputs = _formState.outputCount;
+                            for (final a in _outputAssignments) {
+                              if (a.outputIndex1Based > outputs)
+                                outputs = a.outputIndex1Based;
+                            }
+                            List<List<int>> outChartRows = List.generate(
+                              outputs,
+                              (_) => List.filled(timeLength, 0),
+                            );
+
+                            for (final a in _outputAssignments) {
+                              final outIdx = a.outputIndex1Based - 1;
+                              final portK = a.portNo0; // 1-based
+                              if (outIdx < 0 || outIdx >= outputs) continue;
+                              for (int t = 0; t < timeLength; t++) {
+                                final e = timeline.entries[t];
+                                if (e.type == 'OUT') {
+                                  final row = e.bits;
+                                  // 右端が Port1（row は末尾空欄除外済み）
+                                  final colIdx = row.length - portK;
+                                  if (t < 3) {
+                                    // デバッグ: 最初の数ステップで抽出位置と値を確認
+                                    debugPrint(
+                                      '[OUT map] name=${a.name} portK=$portK time#$t rowLen=${row.length} colIdx=$colIdx val=' +
+                                          ((colIdx >= 0 &&
+                                                  colIdx < row.length &&
+                                                  row[colIdx] != 0)
+                                              ? '1'
+                                              : '0'),
+                                    );
+                                  }
+                                  if (colIdx >= 0 && colIdx < row.length) {
+                                    outChartRows[outIdx][t] =
+                                        row[colIdx] != 0 ? 1 : 0;
+                                  } else {
+                                    outChartRows[outIdx][t] = 0;
+                                  }
+                                } else {
+                                  // IN 行: 直前の OUT 値を維持
+                                  outChartRows[outIdx][t] =
+                                      t > 0 ? outChartRows[outIdx][t - 1] : 0;
+                                }
+                              }
+                            }
+
+                            // 一旦、OUT の結果を保持（後で IN と結合して一括反映）
+                            for (int i = 0; i < outputs; i++) {
+                              if (i >= _outputControllers.length) continue;
+                              final name = _outputControllers[i].text.trim();
+                              if (name.isEmpty) continue;
+                              outNames.add(name);
+                              outTypes.add(SignalType.output);
+                              outPorts.add(i + 1);
+                              outValues.add(outChartRows[i]);
+                            }
+                            // この場ではまだ FormTab へ反映しない（IN と結合して一回で反映する）
+                            // === 追加: CSVで1を含む未マッピングのOUTポートを自動生成 ===
+                            final assignedPortKs =
+                                _outputAssignments
+                                    .map((a) => a.portNo0)
+                                    .toSet();
+                            final int outPortCount = timeline.outPortCount;
+                            if (outPortCount > 0) {
+                              for (
+                                int portK = 1;
+                                portK <= outPortCount;
+                                portK++
+                              ) {
+                                if (assignedPortKs.contains(portK)) continue;
+
+                                int last = 0;
+                                bool anyOne = false;
+                                final series = List<int>.filled(timeLength, 0);
+
+                                for (int t = 0; t < timeLength; t++) {
+                                  final e = timeline.entries[t];
+                                  if (e.type == 'OUT') {
+                                    final row = e.bits;
+                                    final colIdx =
+                                        row.length - portK; // 右端が Port1
+                                    final v =
+                                        (colIdx >= 0 &&
+                                                colIdx < row.length &&
+                                                row[colIdx] != 0)
+                                            ? 1
+                                            : 0;
+                                    last = v;
+                                    series[t] = v;
+                                    if (v == 1) anyOne = true;
+                                  } else {
+                                    // IN 行: 直前の OUT 値を維持
+                                    series[t] = last;
+                                  }
+                                }
+
+                                if (anyOne) {
+                                  final name = 'Output$portK';
+                                  outNames.add(name);
+                                  outTypes.add(SignalType.output);
+                                  outPorts.add(portK);
+                                  outValues.add(series);
+                                }
+                              }
+                            }
+                          }
+
+                          // === Input の取り込み（OUT行では0を出力） ===
+                          final int inTime = timeline.entries.length;
+                          if (inTime > 0 && _formTabKey.currentState != null) {
+                            final int inputs = _formState.inputCount;
+
+                            if (triggerOption == 'Code Trigger' &&
+                                _inputControllers.isNotEmpty) {
+                              _inputControllers[0].text = 'TRIGGER';
+                            }
+
+                            List<List<int>> inChart = [];
+                            List<String> inNames = [];
+                            List<SignalType> inTypes = [];
+
+                            for (int idx0 = 0; idx0 < inputs; idx0++) {
+                              if (idx0 >= _inputControllers.length) continue;
+                              final name = _inputControllers[idx0].text.trim();
+                              if (name.isEmpty) continue;
+                              List<int> series = List.filled(inTime, 0);
+                              for (int t = 0; t < inTime; t++) {
+                                final e = timeline.entries[t];
+                                if (e.type == 'IN') {
+                                  final row = e.bits;
+                                  // 右端が Input1。CSV末尾の空欄は除外済み
+                                  final col = row.length - (idx0 + 1);
+                                  if (col >= 0 && col < row.length) {
+                                    series[t] = row[col] != 0 ? 1 : 0;
+                                  }
+                                } else {
+                                  // OUT 行: 常に 0
+                                  series[t] = 0;
+                                }
+                              }
+                              inChart.add(series);
+                              inNames.add(name);
+                              inTypes.add(SignalType.input);
+                            }
+                            // === IN と OUT を結合して一回で FormTab へ反映（表示順: CODE_OPTION → Command Option → Input → HW Trigger → Output） ===
+                            final combinedValues = <List<int>>[];
+                            final combinedNames = <String>[];
+                            final combinedTypes = <SignalType>[];
+
+                            // 1) CODE_OPTION を最上段（存在すれば）。無ければ0波形で追加（Code Trigger のヘッダ表示用）
+                            int idxCode = inNames.indexOf('CODE_OPTION');
+                            if (idxCode != -1) {
+                              combinedNames.add(inNames[idxCode]);
+                              combinedTypes.add(inTypes[idxCode]);
+                              combinedValues.add(inChart[idxCode]);
+                            } else {
+                              if (triggerOption == 'Code Trigger') {
+                                combinedNames.add('CODE_OPTION');
+                                combinedTypes.add(SignalType.input);
+                                combinedValues.add(
+                                  List<int>.filled(timeLength, 0),
+                                );
+                              }
+                            }
+                            // 2) Command Option を次段（存在すれば）
+                            int idxCmd = inNames.indexOf('Command Option');
+                            if (idxCmd != -1) {
+                              combinedNames.add(inNames[idxCmd]);
+                              combinedTypes.add(inTypes[idxCmd]);
+                              combinedValues.add(inChart[idxCmd]);
+                            }
+                            // 3) 残りの Input
+                            for (int i = 0; i < inNames.length; i++) {
+                              if (i == idxCode || i == idxCmd) continue;
+                              combinedNames.add(inNames[i]);
+                              combinedTypes.add(inTypes[i]);
+                              combinedValues.add(inChart[i]);
+                            }
+
+                            // 4) HW Trigger（CSVに依存しないため 0 波形で配置）
+                            if (_formState.hwPort > 0) {
+                              for (int j = 0; j < _formState.hwPort; j++) {
+                                final hwName =
+                                    (j < _hwTriggerControllers.length)
+                                        ? _hwTriggerControllers[j].text.trim()
+                                        : '';
+                                if (hwName.isEmpty) continue;
+                                combinedNames.add(hwName);
+                                combinedTypes.add(SignalType.hwTrigger);
+                                combinedValues.add(
+                                  List<int>.filled(timeLength, 0),
+                                );
+                              }
+                            }
+
+                            // 5) Output（存在すれば）
+                            if (timeLength > 0) {
+                              for (int i = 0; i < _formState.outputCount; i++) {
+                                final name =
+                                    (i < _outputControllers.length)
+                                        ? _outputControllers[i].text.trim()
+                                        : '';
+                                if (name.isEmpty) continue;
+                                final idxInOut = outNames.indexOf(name);
+                                if (idxInOut != -1) {
+                                  combinedNames.add(name);
+                                  combinedTypes.add(SignalType.output);
+                                  combinedValues.add(outValues[idxInOut]);
+                                }
+                              }
+                            }
+
+                            // 5.5) フォーム未設定の追加出力（CSVで1を含んだポート）
+                            for (int i = 0; i < outNames.length; i++) {
+                              final name = outNames[i];
+                              if (!combinedNames.contains(name)) {
+                                final values = outValues[i];
+                                if (values.any((v) => v != 0)) {
+                                  combinedNames.add(name);
+                                  combinedTypes.add(SignalType.output);
+                                  combinedValues.add(values);
+                                }
+                              }
+                            }
+
+                            if (combinedNames.isNotEmpty) {
+                              // デバッグ: 反映直前の要約
+                              debugPrint(
+                                '[COMBINED] names=${combinedNames.length}, valuesRows=${combinedValues.length}, anyNonZero=${combinedValues.any((r) => r.any((v) => v != 0))}',
+                              );
+
+                              // FormTab 側の実データにも保存（エクスポートや復元に備える）
+                              if (_formTabKey.currentState != null) {
+                                _formTabKey.currentState!.setChartDataOnly(
+                                  combinedValues,
+                                );
+                              }
+
+                              // メイン側の初期表示用データも同期（タブ切替時に使用）
+                              setState(() {
+                                final syncedSignals = <SignalData>[];
+                                final syncedPorts = <int>[];
+
+                                // 入力/出力/HW の名前→ポート番号マップを用意
+                                final inputNameToPort = <String, int>{
+                                  for (int i = 0; i < inNames.length; i++)
+                                    inNames[i]: i + 1,
+                                };
+                                final outputNameToPort = <String, int>{
+                                  for (int i = 0; i < outNames.length; i++)
+                                    outNames[i]: outPorts[i],
+                                };
+                                final hwNameToPort = <String, int>{
+                                  for (int i = 0; i < _formState.hwPort; i++)
+                                    if (i < _hwTriggerControllers.length &&
+                                        _hwTriggerControllers[i].text
+                                            .trim()
+                                            .isNotEmpty)
+                                      _hwTriggerControllers[i].text.trim():
+                                          i + 1,
+                                };
+
+                                for (int i = 0; i < combinedNames.length; i++) {
+                                  final name = combinedNames[i];
+                                  final type = combinedTypes[i];
+                                  final vals = combinedValues[i];
+                                  syncedSignals.add(
+                                    SignalData(
+                                      name: name,
+                                      signalType: type,
+                                      values: vals,
+                                      isVisible: true,
+                                    ),
+                                  );
+
+                                  int portNum = 0;
+                                  switch (type) {
+                                    case SignalType.output:
+                                      portNum = outputNameToPort[name] ?? 0;
+                                      break;
+                                    case SignalType.input:
+                                      // CODE_OPTION/Command Option は 0、その他は入力欄のインデックス+1
+                                      if (name != 'CODE_OPTION' &&
+                                          name != 'Command Option') {
+                                        portNum = inputNameToPort[name] ?? 0;
+                                      }
+                                      break;
+                                    case SignalType.hwTrigger:
+                                      portNum = hwNameToPort[name] ?? 0;
+                                      break;
+                                    default:
+                                      portNum = 0;
+                                  }
+                                  syncedPorts.add(portNum);
+                                }
+                                _chartSignals = syncedSignals;
+                                _chartPortNumbers = syncedPorts;
+                              });
+                              _formTabKey.currentState!
+                                  .updateSignalDataFromChartData(
+                                    combinedValues,
+                                    combinedNames,
+                                    combinedTypes,
+                                  );
+                              // 既存データの破壊を避けるため、ここでは updateChartData は呼ばない
+                              if (_timingChartKey.currentState != null) {
+                                _timingChartKey.currentState!.updateSignalNames(
+                                  combinedNames,
+                                );
+                                _timingChartKey.currentState!.updateSignals(
+                                  combinedValues,
+                                );
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  });
+
+                  final foundIni = _vxVisMgrIniContent != null ? 'OK' : 'なし';
+                  final foundDio =
+                      _dioMonitorLogCsvContent != null ? 'OK' : 'なし';
+                  final foundPlc =
+                      _plcDioMonitorLogCsvContent != null ? 'OK' : 'なし';
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'ZIP解析完了  vxVisMgr.ini:$foundIni  DioMonitorLog.csv:$foundDio  Plc_DioMonitorLog.csv:$foundPlc  EnabledSignals:${_enabledStatusSignals.length}  OutputMap:${_outputAssignments.length}',
+                      ),
+                      duration: const Duration(seconds: 3),
+                    ),
+                  );
+
+                  // Output テキストフィールドに suggestion id を自動入力
+                  await _applyOutputAssignments();
+                } finally {
+                  if (mounted) setState(() => _isImportingZiq = false);
+                }
+              },
+            ),
             // エクスポート
             ListTile(
-              leading: Icon(Icons.file_download),
-              title: Text('エクスポート'),
+              leading: Icon(Icons.file_upload),
+              title: Text(s.drawer_export),
               onTap: () {
                 Navigator.pop(context);
                 _exportConfig();
@@ -901,7 +1466,7 @@ class _MyHomePageState extends State<MyHomePage>
             // チャート画像をエクスポート (JPEG)
             ListTile(
               leading: Icon(Icons.image_outlined),
-              title: const Text('チャート画像をエクスポート (JPEG)'),
+              title: Text(s.drawer_export_chart_jpeg),
               onTap: () {
                 Navigator.pop(context);
                 _exportChartImageJpeg();
@@ -910,7 +1475,7 @@ class _MyHomePageState extends State<MyHomePage>
             // XLSXエクスポート
             ListTile(
               leading: Icon(Icons.table_chart),
-              title: const Text('XLSXエクスポート'),
+              title: Text(s.drawer_export_xlsx),
               onTap: () {
                 Navigator.pop(context);
                 _exportXlsx();
@@ -920,7 +1485,7 @@ class _MyHomePageState extends State<MyHomePage>
             // 言語切替
             ListTile(
               leading: Icon(Icons.language),
-              title: const Text('English'),
+              title: Text(s.language_english),
               onTap: () {
                 setSuggestionLanguage(SuggestionLanguage.en);
                 Provider.of<LocaleNotifier>(
@@ -933,7 +1498,7 @@ class _MyHomePageState extends State<MyHomePage>
             ),
             ListTile(
               leading: Icon(Icons.language),
-              title: const Text('日本語'),
+              title: Text(s.language_japanese),
               onTap: () {
                 setSuggestionLanguage(SuggestionLanguage.ja);
                 Provider.of<LocaleNotifier>(
@@ -957,7 +1522,7 @@ class _MyHomePageState extends State<MyHomePage>
             // 環境設定 (Preferences)
             ListTile(
               leading: const Icon(Icons.settings),
-              title: const Text('環境設定'), // TODO: l10n
+              title: Text(s.drawer_preferences),
               onTap: () {
                 Navigator.pop(context);
                 Navigator.push(
@@ -987,212 +1552,257 @@ class _MyHomePageState extends State<MyHomePage>
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
+      body: Stack(
         children: [
-          // --- Form Tab ---
-          FormTab(
-            key: _formTabKey,
-            inputControllers: _inputControllers,
-            outputControllers: _outputControllers,
-            hwTriggerControllers: _hwTriggerControllers,
-            onTriggerOptionChanged: (String? newValue) {
-              if (newValue != null) {
-                // Provider に反映し、UI は自動リビルド
-                _scheduleFormUpdate((n) => n.update(triggerOption: newValue));
-              }
-            },
-            // Input Port 変更
-            onInputPortChanged: (int? newValue) {
-              if (newValue != null && newValue != _formState.inputCount) {
-                _updateInputCount(newValue);
-              }
-            },
-            // Output Port 変更
-            onOutputPortChanged: (int? newValue) {
-              if (newValue != null && newValue != _formState.outputCount) {
-                _updateOutputCount(newValue);
-              }
-            },
-            onHwPortChanged: (int? newValue) {
-              if (newValue != null && newValue != _formState.hwPort) {
-                // Provider への反映とコントローラリストのリサイズを
-                // 同じポストフレームコールバック内で実行し、
-                // 両者のタイミングずれによる RangeError を防ぐ
-                _scheduleFormUpdate((n) {
-                  // 1) Provider の状態を更新
-                  n.update(hwPort: newValue);
-
-                  // 2) コントローラリストをリサイズし、UI を再構築
-                  setState(() => _updateHwTriggerControllers(newValue));
-                });
-              }
-            },
-            onCameraChanged: (int? newValue) {
-              if (newValue != null) {
-                _scheduleFormUpdate((n) => n.update(camera: newValue));
-              }
-            },
-            onUpdateChart: (
-              signalNames,
-              chartData,
-              signalTypes,
-              portNumbers,
-              bool overrideFlag,
-            ) {
-              setState(() {
-                // --- 現在のチャート波形を取得（ユーザ編集後の最新状態を優先） ---
-                Map<String, List<int>> existingValuesMap = {};
-                if (_timingChartKey.currentState != null) {
-                  final currentChartValues =
-                      _timingChartKey.currentState!.getChartData();
-
-                  // _chartSignals と表示行は同じ順序である前提
-                  for (
-                    int i = 0;
-                    i < _chartSignals.length && i < currentChartValues.length;
-                    i++
-                  ) {
-                    existingValuesMap[_chartSignals[i].name] =
-                        currentChartValues[i];
+          TabBarView(
+            controller: _tabController,
+            children: [
+              // --- Form Tab ---
+              FormTab(
+                key: _formTabKey,
+                inputControllers: _inputControllers,
+                outputControllers: _outputControllers,
+                hwTriggerControllers: _hwTriggerControllers,
+                onTriggerOptionChanged: (String? newValue) {
+                  if (newValue != null) {
+                    // Provider に反映し、UI は自動リビルド
+                    _scheduleFormUpdate(
+                      (n) => n.update(triggerOption: newValue),
+                    );
                   }
-                } else {
-                  // フォールバック: これまで保持している値
-                  for (var signal in _chartSignals) {
-                    existingValuesMap[signal.name] = signal.values;
+                },
+                // Input Port 変更
+                onInputPortChanged: (int? newValue) {
+                  if (newValue != null && newValue != _formState.inputCount) {
+                    _updateInputCount(newValue);
                   }
-                }
+                },
+                // Output Port 変更
+                onOutputPortChanged: (int? newValue) {
+                  if (newValue != null && newValue != _formState.outputCount) {
+                    _updateOutputCount(newValue);
+                  }
+                },
+                onHwPortChanged: (int? newValue) {
+                  if (newValue != null && newValue != _formState.hwPort) {
+                    // Provider への反映とコントローラリストのリサイズを
+                    // 同じポストフレームコールバック内で実行し、
+                    // 両者のタイミングずれによる RangeError を防ぐ
+                    _scheduleFormUpdate((n) {
+                      // 1) Provider の状態を更新
+                      n.update(hwPort: newValue);
 
-                // ------- Signal 値の決定 -------
-                List<SignalData> newChartSignals = [];
+                      // 2) コントローラリストをリサイズし、UI を再構築
+                      setState(() => _updateHwTriggerControllers(newValue));
+                    });
+                  }
+                },
+                onCameraChanged: (int? newValue) {
+                  if (newValue != null) {
+                    _scheduleFormUpdate((n) => n.update(camera: newValue));
+                  }
+                },
+                onUpdateChart: (
+                  signalNames,
+                  chartData,
+                  signalTypes,
+                  portNumbers,
+                  bool overrideFlag,
+                ) {
+                  setState(() {
+                    // --- 現在のチャート波形を取得（ユーザ編集後の最新状態を優先） ---
+                    Map<String, List<int>> existingValuesMap = {};
+                    if (_timingChartKey.currentState != null) {
+                      final currentChartValues =
+                          _timingChartKey.currentState!.getChartData();
 
-                for (int i = 0; i < signalNames.length; i++) {
-                  List<int> signalValues;
-
-                  if (overrideFlag) {
-                    // Template など: 最新データで完全上書き
-                    if (i < chartData.length) {
-                      signalValues = List<int>.from(chartData[i]);
+                      // _chartSignals と表示行は同じ順序である前提
+                      for (
+                        int i = 0;
+                        i < _chartSignals.length &&
+                            i < currentChartValues.length;
+                        i++
+                      ) {
+                        existingValuesMap[_chartSignals[i].name] =
+                            currentChartValues[i];
+                      }
                     } else {
-                      signalValues = List.filled(32, 0);
+                      // フォールバック: これまで保持している値
+                      for (var signal in _chartSignals) {
+                        existingValuesMap[signal.name] = signal.values;
+                      }
                     }
-                  } else {
-                    // Update Chart 等: 既存の手動調整を優先保持
-                    if (existingValuesMap.containsKey(signalNames[i])) {
-                      signalValues = List<int>.from(
-                        existingValuesMap[signalNames[i]]!,
-                      );
 
-                      if (i < chartData.length &&
-                          signalValues.length != chartData[i].length) {
-                        if (signalValues.length < chartData[i].length) {
-                          // 既存データが短い場合は伸ばす
-                          signalValues.addAll(
-                            List.filled(
-                              chartData[i].length - signalValues.length,
-                              0,
-                            ),
+                    // ------- Signal 値の決定 -------
+                    List<SignalData> newChartSignals = [];
+
+                    for (int i = 0; i < signalNames.length; i++) {
+                      List<int> signalValues;
+
+                      if (overrideFlag) {
+                        // Template など: 最新データで完全上書き
+                        if (i < chartData.length) {
+                          signalValues = List<int>.from(chartData[i]);
+                        } else {
+                          signalValues = List.filled(32, 0);
+                        }
+                      } else {
+                        // Update Chart 等: 既存の手動調整を優先保持
+                        if (existingValuesMap.containsKey(signalNames[i])) {
+                          signalValues = List<int>.from(
+                            existingValuesMap[signalNames[i]]!,
                           );
-                        } else if (signalValues.length > chartData[i].length) {
-                          // 既存データが長い場合はチャート側を延長し、既存を保持
-                          final int diff =
-                              signalValues.length - chartData[i].length;
-                          chartData[i].addAll(List.filled(diff, 0));
-                          // signalValues はそのまま保持（切り詰めない）
+
+                          if (i < chartData.length &&
+                              signalValues.length != chartData[i].length) {
+                            if (signalValues.length < chartData[i].length) {
+                              // 既存データが短い場合は伸ばす
+                              signalValues.addAll(
+                                List.filled(
+                                  chartData[i].length - signalValues.length,
+                                  0,
+                                ),
+                              );
+                            } else if (signalValues.length >
+                                chartData[i].length) {
+                              // 既存データが長い場合はチャート側を延長し、既存を保持
+                              final int diff =
+                                  signalValues.length - chartData[i].length;
+                              chartData[i].addAll(List.filled(diff, 0));
+                              // signalValues はそのまま保持（切り詰めない）
+                            }
+                          }
+                        } else if (i < chartData.length) {
+                          signalValues = List<int>.from(chartData[i]);
+                        } else {
+                          signalValues = List.filled(32, 0);
                         }
                       }
-                    } else if (i < chartData.length) {
-                      signalValues = List<int>.from(chartData[i]);
-                    } else {
-                      signalValues = List.filled(32, 0);
+
+                      newChartSignals.add(
+                        SignalData(
+                          name: signalNames[i],
+                          signalType: signalTypes[i],
+                          values: signalValues,
+                          isVisible: true,
+                        ),
+                      );
                     }
-                  }
 
-                  newChartSignals.add(
-                    SignalData(
-                      name: signalNames[i],
-                      signalType: signalTypes[i],
-                      values: signalValues,
-                      isVisible: true,
-                    ),
-                  );
-                }
+                    _chartSignals = newChartSignals;
 
-                _chartSignals = newChartSignals;
+                    // === 追加: 既存の並び順を保持 (overrideFlag が false の場合のみ) ===
+                    if (!overrideFlag && _timingChartKey.currentState != null) {
+                      final currentOrder =
+                          _timingChartKey.currentState!.getSignalIdNames();
 
-                // === 追加: 既存の並び順を保持 (overrideFlag が false の場合のみ) ===
-                if (!overrideFlag && _timingChartKey.currentState != null) {
-                  final currentOrder =
-                      _timingChartKey.currentState!.getSignalIdNames();
+                      if (currentOrder.isNotEmpty) {
+                        // name -> SignalData マップ
+                        final mapByName = {
+                          for (final s in _chartSignals) s.name: s,
+                        };
 
-                  if (currentOrder.isNotEmpty) {
-                    // name -> SignalData マップ
-                    final mapByName = {
-                      for (final s in _chartSignals) s.name: s,
-                    };
+                        final reordered = <SignalData>[];
+                        for (final name in currentOrder) {
+                          if (mapByName.containsKey(name)) {
+                            reordered.add(mapByName[name]!);
+                          }
+                        }
+                        // Chart に無い新規信号は後ろに追加
+                        for (final s in _chartSignals) {
+                          if (!currentOrder.contains(s.name)) {
+                            reordered.add(s);
+                          }
+                        }
 
-                    final reordered = <SignalData>[];
-                    for (final name in currentOrder) {
-                      if (mapByName.containsKey(name)) {
-                        reordered.add(mapByName[name]!);
+                        _chartSignals = reordered;
                       }
                     }
-                    // Chart に無い新規信号は後ろに追加
-                    for (final s in _chartSignals) {
-                      if (!currentOrder.contains(s.name)) {
-                        reordered.add(s);
-                      }
+
+                    // --- ポート番号も並び替える ---
+                    final nameToPort = <String, int>{};
+                    for (
+                      int i = 0;
+                      i < signalNames.length && i < portNumbers.length;
+                      i++
+                    ) {
+                      nameToPort[signalNames[i]] = portNumbers[i];
                     }
 
-                    _chartSignals = reordered;
-                  }
-                }
+                    _chartPortNumbers =
+                        _chartSignals
+                            .map((s) => nameToPort[s.name] ?? 0)
+                            .toList();
 
-                // --- ポート番号も並び替える ---
-                final nameToPort = <String, int>{};
-                for (
-                  int i = 0;
-                  i < signalNames.length && i < portNumbers.length;
-                  i++
-                ) {
-                  nameToPort[signalNames[i]] = portNumbers[i];
-                }
+                    // チャートウィジェットを更新
+                    if (_timingChartKey.currentState != null) {
+                      final orderedNames =
+                          _chartSignals.map((s) => s.name).toList();
+                      _timingChartKey.currentState!.updateSignalNames(
+                        orderedNames,
+                      );
+                      _timingChartKey.currentState!.updateSignals(
+                        _chartSignals.map((s) => s.values).toList(),
+                      );
+                    }
+                  });
+                },
+                onClearFields: _clearAllTextFields,
+                showImportExportButtons: false, // インポート/エクスポートボタンを非表示
+              ),
 
-                _chartPortNumbers =
-                    _chartSignals.map((s) => nameToPort[s.name] ?? 0).toList();
-
-                // チャートウィジェットを更新
-                if (_timingChartKey.currentState != null) {
-                  final orderedNames =
-                      _chartSignals.map((s) => s.name).toList();
-                  _timingChartKey.currentState!.updateSignalNames(orderedNames);
-                  _timingChartKey.currentState!.updateSignals(
-                    _chartSignals.map((s) => s.values).toList(),
-                  );
-                }
-              });
-            },
-            onClearFields: _clearAllTextFields,
-            showImportExportButtons: false, // インポート/エクスポートボタンを非表示
+              // --- TimingChart Tab ---
+              TimingChart(
+                key: _timingChartKey,
+                // ★ _chartSignals (List<SignalData>) から必要なデータを抽出して渡す
+                initialSignalNames: _chartSignals.map((s) => s.name).toList(),
+                initialSignals: _chartSignals.map((s) => s.values).toList(),
+                // ★ _chartAnnotations はそのまま渡せる
+                initialAnnotations: _chartAnnotations,
+                // ★ SignalType を _chartSignals から取得して渡す
+                signalTypes: _chartSignals.map((s) => s.signalType).toList(),
+                fitToScreen: true,
+                showAllSignalTypes: true,
+                showIoNumbers: _showIoNumbers,
+                portNumbers: _chartPortNumbers,
+              ),
+            ],
           ),
-
-          // --- TimingChart Tab ---
-          TimingChart(
-            key: _timingChartKey,
-            // ★ _chartSignals (List<SignalData>) から必要なデータを抽出して渡す
-            initialSignalNames: _chartSignals.map((s) => s.name).toList(),
-            initialSignals: _chartSignals.map((s) => s.values).toList(),
-            // ★ _chartAnnotations はそのまま渡せる
-            initialAnnotations: _chartAnnotations,
-            // ★ SignalType を _chartSignals から取得して渡す
-            signalTypes: _chartSignals.map((s) => s.signalType).toList(),
-            fitToScreen: true,
-            showAllSignalTypes: true,
-            showIoNumbers: _showIoNumbers,
-            portNumbers: _chartPortNumbers,
-          ),
+          if (_isImportingZiq)
+            Positioned.fill(
+              child: Container(
+                color: Colors.black.withOpacity(0.35),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 12),
+                      Text(
+                        'インポート中... しばらくお待ちください',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
+}
+
+class _OutputAssignment {
+  final String name;
+  final String suggestionId;
+  final int portNo0; // 0-based from ini
+  final int outputIndex1Based; // n+1
+
+  const _OutputAssignment({
+    required this.name,
+    required this.suggestionId,
+    required this.portNo0,
+    required this.outputIndex1Based,
+  });
 }

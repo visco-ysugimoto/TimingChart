@@ -16,6 +16,7 @@ import 'chart_drawing_util.dart';
 import '../../suggestion_loader.dart';
 import '../../providers/settings_notifier.dart';
 import 'package:provider/provider.dart'; // Added for Provider
+import '../../generated/l10n.dart';
 
 // Add translation support
 
@@ -749,23 +750,29 @@ class TimingChartState extends State<TimingChart>
     }
 
     List<PopupMenuEntry<String>> menuItems = [];
+    final s = S.of(context);
 
     if (hitAnnId != null) {
       final ann = annotations.firstWhereOrNull((a) => a.id == hitAnnId);
       final bool horizontalOn = ann?.arrowHorizontal != false; // null含めON
       menuItems = [
-        const PopupMenuItem(value: 'editComment', child: Text('コメントを編集')),
-        const PopupMenuItem(value: 'deleteComment', child: Text('コメントを削除')),
+        PopupMenuItem(value: 'editComment', child: Text(s.ctx_edit_comment)),
+        PopupMenuItem(
+          value: 'deleteComment',
+          child: Text(s.ctx_delete_comment),
+        ),
         PopupMenuItem(
           value: 'toggleArrowHorizontal',
           child: Text(
-            horizontalOn ? '矢印を水平で引く: ON → OFF' : '矢印を水平で引く: OFF → ON',
+            horizontalOn
+                ? s.ctx_arrow_horizontal_on_to_off
+                : s.ctx_arrow_horizontal_off_to_on,
           ),
         ),
         if (!(horizontalOn))
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'setArrowTipToRow',
-            child: Text('矢印先端をこの信号に設定'),
+            child: Text(s.ctx_set_arrow_tip_to_row),
           ),
       ];
     } else {
@@ -786,13 +793,16 @@ class TimingChartState extends State<TimingChart>
       });
 
       menuItems = [
-        const PopupMenuItem(value: 'insert', child: Text('選択範囲に0を挿入')),
+        PopupMenuItem(value: 'insert', child: Text(s.ctx_insert_zeros)),
         // 追加: 選択範囲を末尾に複製
-        const PopupMenuItem(value: 'duplicate', child: Text('選択範囲を末尾に複製')),
-        const PopupMenuItem(value: 'selectAll', child: Text('全ての信号を選択')),
-        const PopupMenuItem(value: 'delete', child: Text('選択範囲を削除')),
-        const PopupMenuItem(value: 'addComment', child: Text('コメントを追加')),
-        const PopupMenuItem(value: 'omit', child: Text('省略信号を描画')),
+        PopupMenuItem(value: 'duplicate', child: Text(s.ctx_duplicate_to_tail)),
+        PopupMenuItem(
+          value: 'selectAll',
+          child: Text(s.ctx_select_all_signals),
+        ),
+        PopupMenuItem(value: 'delete', child: Text(s.ctx_delete_selection)),
+        PopupMenuItem(value: 'addComment', child: Text(s.ctx_add_comment)),
+        PopupMenuItem(value: 'omit', child: Text(s.ctx_draw_omission)),
       ];
     }
 
@@ -889,22 +899,23 @@ class TimingChartState extends State<TimingChart>
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) {
+        final s = S.of(context);
         return AlertDialog(
-          title: const Text("コメントを追加"),
+          title: Text(s.comment_add_title),
           content: TextField(
             autofocus: true,
             onChanged: (val) => newComment = val,
-            decoration: const InputDecoration(hintText: "コメントを入力"),
+            decoration: InputDecoration(hintText: s.comment_input_hint),
             maxLines: null,
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text("Cancel"),
+              child: Text(s.common_cancel),
             ),
             TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text("OK"),
+              child: Text(s.common_ok),
             ),
           ],
         );
@@ -941,22 +952,23 @@ class TimingChartState extends State<TimingChart>
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) {
+        final s = S.of(context);
         return AlertDialog(
-          title: const Text("選択範囲にコメントを追加"),
+          title: Text(s.comment_add_range_title),
           content: TextField(
             autofocus: true,
             onChanged: (val) => newComment = val,
-            decoration: const InputDecoration(hintText: "コメントを入力"),
+            decoration: InputDecoration(hintText: s.comment_input_hint),
             maxLines: null,
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text("Cancel"),
+              child: Text(s.common_cancel),
             ),
             TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text("OK"),
+              child: Text(s.common_ok),
             ),
           ],
         );
@@ -993,8 +1005,9 @@ class TimingChartState extends State<TimingChart>
       context: context,
       builder: (ctx) {
         final controller = TextEditingController(text: ann.text);
+        final s = S.of(context);
         return AlertDialog(
-          title: const Text("コメントを編集"),
+          title: Text(s.comment_edit_title),
           content: TextField(
             controller: controller,
             autofocus: true,
@@ -1003,14 +1016,14 @@ class TimingChartState extends State<TimingChart>
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text("Cancel"),
+              child: Text(s.common_cancel),
             ),
             TextButton(
               onPressed: () {
                 newText = controller.text;
                 Navigator.pop(ctx, true);
               },
-              child: const Text("OK"),
+              child: Text(s.common_ok),
             ),
           ],
         );

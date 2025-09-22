@@ -53,6 +53,7 @@ dependencies:
   # XLSXファイル作成用
   excel: ^4.0.6
   image: ^4.1.7
+  archive: ^3.6.1
 
 dev_dependencies:
   flutter_test:
@@ -77,6 +78,8 @@ flutter:
     - assets/suggestions/ja/
     # チャートテンプレートルール
     - assets/chart_rules/
+    # vxVisMgr.ini 対応表
+    - assets/mappings/
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.

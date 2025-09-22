@@ -27,17 +27,23 @@ class OutputSection extends StatelessWidget {
           child: Row(
             children: [
               Expanded(
-                child: SuggestionTextField(
-                  label: 'Output ${index + 1}',
-                  controller: controllers[index],
-                  loadSuggestions: loadOutputSuggestions,
-                  excludeControllers: controllers,
-                  enableDuplicateCheck: true,
-                ),
+                child:
+                    index < controllers.length
+                        ? SuggestionTextField(
+                          label: 'Output ${index + 1}',
+                          controller: controllers[index],
+                          loadSuggestions: loadOutputSuggestions,
+                          excludeControllers: controllers,
+                          enableDuplicateCheck: true,
+                        )
+                        : const SizedBox.shrink(),
               ),
               const SizedBox(width: 6),
               Checkbox(
-                value: visibilityList[index],
+                value:
+                    index < visibilityList.length
+                        ? visibilityList[index]
+                        : true,
                 onChanged: (value) {
                   onVisibilityChanged(index);
                 },

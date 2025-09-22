@@ -16,6 +16,7 @@ import '../../providers/form_state_notifier.dart';
 import 'package:provider/provider.dart';
 import '../../utils/chart_template_engine.dart';
 import 'dart:math' as math;
+import '../../providers/locale_notifier.dart';
 
 // セルのモードを表す列挙型
 enum CellMode { none, mode1, mode2, mode3, mode4, mode5 }
@@ -29,6 +30,11 @@ const rowModeColors = {
 };
 
 const rowModeLabels = {RowMode.none: '', RowMode.simultaneous: '同時取込'};
+
+const rowModeLabelsEn = {
+  RowMode.none: '',
+  RowMode.simultaneous: 'Simultaneous',
+};
 
 // セルモードの色とラベルのマッピング
 const cellModeColors = {
@@ -45,6 +51,13 @@ const cellModeLabels = {
   CellMode.mode1: "順次取込",
   CellMode.mode2: "接点入力",
   CellMode.mode3: "HWトリガ",
+};
+
+const cellModeLabelsEn = {
+  CellMode.none: "None",
+  CellMode.mode1: "Sequential",
+  CellMode.mode2: "Contact Input",
+  CellMode.mode3: "HW Trigger",
 };
 
 class FormTab extends StatefulWidget {
@@ -92,6 +105,22 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
 
+  String _labelForRowMode(BuildContext context, RowMode mode) {
+    final String lang = context.read<LocaleNotifier>().locale.languageCode;
+    if (lang == 'ja') {
+      return rowModeLabels[mode] ?? '';
+    }
+    return rowModeLabelsEn[mode] ?? '';
+  }
+
+  String _labelForCellMode(BuildContext context, CellMode mode) {
+    final String lang = context.read<LocaleNotifier>().locale.languageCode;
+    if (lang == 'ja') {
+      return cellModeLabels[mode] ?? '';
+    }
+    return cellModeLabelsEn[mode] ?? '';
+  }
+
   // ボタンのスタイルを統一するための定数
   static const double _buttonHeight = 48.0;
   static const double _buttonHorizontalPadding = 16.0;
@@ -136,6 +165,62 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
 
   // PLC / EIP オプション
   String _plcEipOption = 'None';
+
+  // 外部から PLC/EIP を反映するためのセッター
+  void setPlcEipOption(String value) {
+    if (value != 'None' && value != 'PLC' && value != 'EIP') return;
+    setState(() {
+      _plcEipOption = value;
+    });
+  }
+
+  // TriggerOption に基づき Input テキストフィールド名を自動設定
+  // Template と同じ規則（Code Trigger 時のみ適用）
+  void applyInputNamesForTriggerOption() {
+    final fs = formState;
+    // Single Trigger: Input1 に TRIGGER
+    if (fs.triggerOption == 'Single Trigger') {
+      if (widget.inputControllers.isNotEmpty) {
+        widget.inputControllers[0].text = 'TRIGGER';
+      }
+      return;
+    }
+
+    // Code Trigger: コード割当
+    if (fs.triggerOption == 'Code Trigger') {
+      // 0-based index を使用
+      if (fs.inputCount >= 32) {
+        for (
+          int i = 0;
+          i < widget.inputControllers.length && i < fs.inputCount;
+          i++
+        ) {
+          if (i >= 1 && i <= 8) {
+            widget.inputControllers[i].text = 'Control Code${i}(bit)';
+          } else if (i >= 9 && i <= 14) {
+            widget.inputControllers[i].text = 'Group Code${i}(bit)';
+          } else if (i >= 15 && i <= 20) {
+            widget.inputControllers[i].text = 'Task Code${i}(bit)';
+          }
+        }
+      } else if (fs.inputCount == 16) {
+        for (
+          int i = 0;
+          i < widget.inputControllers.length && i < fs.inputCount;
+          i++
+        ) {
+          if (i >= 1 && i <= 4) {
+            widget.inputControllers[i].text = 'Control Code${i}(bit)';
+          } else if (i >= 5 && i <= 7) {
+            widget.inputControllers[i].text = 'Group Code${i}(bit)';
+          } else if (i >= 8 && i <= 13) {
+            widget.inputControllers[i].text = 'Task Code${i}(bit)';
+          }
+        }
+      }
+    }
+    // 名前設定後、必要なら SignalData 再生成は呼び出し元で行う
+  }
 
   // bool _hwVis(int index) =>
   //     index < _hwTriggerVisibility.length ? _hwTriggerVisibility[index] : true;
@@ -357,13 +442,15 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
 
     // 出力信号 (最後に追加)
     for (int i = 0; i < formState.outputCount; i++) {
-      if (widget.outputControllers[i].text.isNotEmpty) {
+      if (i < widget.outputControllers.length &&
+          widget.outputControllers[i].text.isNotEmpty) {
         _signalDataList.add(
           SignalData(
             name: widget.outputControllers[i].text,
             signalType: SignalType.output,
             values: List.filled(32, 0),
-            isVisible: _outputVisibility[i],
+            isVisible:
+                i < _outputVisibility.length ? _outputVisibility[i] : true,
           ),
         );
       }
@@ -566,6 +653,12 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
     });
   }
 
+  // インポート前に Clear 相当の処理を外部から実行するための公開メソッド
+  void clearAllForImport() {
+    _clearTableData();
+    widget.onClearFields();
+  }
+
   // SignalDataリストを更新（位置情報を保持）
   void _updateSignalDataList() {
     setState(() {
@@ -589,9 +682,11 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
 
       // 入力信号（位置を保持）
       for (int i = 0; i < formState.inputCount; i++) {
-        if (widget.inputControllers[i].text.isNotEmpty) {
+        if (i < widget.inputControllers.length &&
+            widget.inputControllers[i].text.isNotEmpty) {
           SignalType signalType = SignalType.input;
-          bool isVisible = _inputVisibility[i];
+          bool isVisible =
+              i < _inputVisibility.length ? _inputVisibility[i] : true;
 
           // Code Triggerの場合、totalIOポートの値に応じてSignalTypeを設定
           if (formState.triggerOption == 'Code Trigger') {
@@ -650,13 +745,15 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
 
       // 出力信号（位置を保持）
       for (int i = 0; i < formState.outputCount; i++) {
-        if (widget.outputControllers[i].text.isNotEmpty) {
+        if (i < widget.outputControllers.length &&
+            widget.outputControllers[i].text.isNotEmpty) {
           final String name = widget.outputControllers[i].text;
           outputSignalMap[i] = SignalData(
             name: name,
             signalType: SignalType.output,
             values: prevValueMap[name] ?? List.filled(defaultWaveLength, 0),
-            isVisible: _outputVisibility[i],
+            isVisible:
+                i < _outputVisibility.length ? _outputVisibility[i] : true,
           );
         }
       }
@@ -1303,7 +1400,8 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
 
     // 出力信号
     for (int i = 0; i < formState.outputCount; i++) {
-      if (widget.outputControllers[i].text.isNotEmpty) {
+      if (i < widget.outputControllers.length &&
+          widget.outputControllers[i].text.isNotEmpty) {
         List<int> values;
         if (dataIndex < _actualChartData.length) {
           values = List.from(_actualChartData[dataIndex]);
@@ -1319,7 +1417,8 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
             name: widget.outputControllers[i].text,
             signalType: SignalType.output,
             values: values,
-            isVisible: _outputVisibility[i],
+            isVisible:
+                i < _outputVisibility.length ? _outputVisibility[i] : true,
           ),
         );
 
@@ -1857,34 +1956,32 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
             widget.inputControllers[targetIndex].text = name;
           }
         } else if (type == SignalType.output) {
-          // 1) ポート数に応じたプリセット位置を取得
+          // 1) 既存の位置（INI の Port.No 反映済み）を最優先
           final fs = context.read<FormStateNotifier>().state;
-          // 1) ポート数・カメラ数に応じたプリセット位置を取得
-          int targetIndex = _selectOutputIndex(name, fs.outputCount, fs.camera);
+          int targetIndex = existingOutputMap[name] ?? -1;
 
-          // 2) 既に同じ ID が入力済みなら、その位置を優先
-          if (targetIndex == -1) {
-            int prevIdx = existingOutputMap[name] ?? -1;
-            if (prevIdx != -1) {
-              // カメラ用予約ブロック（Exposure/Acquisition）を非カメラ信号で再利用しない
-              if (fs.outputCount == 32) {
-                final int reservedStart = 3; // Output4 から
-                final int reservedEnd =
-                    3 + fs.camera * 2 - 1; // Exposure/Acquisition の末尾
-                final bool isInReserved =
-                    prevIdx >= reservedStart && prevIdx <= reservedEnd;
-                final bool isCameraSignal = RegExp(
-                  r'^CAMERA_(\d+)_IMAGE_(EXPOSURE|ACQUISITION)',
-                ).hasMatch(name);
-                if (!isCameraSignal && isInReserved) {
-                  prevIdx = -1; // 予約ブロックは使わせない
-                }
+          if (targetIndex != -1) {
+            // カメラ用予約ブロックを非カメラ信号で使用しない制約
+            if (fs.outputCount == 32) {
+              final int reservedStart = 3; // Output4 から
+              final int reservedEnd = 3 + fs.camera * 2 - 1; // Exposure/Acq の末尾
+              final bool isInReserved =
+                  targetIndex >= reservedStart && targetIndex <= reservedEnd;
+              final bool isCameraSignal = RegExp(
+                r'^CAMERA_(\d+)_IMAGE_(EXPOSURE|ACQUISITION)',
+              ).hasMatch(name);
+              if (!isCameraSignal && isInReserved) {
+                targetIndex = -1; // 予約ブロックは使わせない
               }
             }
-            targetIndex = prevIdx;
           }
 
-          // 3) まだ見つからなければ、空いている欄を探す
+          // 2) 既存位置が無ければ、プリセット位置を使用
+          if (targetIndex == -1) {
+            targetIndex = _selectOutputIndex(name, fs.outputCount, fs.camera);
+          }
+
+          // 3) それでも見つからなければ、空いている欄を探す
           if (targetIndex == -1) {
             int startIdx = 0;
             if (fs.outputCount == 32) {
@@ -2249,7 +2346,13 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
                   // Input Port
                   Expanded(
                     child: CustomDropdown<int>(
-                      value: formState.inputCount,
+                      value:
+                          const [6, 16, 32, 64].contains(formState.inputCount)
+                              ? formState.inputCount
+                              : const [6, 16, 32, 64].firstWhere(
+                                (v) => v >= formState.inputCount,
+                                orElse: () => 64,
+                              ),
                       items: const [6, 16, 32, 64],
                       onChanged: widget.onInputPortChanged,
                       label: 'Input Port',
@@ -2260,7 +2363,13 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
                   // Output Port
                   Expanded(
                     child: CustomDropdown<int>(
-                      value: formState.outputCount,
+                      value:
+                          const [6, 16, 32, 64].contains(formState.outputCount)
+                              ? formState.outputCount
+                              : const [6, 16, 32, 64].firstWhere(
+                                (v) => v >= formState.outputCount,
+                                orElse: () => 64,
+                              ),
                       items: const [6, 16, 32, 64],
                       onChanged: widget.onOutputPortChanged,
                       label: 'Output Port',
@@ -2701,7 +2810,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
                         ),
                         if (_rowModes[row] != RowMode.none)
                           Text(
-                            rowModeLabels[_rowModes[row]] ?? '',
+                            _labelForRowMode(context, _rowModes[row]),
                             style: const TextStyle(fontSize: 10),
                           ),
                       ],
@@ -2796,7 +2905,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
                       const SizedBox(width: 4), // 間隔縮小
                       Flexible(
                         child: Text(
-                          cellModeLabels[mode] ?? '',
+                          _labelForCellMode(context, mode),
                           overflow: TextOverflow.ellipsis, // テキストがはみ出す場合は省略
                           style: const TextStyle(fontSize: 12), // フォントサイズを小さく
                         ),
@@ -2854,7 +2963,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
                       ),
                     ),
                     const SizedBox(width: 4),
-                    Text(cellModeLabels[mode] ?? ''),
+                    Text(_labelForCellMode(context, mode)),
                   ],
                 ),
               ),

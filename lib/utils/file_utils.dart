@@ -10,6 +10,7 @@ import '../models/chart/timing_chart_annotation.dart';
 import '../models/chart/signal_data.dart';
 import 'wavedrom_converter.dart';
 import 'dart:typed_data';
+import 'package:archive/archive_io.dart';
 
 /// ファイル操作ユーティリティクラス
 class FileUtils {
@@ -435,6 +436,83 @@ class FileUtils {
     } catch (e) {
       print('Error exporting XLSX: $e');
       return false;
+    }
+  }
+  /// `.ziq` ファイルを選択し、一時ディレクトリに拡張子だけ `.zip` にした
+  /// コピーを作成してそのパスを返す（キャンセル時は null）。
+  static Future<String?> pickZiqAndConvertToZipPath() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['ziq'],
+        allowMultiple: false,
+      );
+
+      if (result == null || result.files.isEmpty) return null;
+
+      final sourcePath = result.files.first.path;
+      if (sourcePath == null) return null;
+
+      final sourceFile = File(sourcePath);
+      if (!await sourceFile.exists()) return null;
+
+      final baseName = sourceFile.uri.pathSegments.last;
+      final dotIndex = baseName.lastIndexOf('.');
+      final stem = dotIndex >= 0 ? baseName.substring(0, dotIndex) : baseName;
+
+      final tempDir = await getTemporaryDirectory();
+      final destPath = '${tempDir.path}/$stem.zip';
+      final destFile = File(destPath);
+
+      await destFile.writeAsBytes(await sourceFile.readAsBytes());
+      return destPath;
+    } catch (e) {
+      print('Error picking ziq and converting to zip: $e');
+      return null;
+    }
+  }
+
+  /// 指定した ZIP ファイルパスから、目的の3ファイルを読み込んで返す
+  /// - keys:
+  ///   - 'vxVisMgr.ini' => viscotech/bin/vxVisMgr.ini の内容（テキスト）
+  ///   - 'DioMonitorLog.csv' => viscotech/Support/DioMonitorLog.csv の内容（テキスト）
+  ///   - 'Plc_DioMonitorLog.csv' => viscotech/Support/Plc_DioMonitorLog.csv の内容（テキスト）
+  static Future<Map<String, String>> readRequiredFilesFromZip(String zipPath) async {
+    final result = <String, String>{};
+    try {
+      final file = File(zipPath);
+      if (!await file.exists()) return result;
+
+      final bytes = await file.readAsBytes();
+      final archive = ZipDecoder().decodeBytes(bytes, verify: true);
+
+      String? readTextFromArchive(String targetPath) {
+        // ZIP 内はパス区切りが '/' 固定のため、normalize
+        final normalizedTarget = targetPath.replaceAll('\\', '/');
+        for (final entry in archive) {
+          if (entry.isFile) {
+            final name = entry.name.replaceAll('\\', '/');
+            if (name.toLowerCase() == normalizedTarget.toLowerCase()) {
+              final data = entry.content as List<int>;
+              return String.fromCharCodes(data);
+            }
+          }
+        }
+        return null;
+      }
+
+      final ini = readTextFromArchive('viscotech/bin/vxVisMgr.ini');
+      final dio = readTextFromArchive('viscotech/Support/DioMonitorLog.csv');
+      final plc = readTextFromArchive('viscotech/Support/Plc_DioMonitorLog.csv');
+
+      if (ini != null) result['vxVisMgr.ini'] = ini;
+      if (dio != null) result['DioMonitorLog.csv'] = dio;
+      if (plc != null) result['Plc_DioMonitorLog.csv'] = plc;
+
+      return result;
+    } catch (e) {
+      print('Error reading required files from zip: $e');
+      return result;
     }
   }
 }

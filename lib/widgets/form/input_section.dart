@@ -94,37 +94,45 @@ class InputSection extends StatelessWidget {
               Expanded(
                 child:
                     isLocked
-                        ? TextField(
-                          controller: controllers[index],
-                          enabled: false,
-                          decoration: InputDecoration(
-                            labelText: 'Input ${index + 1}',
-                            border: const OutlineInputBorder(),
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 10.0,
-                              vertical: 6.0,
-                            ),
-                            filled: true,
-                            fillColor:
-                                Theme.of(context).brightness == Brightness.dark
-                                    ? Colors.grey.shade800
-                                    : Colors.grey.shade200,
-                            hintText: 'Locked',
-                          ),
-                        )
-                        : SuggestionTextField(
-                          label: 'Input ${index + 1}',
-                          controller: controllers[index],
-                          loadSuggestions: loadInputSuggestions,
-                          excludeControllers: controllers,
-                          enableDuplicateCheck: true,
-                        ),
+                        ? (index < controllers.length
+                            ? TextField(
+                              controller: controllers[index],
+                              enabled: false,
+                              decoration: InputDecoration(
+                                labelText: 'Input ${index + 1}',
+                                border: const OutlineInputBorder(),
+                                isDense: true,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 10.0,
+                                  vertical: 8.0,
+                                ),
+                                filled: true,
+                                fillColor:
+                                    Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? Colors.grey.shade800
+                                        : Colors.grey.shade200,
+                                hintText: 'Locked',
+                              ),
+                            )
+                            : const SizedBox.shrink())
+                        : (index < controllers.length
+                            ? SuggestionTextField(
+                              controller: controllers[index],
+                              label: 'Input ${index + 1}',
+                              loadSuggestions: loadInputSuggestions,
+                              excludeControllers: controllers,
+                              enableDuplicateCheck: true,
+                            )
+                            : const SizedBox.shrink()),
               ),
               const SizedBox(width: 6),
               if (!isLocked) // ロックされていない場合のみチェックボックスを表示
                 Checkbox(
-                  value: visibilityList[index],
+                  value:
+                      index < visibilityList.length
+                          ? visibilityList[index]
+                          : true,
                   onChanged: (value) {
                     onVisibilityChanged(index);
                   },

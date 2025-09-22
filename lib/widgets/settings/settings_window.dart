@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import '../../generated/l10n.dart';
 import '../../providers/settings_notifier.dart';
 import '../../providers/locale_notifier.dart';
 import '../../models/chart/signal_type.dart';
@@ -32,28 +33,7 @@ class _SettingsWindowState extends State<SettingsWindow> {
   late bool _showIoNumbers;
   int _selectedIndex = 0;
 
-  final _navDestinations = const [
-    NavigationRailDestination(
-      icon: Icon(Icons.settings),
-      label: Text('一般'),
-    ),
-    NavigationRailDestination(
-      icon: Icon(Icons.bar_chart),
-      label: Text('チャート'),
-    ),
-    NavigationRailDestination(
-      icon: Icon(Icons.import_export),
-      label: Text('入出力'),
-    ),
-    NavigationRailDestination(
-      icon: Icon(Icons.color_lens),
-      label: Text('外観'),
-    ),
-    NavigationRailDestination(
-      icon: Icon(Icons.language),
-      label: Text('言語'),
-    ),
-  ];
+  final _navDestinations = const [];
 
   @override
   void initState() {
@@ -63,9 +43,10 @@ class _SettingsWindowState extends State<SettingsWindow> {
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: Text('環境設定', style: GoogleFonts.notoSansJp()),
+        title: Text(s.settings_title, style: GoogleFonts.notoSansJp()),
       ),
       body: Row(
         children: [
@@ -75,7 +56,28 @@ class _SettingsWindowState extends State<SettingsWindow> {
               setState(() => _selectedIndex = index);
             },
             labelType: NavigationRailLabelType.all,
-            destinations: _navDestinations,
+            destinations: [
+              NavigationRailDestination(
+                icon: const Icon(Icons.settings),
+                label: Text(s.settings_nav_general),
+              ),
+              NavigationRailDestination(
+                icon: const Icon(Icons.bar_chart),
+                label: Text(s.settings_nav_chart),
+              ),
+              NavigationRailDestination(
+                icon: const Icon(Icons.import_export),
+                label: Text(s.settings_nav_io),
+              ),
+              NavigationRailDestination(
+                icon: const Icon(Icons.color_lens),
+                label: Text(s.settings_nav_appearance),
+              ),
+              NavigationRailDestination(
+                icon: const Icon(Icons.language),
+                label: Text(s.settings_nav_language),
+              ),
+            ],
           ),
           const VerticalDivider(thickness: 1, width: 1),
           // ───────────── 右側パネル ─────────────
@@ -87,6 +89,7 @@ class _SettingsWindowState extends State<SettingsWindow> {
 
   // 色選択ダイアログ (簡易)
   Future<Color?> _pickColor(BuildContext context, Color currentColor) async {
+    final s = S.of(context);
     const preset = [
       Colors.red,
       Colors.green,
@@ -100,45 +103,47 @@ class _SettingsWindowState extends State<SettingsWindow> {
     Color? selected = currentColor;
     return showDialog<Color>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('色を選択'),
-        content: SizedBox(
-          width: 300,
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final c in preset)
-                GestureDetector(
-                  onTap: () {
-                    Navigator.of(context).pop(c);
-                  },
-                  child: Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: c,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: Colors.black12),
+      builder:
+          (_) => AlertDialog(
+            title: Text(s.color_picker_title),
+            content: SizedBox(
+              width: 300,
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final c in preset)
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.of(context).pop(c);
+                      },
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: c,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: Colors.black12),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(selected),
+                child: Text(s.common_cancel),
+              ),
             ],
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(selected),
-            child: const Text('キャンセル'),
-          ),
-        ],
-      ),
     );
   }
 
   // カテゴリごとの設定項目を返す
   Widget _buildPanel() {
     final settings = context.watch<SettingsNotifier>();
+    final s = S.of(context);
 
     switch (_selectedIndex) {
       // ─────────── 一般設定 ───────────
@@ -148,7 +153,7 @@ class _SettingsWindowState extends State<SettingsWindow> {
           children: [
             SwitchListTile(
               secondary: const Icon(Icons.tag),
-              title: const Text('IO番号を表示'),
+              title: Text(s.show_io_numbers),
               value: _showIoNumbers,
               onChanged: (val) {
                 setState(() => _showIoNumbers = val);
@@ -157,13 +162,16 @@ class _SettingsWindowState extends State<SettingsWindow> {
             ),
             ListTile(
               leading: const Icon(Icons.camera_alt_outlined),
-              title: const Text('デフォルトカメラ数'),
+              title: Text(s.default_camera_count),
               subtitle: Text('${settings.defaultCameraCount}'),
               trailing: const Icon(Icons.edit),
               onTap: () async {
                 final selected = await showDialog<int>(
                   context: context,
-                  builder: (_) => _CameraCountDialog(initial: settings.defaultCameraCount),
+                  builder:
+                      (_) => _CameraCountDialog(
+                        initial: settings.defaultCameraCount,
+                      ),
                 );
                 if (selected != null) {
                   settings.defaultCameraCount = selected;
@@ -177,38 +185,51 @@ class _SettingsWindowState extends State<SettingsWindow> {
       // ─────────── チャート設定 ───────────
       case 1:
         final isDark = Theme.of(context).brightness == Brightness.dark;
-        Color _effective(Color c) => isDark && c == Colors.black ? Colors.white : c;
+        Color _effective(Color c) =>
+            isDark && c == Colors.black ? Colors.white : c;
 
         return ListView(
           padding: const EdgeInsets.all(16),
           children: [
             SwitchListTile(
               secondary: const Icon(Icons.grid_on),
-              title: const Text('グリッド線を表示'),
+              title: Text(s.show_grid_lines),
               value: settings.showGridLines,
               onChanged: (val) => settings.showGridLines = val,
             ),
             ListTile(
               leading: const Icon(Icons.timeline),
-              title: const Text('デフォルトチャート長'),
+              title: Text(s.default_chart_length),
               subtitle: Text('${settings.defaultChartLength}'),
               trailing: const Icon(Icons.edit),
               onTap: () async {
-                final controller = TextEditingController(text: '${settings.defaultChartLength}');
+                final controller = TextEditingController(
+                  text: '${settings.defaultChartLength}',
+                );
                 final updated = await showDialog<int>(
                   context: context,
-                  builder: (_) => AlertDialog(
-                    title: const Text('デフォルトチャート長'),
-                    content: TextField(
-                      controller: controller,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(hintText: '50'),
-                    ),
-                    actions: [
-                      TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('キャンセル')),
-                      TextButton(onPressed: () => Navigator.of(context).pop(int.tryParse(controller.text)), child: const Text('OK')),
-                    ],
-                  ),
+                  builder:
+                      (_) => AlertDialog(
+                        title: Text(s.default_chart_length),
+                        content: TextField(
+                          controller: controller,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(hintText: '50'),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: Text(s.common_cancel),
+                          ),
+                          TextButton(
+                            onPressed:
+                                () => Navigator.of(
+                                  context,
+                                ).pop(int.tryParse(controller.text)),
+                            child: Text(s.common_ok),
+                          ),
+                        ],
+                      ),
                 );
                 if (updated != null && updated > 0) {
                   settings.defaultChartLength = updated;
@@ -217,53 +238,89 @@ class _SettingsWindowState extends State<SettingsWindow> {
             ),
             const Divider(),
             ListTile(
-              leading: Container(width: 24, height: 24, color: settings.signalColors[SignalType.input]),
-              title: const Text('Input 信号色'),
+              leading: Container(
+                width: 24,
+                height: 24,
+                color: settings.signalColors[SignalType.input],
+              ),
+              title: Text(s.input_signal_color),
               onTap: () async {
-                final c = await _pickColor(context, settings.signalColors[SignalType.input]!);
+                final c = await _pickColor(
+                  context,
+                  settings.signalColors[SignalType.input]!,
+                );
                 if (c != null) settings.setSignalColor(SignalType.input, c);
               },
             ),
             ListTile(
-              leading: Container(width: 24, height: 24, color: settings.signalColors[SignalType.output]),
-              title: const Text('Output 信号色'),
+              leading: Container(
+                width: 24,
+                height: 24,
+                color: settings.signalColors[SignalType.output],
+              ),
+              title: Text(s.output_signal_color),
               onTap: () async {
-                final c = await _pickColor(context, settings.signalColors[SignalType.output]!);
+                final c = await _pickColor(
+                  context,
+                  settings.signalColors[SignalType.output]!,
+                );
                 if (c != null) settings.setSignalColor(SignalType.output, c);
               },
             ),
             ListTile(
-              leading: Container(width: 24, height: 24, color: settings.signalColors[SignalType.hwTrigger]),
-              title: const Text('HW Trigger 信号色'),
+              leading: Container(
+                width: 24,
+                height: 24,
+                color: settings.signalColors[SignalType.hwTrigger],
+              ),
+              title: Text(s.hw_trigger_signal_color),
               onTap: () async {
-                final c = await _pickColor(context, settings.signalColors[SignalType.hwTrigger]!);
+                final c = await _pickColor(
+                  context,
+                  settings.signalColors[SignalType.hwTrigger]!,
+                );
                 if (c != null) settings.setSignalColor(SignalType.hwTrigger, c);
               },
             ),
             TextButton(
               onPressed: settings.resetSignalColors,
-              child: const Text('デフォルト色に戻す'),
+              child: Text(s.reset_default_colors),
             ),
             const Divider(),
             ListTile(
-              leading: Container(width: 24, height: 24, color: _effective(settings.commentDashedColor)),
-              title: const Text('コメント破線色'),
+              leading: Container(
+                width: 24,
+                height: 24,
+                color: _effective(settings.commentDashedColor),
+              ),
+              title: Text(s.comment_dashed_color),
               onTap: () async {
-                final c = await _pickColor(context, settings.commentDashedColor);
+                final c = await _pickColor(
+                  context,
+                  settings.commentDashedColor,
+                );
                 if (c != null) settings.commentDashedColor = c;
               },
             ),
             ListTile(
-              leading: Container(width: 24, height: 24, color: _effective(settings.commentArrowColor)),
-              title: const Text('コメント矢印色'),
+              leading: Container(
+                width: 24,
+                height: 24,
+                color: _effective(settings.commentArrowColor),
+              ),
+              title: Text(s.comment_arrow_color),
               onTap: () async {
                 final c = await _pickColor(context, settings.commentArrowColor);
                 if (c != null) settings.commentArrowColor = c;
               },
             ),
             ListTile(
-              leading: Container(width: 24, height: 24, color: _effective(settings.omissionLineColor)),
-              title: const Text('省略記号色'),
+              leading: Container(
+                width: 24,
+                height: 24,
+                color: _effective(settings.omissionLineColor),
+              ),
+              title: Text(s.omission_line_color),
               onTap: () async {
                 final c = await _pickColor(context, settings.omissionLineColor);
                 if (c != null) settings.omissionLineColor = c;
@@ -271,7 +328,7 @@ class _SettingsWindowState extends State<SettingsWindow> {
             ),
             TextButton(
               onPressed: settings.resetCommentColors,
-              child: const Text('デフォルト色に戻す'),
+              child: Text(s.reset_default_colors),
             ),
           ],
         );
@@ -283,24 +340,38 @@ class _SettingsWindowState extends State<SettingsWindow> {
           children: [
             ListTile(
               leading: const Icon(Icons.folder_open),
-              title: const Text('デフォルト保存フォルダ'),
+              title: Text(s.default_export_folder),
               subtitle: Text(settings.exportFolder),
               trailing: const Icon(Icons.edit),
               onTap: () async {
-                final controller = TextEditingController(text: settings.exportFolder);
+                final controller = TextEditingController(
+                  text: settings.exportFolder,
+                );
                 final updated = await showDialog<String>(
                   context: context,
-                  builder: (_) => AlertDialog(
-                    title: const Text('デフォルト保存フォルダ'),
-                    content: TextField(
-                      controller: controller,
-                      decoration: const InputDecoration(hintText: 'Export Chart'),
-                    ),
-                    actions: [
-                      TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('キャンセル')),
-                      TextButton(onPressed: () => Navigator.of(context).pop(controller.text.trim()), child: const Text('OK')),
-                    ],
-                  ),
+                  builder:
+                      (_) => AlertDialog(
+                        title: Text(s.default_export_folder),
+                        content: TextField(
+                          controller: controller,
+                          decoration: InputDecoration(
+                            hintText: s.hint_export_folder,
+                          ),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: Text(s.common_cancel),
+                          ),
+                          TextButton(
+                            onPressed:
+                                () => Navigator.of(
+                                  context,
+                                ).pop(controller.text.trim()),
+                            child: Text(s.common_ok),
+                          ),
+                        ],
+                      ),
                 );
                 if (updated != null && updated.isNotEmpty) {
                   settings.exportFolder = updated;
@@ -309,24 +380,38 @@ class _SettingsWindowState extends State<SettingsWindow> {
             ),
             ListTile(
               leading: const Icon(Icons.text_fields),
-              title: const Text('ファイル名プレフィックス'),
+              title: Text(s.file_name_prefix),
               subtitle: Text(settings.fileNamePrefix),
               trailing: const Icon(Icons.edit),
               onTap: () async {
-                final controller = TextEditingController(text: settings.fileNamePrefix);
+                final controller = TextEditingController(
+                  text: settings.fileNamePrefix,
+                );
                 final updated = await showDialog<String>(
                   context: context,
-                  builder: (_) => AlertDialog(
-                    title: const Text('ファイル名プレフィックス'),
-                    content: TextField(
-                      controller: controller,
-                      decoration: const InputDecoration(hintText: 'prefix_'),
-                    ),
-                    actions: [
-                      TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('キャンセル')),
-                      TextButton(onPressed: () => Navigator.of(context).pop(controller.text.trim()), child: const Text('OK')),
-                    ],
-                  ),
+                  builder:
+                      (_) => AlertDialog(
+                        title: Text(s.file_name_prefix),
+                        content: TextField(
+                          controller: controller,
+                          decoration: InputDecoration(
+                            hintText: s.hint_filename_prefix,
+                          ),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: Text(s.common_cancel),
+                          ),
+                          TextButton(
+                            onPressed:
+                                () => Navigator.of(
+                                  context,
+                                ).pop(controller.text.trim()),
+                            child: Text(s.common_ok),
+                          ),
+                        ],
+                      ),
                 );
                 if (updated != null && updated.isNotEmpty) {
                   settings.fileNamePrefix = updated;
@@ -343,13 +428,17 @@ class _SettingsWindowState extends State<SettingsWindow> {
           children: [
             SwitchListTile(
               secondary: const Icon(Icons.dark_mode),
-              title: const Text('ダークモード'),
+              title: Text(s.dark_mode),
               value: settings.darkMode,
               onChanged: (val) => settings.darkMode = val,
             ),
             ListTile(
-              leading: Container(width: 24, height: 24, color: settings.accentColor),
-              title: const Text('アクセントカラー'),
+              leading: Container(
+                width: 24,
+                height: 24,
+                color: settings.accentColor,
+              ),
+              title: Text(s.accent_color),
               onTap: () async {
                 final c = await _pickColor(context, settings.accentColor);
                 if (c != null) {
@@ -368,7 +457,7 @@ class _SettingsWindowState extends State<SettingsWindow> {
             RadioListTile<Locale>(
               value: const Locale('ja'),
               groupValue: context.watch<LocaleNotifier>().locale,
-              title: const Text('日本語'),
+              title: Text(s.language_japanese),
               onChanged: (locale) {
                 context.read<LocaleNotifier>().setLocale(locale!);
                 setSuggestionLanguage(SuggestionLanguage.ja);
@@ -377,7 +466,7 @@ class _SettingsWindowState extends State<SettingsWindow> {
             RadioListTile<Locale>(
               value: const Locale('en'),
               groupValue: context.watch<LocaleNotifier>().locale,
-              title: const Text('English'),
+              title: Text(s.language_english),
               onChanged: (locale) {
                 context.read<LocaleNotifier>().setLocale(locale!);
                 setSuggestionLanguage(SuggestionLanguage.en);
@@ -415,8 +504,9 @@ class _CameraCountDialogState extends State<_CameraCountDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
     return AlertDialog(
-      title: const Text('デフォルトカメラ数'),
+      title: Text(s.default_camera_count),
       content: DropdownButton<int>(
         value: _selected,
         items: [
@@ -426,9 +516,15 @@ class _CameraCountDialogState extends State<_CameraCountDialog> {
         onChanged: (v) => setState(() => _selected = v!),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('キャンセル')),
-        TextButton(onPressed: () => Navigator.of(context).pop(_selected), child: const Text('OK')),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(s.common_cancel),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(_selected),
+          child: Text(s.common_ok),
+        ),
       ],
     );
   }
-} 
+}

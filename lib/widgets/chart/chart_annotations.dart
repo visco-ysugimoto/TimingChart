@@ -67,6 +67,8 @@ class ChartAnnotationsManager {
 
     // 衝突回避用のリスト
     final List<Rect> placedCommentRects = [];
+    // 矢印配置時に参照する、コメントボックスのみの矩形リスト
+    final List<Rect> _placedOnlyCommentRects = [];
 
     // コメントボックス再描画用に記録するリスト
     final List<_CommentBoxData> _commentBoxDrawData = [];
@@ -74,6 +76,9 @@ class ChartAnnotationsManager {
     // 境界線描画用のペイント
     final double dashWidth = 5;
     final double dashSpace = 3;
+
+    // 隣接する範囲（例: s1-e1 と e1-e2）で矢印Yを共有するためのマップ
+    final Map<int, double> _boundaryArrowBaseY = {};
 
     for (final ann in sortedAnnotations) {
       debugPrint(
@@ -104,6 +109,12 @@ class ChartAnnotationsManager {
       if (ann.endTimeIndex != null) {
         // 範囲コメントの場合
         double arrowBaseY = chartBottomY + 10;
+        // 直前の範囲の終端とこの範囲の開始が一致する場合、同じYを優先的に使用
+        final int _startIdx = ann.startTimeIndex;
+        final int _endIdx = ann.endTimeIndex!;
+        if (_boundaryArrowBaseY.containsKey(_startIdx)) {
+          arrowBaseY = _boundaryArrowBaseY[_startIdx]!;
+        }
         final double arrowStartX = labelWidth + ann.startTimeIndex * cellWidth;
         final double arrowEndX =
             labelWidth + (ann.endTimeIndex! + 1) * cellWidth;
@@ -119,7 +130,7 @@ class ChartAnnotationsManager {
         while ((_placedArrowRects.any((r) => r.overlaps(currentArrowRect)) ||
                 isArrowOverlappingCommentBoxes(
                   currentArrowRect,
-                  placedCommentRects,
+                  _placedOnlyCommentRects,
                 )) &&
             attempts < 15) {
           arrowBaseY += 20;
@@ -133,6 +144,8 @@ class ChartAnnotationsManager {
         }
         arrowRect = currentArrowRect;
         _placedArrowRects.add(arrowRect);
+        // この範囲の終端インデックスに対応するYを記録（後続の隣接範囲で共有）
+        _boundaryArrowBaseY.putIfAbsent(_endIdx, () => arrowBaseY);
 
         // コメントボックス配置ロジック
         // 1) ボックス幅が矢印幅以下 → 矢印の中心に重ねる
@@ -179,6 +192,7 @@ class ChartAnnotationsManager {
       );
 
       placedCommentRects.add(commentRect);
+      _placedOnlyCommentRects.add(commentRect);
 
       // 矢印や矢印-コメント間の領域を占有扱いにして、
       // 後続のコメントボックスが割り込まないようにする
@@ -360,10 +374,11 @@ class ChartAnnotationsManager {
   /// 矢印とコメントボックスの衝突検出
   bool isArrowOverlappingCommentBoxes(Rect arrowRect, List<Rect> commentBoxes) {
     for (final boxRect in commentBoxes) {
+      // エッジが接しているだけの場合は重なりと見なさない（厳密判定）
       final bool horizontalOverlap =
-          !(arrowRect.right < boxRect.left || arrowRect.left > boxRect.right);
+          (arrowRect.right > boxRect.left) && (arrowRect.left < boxRect.right);
       final bool verticalOverlap =
-          !(arrowRect.bottom < boxRect.top || arrowRect.top > boxRect.bottom);
+          (arrowRect.bottom > boxRect.top) && (arrowRect.top < boxRect.bottom);
       if (horizontalOverlap && verticalOverlap) {
         return true;
       }

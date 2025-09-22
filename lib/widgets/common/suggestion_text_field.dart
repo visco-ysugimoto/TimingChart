@@ -28,6 +28,7 @@ class _SuggestionTextFieldState extends State<SuggestionTextField> {
   VoidCallback? _syncListener;
   List<SuggestionItem> _latestItems = [];
   late final VoidCallback _langListener;
+  FocusNode? _attachedFocusNode;
 
   @override
   void initState() {
@@ -108,6 +109,10 @@ class _SuggestionTextFieldState extends State<SuggestionTextField> {
     }
 
     _detachSyncListener();
+    if (_attachedFocusNode != null) {
+      _attachedFocusNode!.removeListener(_onFocusChange);
+      _attachedFocusNode = null;
+    }
     _internalController.dispose();
     suggestionLanguageVersion.removeListener(_langListener);
     super.dispose();
@@ -203,6 +208,12 @@ class _SuggestionTextFieldState extends State<SuggestionTextField> {
     }
   }
 
+  void _onFocusChange() {
+    if (_attachedFocusNode != null && _attachedFocusNode!.hasFocus) {
+      _updateSuggestions();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<SuggestionItem>>(
@@ -247,12 +258,12 @@ class _SuggestionTextFieldState extends State<SuggestionTextField> {
             FocusNode fieldFocusNode,
             VoidCallback onFieldSubmitted,
           ) {
-            if (!fieldFocusNode.hasListeners) {
-              fieldFocusNode.addListener(() {
-                if (fieldFocusNode.hasFocus) {
-                  _updateSuggestions();
-                }
-              });
+            if (_attachedFocusNode != fieldFocusNode) {
+              if (_attachedFocusNode != null) {
+                _attachedFocusNode!.removeListener(_onFocusChange);
+              }
+              _attachedFocusNode = fieldFocusNode;
+              _attachedFocusNode!.addListener(_onFocusChange);
             }
 
             _attachSyncListener(fieldTextEditingController);
@@ -297,7 +308,7 @@ class _SuggestionTextFieldState extends State<SuggestionTextField> {
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 10.0,
-                        vertical: 6.0,
+                        vertical: 8.0,
                       ),
                       filled: true,
                       // テキストフィールド本体の塗りつぶし色にも同じ色を適用
