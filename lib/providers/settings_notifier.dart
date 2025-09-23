@@ -15,11 +15,64 @@ class SettingsNotifier extends ChangeNotifier {
   }
 
   // ───────── チャート ─────────
+  // 横軸の単位: true = ms, false = step
+  bool _timeUnitIsMs = false;
+  bool get timeUnitIsMs => _timeUnitIsMs;
+  set timeUnitIsMs(bool v) {
+    if (v != _timeUnitIsMs) {
+      _timeUnitIsMs = v;
+      notifyListeners();
+    }
+  }
+
+  // 1 step あたりのミリ秒
+  double _msPerStep = 1.0;
+  double get msPerStep => _msPerStep;
+  set msPerStep(double v) {
+    if (v > 0 && v != _msPerStep) {
+      _msPerStep = v;
+      notifyListeners();
+    }
+  }
+
+  // stepごとの個別時間 [ms]（ms単位使用時の非等間隔に利用）
+  List<double> _stepDurationsMs = [];
+  List<double> get stepDurationsMs => List.unmodifiable(_stepDurationsMs);
+  void setStepDurationsMs(List<double> durations) {
+    // 0以下は除外し、最低1msに丸め
+    _stepDurationsMs = durations
+        .map((e) => e.isFinite && e > 0 ? e : _msPerStep)
+        .toList(growable: true);
+    notifyListeners();
+  }
+  void ensureStepDurationsLength(int length) {
+    if (length <= 0) return;
+    if (_stepDurationsMs.length < length) {
+      _stepDurationsMs.addAll(
+        List<double>.filled(length - _stepDurationsMs.length, _msPerStep),
+      );
+      notifyListeners();
+    } else if (_stepDurationsMs.length > length) {
+      _stepDurationsMs = _stepDurationsMs.sublist(0, length);
+      notifyListeners();
+    }
+  }
+
   bool _showGridLines = true;
   bool get showGridLines => _showGridLines;
   set showGridLines(bool v) {
     if (v != _showGridLines) {
       _showGridLines = v;
+      notifyListeners();
+    }
+  }
+
+  // チャート下側の時間ラベル（単位）の表示/非表示
+  bool _showBottomUnitLabels = true;
+  bool get showBottomUnitLabels => _showBottomUnitLabels;
+  set showBottomUnitLabels(bool v) {
+    if (v != _showBottomUnitLabels) {
+      _showBottomUnitLabels = v;
       notifyListeners();
     }
   }

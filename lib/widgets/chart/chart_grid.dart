@@ -19,6 +19,16 @@ class ChartGridManager {
   final int? highlightStartRow;
   final int? highlightEndRow;
   final Color highlightTextColor;
+  // 時間表記: true なら ms、false なら step
+  final bool timeUnitIsMs;
+  // 1 step あたりのミリ秒（ms表記時に使用）
+  final double msPerStep;
+  // 各ステップの個別時間[ms]（ms表記時の非等間隔描画に使用）
+  final List<double> stepDurationsMs;
+  // 編集中に強調表示するステップ境界インデックス（null なら強調なし）
+  final int? activeStepIndex;
+  // 下部時間ラベル（単位）を表示するか
+  final bool showBottomUnitLabels;
 
   ChartGridManager({
     required this.cellWidth,
@@ -33,6 +43,11 @@ class ChartGridManager {
     this.highlightStartRow,
     this.highlightEndRow,
     this.highlightTextColor = Colors.blue,
+    this.timeUnitIsMs = false,
+    this.msPerStep = 1.0,
+    this.stepDurationsMs = const [],
+    this.activeStepIndex,
+    this.showBottomUnitLabels = true,
   });
 
   /// グリッド線を描画
@@ -48,13 +63,38 @@ class ChartGridManager {
           ..strokeWidth = 1;
 
     // 縦線（タイムインデックス）
-    for (int i = 0; i <= maxTimeSteps; i++) {
-      final x = labelWidth + i * cellWidth;
-      canvas.drawLine(
-        Offset(x, 0),
-        Offset(x, signalCount * cellHeight),
-        paintGuide,
-      );
+    if (!timeUnitIsMs) {
+      // 等間隔（step）: 強調線は描かない
+      for (int i = 0; i <= maxTimeSteps; i++) {
+        final x = labelWidth + i * cellWidth;
+        canvas.drawLine(
+          Offset(x, 0),
+          Offset(x, signalCount * cellHeight),
+          paintGuide,
+        );
+      }
+    } else {
+      // 非等間隔（ms）: 各ステップ幅を (dur/msPerStep)*cellWidth として累積
+      double cursorX = labelWidth;
+      for (int i = 0; i <= maxTimeSteps; i++) {
+        if (i > 0) {
+          final dur = (i - 1) < stepDurationsMs.length
+              ? stepDurationsMs[i - 1]
+              : msPerStep;
+          cursorX += (dur / msPerStep) * cellWidth;
+        }
+        final isActive = (activeStepIndex != null && i == activeStepIndex);
+        final p = isActive
+            ? (Paint()
+              ..color = Colors.orange
+              ..strokeWidth = 2)
+            : paintGuide;
+        canvas.drawLine(
+          Offset(cursorX, 0),
+          Offset(cursorX, signalCount * cellHeight),
+          p,
+        );
+      }
     }
 
     // 横線（信号区切り）
@@ -177,11 +217,112 @@ class ChartGridManager {
         Paint()
           ..color = Colors.redAccent
           ..strokeWidth = 2;
-
-    for (final index in highlightIndices) {
-      final x = labelWidth + index * cellWidth;
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paintHighlight);
+    if (!timeUnitIsMs) {
+      for (final index in highlightIndices) {
+        final x = labelWidth + index * cellWidth;
+        canvas.drawLine(Offset(x, 0), Offset(x, size.height), paintHighlight);
+      }
+    } else {
+      // 累積ステップ位置から境界位置(px)を計算
+      for (final index in highlightIndices) {
+        double steps = 0.0;
+        for (int t = 0; t < index; t++) {
+          final durSteps = (t < stepDurationsMs.length && msPerStep > 0)
+              ? stepDurationsMs[t] / msPerStep
+              : 1.0;
+          steps += durSteps;
+        }
+        final x = labelWidth + steps * cellWidth;
+        canvas.drawLine(Offset(x, 0), Offset(x, size.height), paintHighlight);
+      }
     }
+  }
+
+  /// 時間軸ラベル（下部）を描画
+  void drawTimeLabels(
+    Canvas canvas,
+    Size size,
+    int signalCount,
+    int maxTimeSteps,
+  ) {
+    if (!showBottomUnitLabels) return;
+    // 下端Y座標（可視行数を計算）
+    int visibleRow = 0;
+    for (int j = 0; j < signalCount; j++) {
+      final currentSignalType =
+          (j >= 0 && j < signalTypes.length) ? signalTypes[j] : SignalType.input;
+      if (!showAllSignalTypes &&
+          (currentSignalType == SignalType.control ||
+              currentSignalType == SignalType.group ||
+              currentSignalType == SignalType.task)) {
+        continue;
+      }
+      visibleRow++;
+    }
+    final double baseY = visibleRow * cellHeight + 4; // 最終行のすぐ下
+
+    final textStyle = TextStyle(
+      color: labelColor.withOpacity(0.8),
+      fontSize: 12,
+    );
+    final tp = TextPainter(
+      textDirection: TextDirection.ltr,
+    );
+
+    if (!timeUnitIsMs) {
+      // 等間隔: およそ80pxごとにラベル
+      final int stepStride = (cellWidth <= 0)
+          ? 1
+          : (80 / cellWidth).ceil().clamp(1, 1000000);
+      for (int i = 0; i <= maxTimeSteps; i += stepStride) {
+        final double x = labelWidth + i * cellWidth;
+        final String label = i.toString();
+        tp.text = TextSpan(text: label, style: textStyle);
+        tp.layout();
+        final double tx = x - tp.width / 2;
+        final double ty = baseY;
+        if (tx + tp.width >= labelWidth && tx <= size.width) {
+          tp.paint(canvas, Offset(tx, ty));
+        }
+      }
+    } else {
+      // 非等間隔: 80px以上の間隔でラベルを配置
+      double cursorX = labelWidth;
+      double cursorMs = 0.0;
+      double lastLabelX = -1e9;
+      for (int i = 0; i <= maxTimeSteps; i++) {
+        if (i > 0) {
+          final dur = (i - 1) < stepDurationsMs.length
+              ? stepDurationsMs[i - 1]
+              : msPerStep;
+          cursorX += (dur / msPerStep) * cellWidth;
+          cursorMs += dur;
+        }
+        if (cursorX - lastLabelX >= 80) {
+          final String label = _formatMs(cursorMs);
+          tp.text = TextSpan(text: label, style: textStyle);
+          tp.layout();
+          final double tx = cursorX - tp.width / 2;
+          final double ty = baseY;
+          if (tx + tp.width >= labelWidth && tx <= size.width) {
+            tp.paint(canvas, Offset(tx, ty));
+            lastLabelX = cursorX;
+          }
+        }
+      }
+    }
+  }
+
+  String _formatMs(double ms) {
+    // 0.1ms 単位で丸め
+    final num v = (ms.isFinite) ? (ms) : 0.0;
+    if (v >= 1000) {
+      // 1s以上は秒表記も検討できるが、ここでは ms のまま
+      return v.toStringAsFixed(0) + ' ms';
+    }
+    if (v >= 100) return v.toStringAsFixed(0) + ' ms';
+    if (v >= 10) return v.toStringAsFixed(1) + ' ms';
+    return v.toStringAsFixed(2) + ' ms';
   }
 }
 
