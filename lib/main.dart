@@ -1134,6 +1134,27 @@ class _MyHomePageState extends State<MyHomePage>
                           final timeline = CsvIoLogParser.parseTimeline(
                             csvText,
                           );
+                          // タイムスタンプから各ステップの継続時間[ms]を推定
+                          final stepDurationsMs =
+                              CsvIoLogParserTimestamps.inferStepDurationsMsFromTimeline(
+                                timeline,
+                              );
+                          if (stepDurationsMs.isNotEmpty) {
+                            final settings = Provider.of<SettingsNotifier>(
+                              context,
+                              listen: false,
+                            );
+                            // 平均 ms/step を設定（相対幅の合計がステップ数に一致するように）
+                            final double avgMs =
+                                stepDurationsMs
+                                    .where((e) => e.isFinite && e > 0)
+                                    .fold<double>(0.0, (a, b) => a + b) /
+                                stepDurationsMs.length;
+                            if (avgMs.isFinite && avgMs > 0) {
+                              settings.msPerStep = avgMs;
+                            }
+                            settings.setStepDurationsMs(stepDurationsMs);
+                          }
 
                           // === Output の取り込み（IN行では前回値を保持） ===
                           final int timeLength = timeline.entries.length;
@@ -1777,7 +1798,13 @@ class _MyHomePageState extends State<MyHomePage>
                     }
                   });
                 },
-                onClearFields: _clearAllTextFields,
+                onClearFields: () {
+                  _clearAllTextFields();
+                  // グリッド調整も初期化（非等間隔のドラッグ調整をリセット）
+                  if (_timingChartKey.currentState != null) {
+                    _timingChartKey.currentState!.resetGridAdjustments();
+                  }
+                },
                 showImportExportButtons: false, // インポート/エクスポートボタンを非表示
               ),
 

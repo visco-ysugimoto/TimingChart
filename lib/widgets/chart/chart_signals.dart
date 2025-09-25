@@ -12,6 +12,10 @@ class ChartSignalsManager {
   final List<SignalType> signalTypes;
   final bool showAllSignalTypes;
   final Map<SignalType, Color> signalColors;
+  // 非等間隔表示用
+  final bool timeUnitIsMs;
+  final double msPerStep;
+  final List<double> stepDurationsMs;
   static const double waveAmplitude = 10;
 
   ChartSignalsManager({
@@ -20,6 +24,9 @@ class ChartSignalsManager {
     required this.labelWidth,
     required this.signalTypes,
     required this.signalColors,
+    required this.timeUnitIsMs,
+    required this.msPerStep,
+    required this.stepDurationsMs,
     this.showAllSignalTypes = false,
   });
 
@@ -32,6 +39,19 @@ class ChartSignalsManager {
   void drawSignalWaveforms(Canvas canvas, List<List<int>> signals) {
     var paintLine = Paint()..strokeWidth = 2;
     int visibleRow = 0;
+
+    // ステップ境界の累積位置（単位: step幅）を作成
+    List<double> stepPositions = [];
+    int maxLen = signals.isNotEmpty ? signals.map((e) => e.length).reduce(math.max) : 0;
+    stepPositions = List<double>.filled(maxLen + 1, 0.0);
+    for (int t = 0; t < maxLen; t++) {
+      final deltaSteps = timeUnitIsMs
+          ? ((t < stepDurationsMs.length && msPerStep > 0)
+              ? (stepDurationsMs[t] / msPerStep)
+              : 1.0)
+          : 1.0;
+      stepPositions[t + 1] = stepPositions[t] + deltaSteps;
+    }
 
     for (int row = 0; row < signals.length; row++) {
       final rowData = signals[row];
@@ -65,8 +85,8 @@ class ChartSignalsManager {
         final currentValue = rowData[t];
         final nextValue = rowData[t + 1];
 
-        final xStart = labelWidth + t * cellWidth;
-        final xEnd = labelWidth + (t + 1) * cellWidth;
+        final xStart = labelWidth + stepPositions[t] * cellWidth;
+        final xEnd = labelWidth + stepPositions[t + 1] * cellWidth;
 
         final yCurrent = (currentValue != 0) ? yHigh : yLow;
         final yNext = (nextValue != 0) ? yHigh : yLow;
@@ -92,8 +112,8 @@ class ChartSignalsManager {
       if (rowData.isNotEmpty) {
         final lastIndex = rowData.length - 1;
         final lastValue = rowData[lastIndex];
-        final xStart = labelWidth + lastIndex * cellWidth;
-        final xEnd = labelWidth + (lastIndex + 1) * cellWidth;
+        final xStart = labelWidth + stepPositions[lastIndex] * cellWidth;
+        final xEnd = labelWidth + stepPositions[lastIndex + 1] * cellWidth;
         final yLast = (lastValue != 0) ? yHigh : yLow;
         canvas.drawLine(Offset(xStart, yLast), Offset(xEnd, yLast), paintLine);
       }
@@ -122,10 +142,35 @@ class ChartSignalsManager {
     final stTime = math.min(startTimeIndex, endTimeIndex);
     final edTime = math.max(startTimeIndex, endTimeIndex);
 
+    // 時間軸の非等間隔に対応して X を算出
+    double xStart;
+    double xEnd;
+    if (timeUnitIsMs) {
+      // 累積ステップ位置を st..ed+1 まで計算
+      double pos = 0.0;
+      for (int t = 0; t < stTime; t++) {
+        final durSteps = (t < stepDurationsMs.length && msPerStep > 0)
+            ? stepDurationsMs[t] / msPerStep
+            : 1.0;
+        pos += durSteps;
+      }
+      xStart = labelWidth + pos * cellWidth;
+      for (int t = stTime; t <= edTime; t++) {
+        final durSteps = (t < stepDurationsMs.length && msPerStep > 0)
+            ? stepDurationsMs[t] / msPerStep
+            : 1.0;
+        pos += durSteps;
+      }
+      xEnd = labelWidth + pos * cellWidth;
+    } else {
+      xStart = labelWidth + stTime * cellWidth;
+      xEnd = labelWidth + (edTime + 1) * cellWidth;
+    }
+
     final selectionRect = Rect.fromLTWH(
-      labelWidth + stTime * cellWidth,
+      xStart,
       stSig * cellHeight,
-      (edTime - stTime + 1) * cellWidth,
+      (xEnd - xStart).clamp(0.0, double.infinity),
       (edSig - stSig + 1) * cellHeight,
     );
 

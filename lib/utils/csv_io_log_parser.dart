@@ -173,3 +173,65 @@ class CsvIoLogParser {
     );
   }
 }
+
+extension CsvIoLogParserTimestamps on CsvIoLogParser {
+  /// タイムラインの timestamp から各ステップの継続時間 [ms] を推定して返す
+  /// - 連続する行の時刻差を使用
+  /// - 解析できない/同一時刻の場合は 1ms を代入
+  /// - 最終ステップは直前と同じ値（無ければ 1ms）
+  static List<double> inferStepDurationsMsFromTimeline(CsvTimeline timeline) {
+    final int n = timeline.entries.length;
+    if (n <= 0) return const <double>[];
+
+    final times = <DateTime?>[];
+    for (final e in timeline.entries) {
+      times.add(_parseCsvTimestamp(e.timestamp));
+    }
+
+    final durations = <double>[];
+    for (int i = 0; i < n - 1; i++) {
+      final t0 = times[i];
+      final t1 = times[i + 1];
+      if (t0 != null && t1 != null) {
+        final diff = t1.difference(t0).inMilliseconds;
+        durations.add(diff > 0 ? diff.toDouble() : 1.0);
+      } else {
+        durations.add(1.0);
+      }
+    }
+    // 最後のステップ
+    durations.add(durations.isNotEmpty ? durations.last : 1.0);
+
+    return durations;
+  }
+
+  /// 'YYYY/MM/DD HH:MM:SS[.mmm]' を DateTime に変換（ミリ秒まで保持）
+  static DateTime? _parseCsvTimestamp(String ts) {
+    try {
+      final parts = ts.split(' ');
+      if (parts.length != 2) return null;
+      final dateP = parts[0].split('/');
+      if (dateP.length != 3) return null;
+      final year = int.parse(dateP[0]);
+      final month = int.parse(dateP[1]);
+      final day = int.parse(dateP[2]);
+
+      final timeMainParts = parts[1].split('.');
+      final hms = timeMainParts[0].split(':');
+      if (hms.length != 3) return null;
+      final hour = int.parse(hms[0]);
+      final minute = int.parse(hms[1]);
+      final second = int.parse(hms[2]);
+      final millisecond =
+          timeMainParts.length >= 2
+              ? int.tryParse(
+                    timeMainParts[1].padRight(3, '0').substring(0, 3),
+                  ) ??
+                  0
+              : 0;
+      return DateTime(year, month, day, hour, minute, second, millisecond);
+    } catch (_) {
+      return null;
+    }
+  }
+}

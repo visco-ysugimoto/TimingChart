@@ -26,6 +26,10 @@ class ChartAnnotationsManager {
   final List<int> highlightTimeIndices;
   final Color dashedColor;
   final Color arrowColor;
+  // 時間軸（非等間隔）用
+  final bool timeUnitIsMs;
+  final double msPerStep;
+  final List<double> stepDurationsMs;
 
   // 選択中のアノテーションID
   final String? selectedAnnotationId;
@@ -43,6 +47,9 @@ class ChartAnnotationsManager {
     this.selectedAnnotationId,
     this.dashedColor = Colors.black,
     this.arrowColor = Colors.blue,
+    this.timeUnitIsMs = false,
+    this.msPerStep = 1.0,
+    this.stepDurationsMs = const [],
   });
 
   /// アノテーションの描画
@@ -115,9 +122,8 @@ class ChartAnnotationsManager {
         if (_boundaryArrowBaseY.containsKey(_startIdx)) {
           arrowBaseY = _boundaryArrowBaseY[_startIdx]!;
         }
-        final double arrowStartX = labelWidth + ann.startTimeIndex * cellWidth;
-        final double arrowEndX =
-            labelWidth + (ann.endTimeIndex! + 1) * cellWidth;
+        final double arrowStartX = _boundaryX(ann.startTimeIndex);
+        final double arrowEndX = _boundaryX(ann.endTimeIndex! + 1);
         const double arrowThickness = 4;
         Rect currentArrowRect = Rect.fromLTWH(
           arrowStartX,
@@ -167,8 +173,8 @@ class ChartAnnotationsManager {
       } else {
         // 単一ポイントコメントの場合
         commentY = baseCommentY;
-        // セル左端に合わせてボックス左を配置
-        commentX = labelWidth + ann.startTimeIndex * cellWidth;
+        // 指定 index の境界線にボックス左を合わせる
+        commentX = _boundaryX(ann.startTimeIndex);
         commentRect = Rect.fromLTWH(commentX, commentY, boxWidth, boxHeight);
       }
 
@@ -239,7 +245,7 @@ class ChartAnnotationsManager {
 
       // 先に境界線を描画
       // 単一点コメントの場合はセル中央に破線を置く
-      double startX = labelWidth + ann.startTimeIndex * cellWidth;
+      double startX = _boundaryX(ann.startTimeIndex);
       // 破線終点の見直し:
       // - 水平ON: コメントボックス中心Yまで常に延長（チャート外でも）
       // - 水平OFF: 先端がチャート内ならその先端Yまで、外ならチャート下端まで
@@ -272,7 +278,7 @@ class ChartAnnotationsManager {
 
       // 範囲コメントの右側の垂直線
       if (ann.endTimeIndex != null) {
-        final double endX = labelWidth + (ann.endTimeIndex! + 1) * cellWidth;
+        final double endX = _boundaryX(ann.endTimeIndex! + 1);
         debugPrint('右境界線: x=$endX, y1=0, y2=$boundaryEndY');
 
         drawDashedLine(
@@ -296,14 +302,9 @@ class ChartAnnotationsManager {
       }
 
       // X方向にコメントが移動している場合は、破線位置とコメントボックスを結ぶ矢印を追加
-      final double originalCommentCenterX =
-          ann.endTimeIndex != null
-              ? (labelWidth +
-                      ann.startTimeIndex * cellWidth +
-                      labelWidth +
-                      (ann.endTimeIndex! + 1) * cellWidth) /
-                  2
-              : (labelWidth + ann.startTimeIndex * cellWidth);
+      final double originalCommentCenterX = ann.endTimeIndex != null
+          ? (_boundaryX(ann.startTimeIndex) + _boundaryX(ann.endTimeIndex! + 1)) / 2
+          : _boundaryX(ann.startTimeIndex);
       final double movedCenterX = commentRect.center.dx;
       final bool movedInX = (movedCenterX - originalCommentCenterX).abs() > 1.0;
       if (movedInX) {
@@ -336,6 +337,21 @@ class ChartAnnotationsManager {
         selectedAnnotationId,
       );
     }
+  }
+
+  // 指定した境界 index の画面X座標（非等間隔対応）
+  double _boundaryX(int boundaryIndex) {
+    if (!timeUnitIsMs) {
+      return labelWidth + boundaryIndex * cellWidth;
+    }
+    double steps = 0.0;
+    for (int t = 0; t < boundaryIndex; t++) {
+      final durSteps = (t < stepDurationsMs.length && msPerStep > 0)
+          ? stepDurationsMs[t] / msPerStep
+          : 1.0;
+      steps += durSteps;
+    }
+    return labelWidth + steps * cellWidth;
   }
 
   /// アノテーションのソート
