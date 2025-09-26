@@ -117,6 +117,9 @@ class WaveDromConverter {
             rowModes: config.rowModes,
             annotations: annList,
             omissionIndices: omitList,
+            timeUnitIsMs: config.timeUnitIsMs,
+            msPerStep: config.msPerStep,
+            stepDurationsMs: config.stepDurationsMs,
           ),
         ),
       };
@@ -149,6 +152,9 @@ class WaveDromConverter {
           rowModes: config.rowModes,
           annotations: annList2,
           omissionIndices: omitList2,
+          timeUnitIsMs: config.timeUnitIsMs,
+          msPerStep: config.msPerStep,
+          stepDurationsMs: config.stepDurationsMs,
         ),
       ),
     };
@@ -208,6 +214,10 @@ class WaveDromConverter {
               .map((row) => row.map((cell) => cell.index).toList())
               .toList(),
       'rowModes': config.rowModes,
+      // 時間単位/スケール
+      'timeUnitIsMs': config.timeUnitIsMs,
+      'msPerStep': config.msPerStep,
+      'stepDurationsMs': config.stepDurationsMs,
     };
   }
 
@@ -479,6 +489,14 @@ class WaveDromConverter {
       }
     }
 
+    // --- ms 関連（存在すれば使用、なければ既定値）---
+    final bool timeUnitIsMs = cfg['timeUnitIsMs'] ?? false;
+    final double msPerStep = (cfg['msPerStep'] as num?)?.toDouble() ?? 1.0;
+    final List<double> stepDurationsMs =
+        ((cfg['stepDurationsMs'] ?? []) as List)
+            .map((e) => (e as num).toDouble())
+            .toList();
+
     // --- AppConfig ---
     return AppConfig(
       formState: formState,
@@ -493,6 +511,9 @@ class WaveDromConverter {
       rowModes: rowModes,
       annotations: annotations,
       omissionIndices: omissionIndices,
+      timeUnitIsMs: timeUnitIsMs,
+      msPerStep: msPerStep,
+      stepDurationsMs: stepDurationsMs,
     );
   }
 }

@@ -34,6 +34,11 @@ class AppConfig {
   final List<TimingChartAnnotation> annotations;
   final List<int> omissionIndices;
 
+  // 時間単位/スケール(ms)と各ステップの個別時間[ms]
+  final bool timeUnitIsMs;
+  final double msPerStep;
+  final List<double> stepDurationsMs;
+
   const AppConfig({
     required this.formState,
     required this.signals,
@@ -47,6 +52,9 @@ class AppConfig {
     required this.rowModes,
     this.annotations = const [],
     this.omissionIndices = const [],
+    this.timeUnitIsMs = false,
+    this.msPerStep = 1.0,
+    this.stepDurationsMs = const [],
   });
 
   /// TextEditingControllerからテキスト値を抽出
@@ -70,6 +78,9 @@ class AppConfig {
     required List<String> rowModes,
     List<TimingChartAnnotation> annotations = const [],
     List<int> omissionIndices = const [],
+    bool timeUnitIsMs = false,
+    double msPerStep = 1.0,
+    List<double> stepDurationsMs = const [],
   }) {
     return AppConfig(
       formState: formState,
@@ -84,6 +95,9 @@ class AppConfig {
       rowModes: rowModes,
       annotations: annotations,
       omissionIndices: omissionIndices,
+      timeUnitIsMs: timeUnitIsMs,
+      msPerStep: msPerStep,
+      stepDurationsMs: stepDurationsMs,
     );
   }
 
@@ -138,6 +152,9 @@ class AppConfig {
               )
               .toList(),
       'omissionIndices': omissionIndices,
+      'timeUnitIsMs': timeUnitIsMs,
+      'msPerStep': msPerStep,
+      'stepDurationsMs': stepDurationsMs,
     };
   }
 
@@ -178,6 +195,14 @@ class AppConfig {
             )
             .toList();
 
+    // 時間関連
+    final bool timeUnitIsMs = json['timeUnitIsMs'] ?? false;
+    final double msPerStep = (json['msPerStep'] as num?)?.toDouble() ?? 1.0;
+    final List<double> stepDurationsMs =
+        ((json['stepDurationsMs'] ?? []) as List)
+            .map((e) => (e as num).toDouble())
+            .toList();
+
     return AppConfig(
       formState: formState,
       signals: signals,
@@ -209,6 +234,9 @@ class AppConfig {
           ((json['omissionIndices'] ?? []) as List)
               .map((e) => e as int)
               .toList(),
+      timeUnitIsMs: timeUnitIsMs,
+      msPerStep: msPerStep,
+      stepDurationsMs: stepDurationsMs,
     );
   }
 

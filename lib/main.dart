@@ -540,6 +540,13 @@ class _MyHomePageState extends State<MyHomePage>
       annotations: _chartAnnotations,
       omissionIndices:
           _timingChartKey.currentState?.getOmissionTimeIndices() ?? const [],
+      // ms 関連は SettingsNotifier から取得
+      timeUnitIsMs:
+          Provider.of<SettingsNotifier>(context, listen: false).timeUnitIsMs,
+      msPerStep:
+          Provider.of<SettingsNotifier>(context, listen: false).msPerStep,
+      stepDurationsMs:
+          Provider.of<SettingsNotifier>(context, listen: false).stepDurationsMs,
     );
   }
 
@@ -675,6 +682,14 @@ class _MyHomePageState extends State<MyHomePage>
       _updateOutputControllers(config.formState.outputCount);
       _updateHwTriggerControllers(config.formState.hwPort);
     });
+
+    // ms 単位設定を適用（存在すれば使用）
+    final settings = Provider.of<SettingsNotifier>(context, listen: false);
+    settings.timeUnitIsMs = config.timeUnitIsMs;
+    settings.msPerStep = config.msPerStep;
+    if (config.stepDurationsMs.isNotEmpty) {
+      settings.setStepDurationsMs(config.stepDurationsMs);
+    }
 
     // テキストを設定
     for (

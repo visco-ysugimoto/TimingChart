@@ -78,17 +78,19 @@ class ChartGridManager {
       double cursorX = labelWidth;
       for (int i = 0; i <= maxTimeSteps; i++) {
         if (i > 0) {
-          final dur = (i - 1) < stepDurationsMs.length
-              ? stepDurationsMs[i - 1]
-              : msPerStep;
+          final dur =
+              (i - 1) < stepDurationsMs.length
+                  ? stepDurationsMs[i - 1]
+                  : msPerStep;
           cursorX += (dur / msPerStep) * cellWidth;
         }
         final isActive = (activeStepIndex != null && i == activeStepIndex);
-        final p = isActive
-            ? (Paint()
-              ..color = Colors.orange
-              ..strokeWidth = 2)
-            : paintGuide;
+        final p =
+            isActive
+                ? (Paint()
+                  ..color = Colors.orange
+                  ..strokeWidth = 2)
+                : paintGuide;
         canvas.drawLine(
           Offset(cursorX, 0),
           Offset(cursorX, signalCount * cellHeight),
@@ -227,9 +229,10 @@ class ChartGridManager {
       for (final index in highlightIndices) {
         double steps = 0.0;
         for (int t = 0; t < index; t++) {
-          final durSteps = (t < stepDurationsMs.length && msPerStep > 0)
-              ? stepDurationsMs[t] / msPerStep
-              : 1.0;
+          final durSteps =
+              (t < stepDurationsMs.length && msPerStep > 0)
+                  ? stepDurationsMs[t] / msPerStep
+                  : 1.0;
           steps += durSteps;
         }
         final x = labelWidth + steps * cellWidth;
@@ -250,7 +253,9 @@ class ChartGridManager {
     int visibleRow = 0;
     for (int j = 0; j < signalCount; j++) {
       final currentSignalType =
-          (j >= 0 && j < signalTypes.length) ? signalTypes[j] : SignalType.input;
+          (j >= 0 && j < signalTypes.length)
+              ? signalTypes[j]
+              : SignalType.input;
       if (!showAllSignalTypes &&
           (currentSignalType == SignalType.control ||
               currentSignalType == SignalType.group ||
@@ -265,15 +270,12 @@ class ChartGridManager {
       color: labelColor.withOpacity(0.8),
       fontSize: 12,
     );
-    final tp = TextPainter(
-      textDirection: TextDirection.ltr,
-    );
+    final tp = TextPainter(textDirection: TextDirection.ltr);
 
     if (!timeUnitIsMs) {
       // 等間隔: およそ80pxごとにラベル
-      final int stepStride = (cellWidth <= 0)
-          ? 1
-          : (80 / cellWidth).ceil().clamp(1, 1000000);
+      final int stepStride =
+          (cellWidth <= 0) ? 1 : (80 / cellWidth).ceil().clamp(1, 1000000);
       for (int i = 0; i <= maxTimeSteps; i += stepStride) {
         final double x = labelWidth + i * cellWidth;
         final String label = i.toString();
@@ -292,9 +294,10 @@ class ChartGridManager {
       double lastLabelX = -1e9;
       for (int i = 0; i <= maxTimeSteps; i++) {
         if (i > 0) {
-          final dur = (i - 1) < stepDurationsMs.length
-              ? stepDurationsMs[i - 1]
-              : msPerStep;
+          final dur =
+              (i - 1) < stepDurationsMs.length
+                  ? stepDurationsMs[i - 1]
+                  : msPerStep;
           cursorX += (dur / msPerStep) * cellWidth;
           cursorMs += dur;
         }
@@ -314,15 +317,10 @@ class ChartGridManager {
   }
 
   String _formatMs(double ms) {
-    // 0.1ms 単位で丸め
+    // 小数点以下を表示しない（四捨五入）
     final num v = (ms.isFinite) ? (ms) : 0.0;
-    if (v >= 1000) {
-      // 1s以上は秒表記も検討できるが、ここでは ms のまま
-      return v.toStringAsFixed(0) + ' ms';
-    }
-    if (v >= 100) return v.toStringAsFixed(0) + ' ms';
-    if (v >= 10) return v.toStringAsFixed(1) + ' ms';
-    return v.toStringAsFixed(2) + ' ms';
+    final int rounded = v.round();
+    return '$rounded ms';
   }
 }
 
@@ -487,7 +485,7 @@ class ChartGridPainter extends CustomPainter {
 
         // 時間ラベル
         textPainter.text = TextSpan(
-          text: time.toStringAsFixed(1),
+          text: time.round().toString(),
           style: textPaint,
         );
         textPainter.layout();

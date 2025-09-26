@@ -776,7 +776,11 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
           outputSignalMap[i] = SignalData(
             name: name,
             signalType: SignalType.output,
-            values: prevValueMap[name] ?? List.filled(defaultWaveLength, 0),
+            // 名前変更後でも同じポート番号(i+1)の旧汎用名(OutputN)から値を引き継ぐ
+            values:
+                prevValueMap[name] ??
+                prevValueMap['Output${i + 1}'] ??
+                List.filled(defaultWaveLength, 0),
             isVisible:
                 i < _outputVisibility.length ? _outputVisibility[i] : true,
           );
@@ -1997,6 +2001,34 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
               ).hasMatch(name);
               if (!isCameraSignal && isInReserved) {
                 targetIndex = -1; // 予約ブロックは使わせない
+              }
+            }
+          }
+
+          // 1.5) CSV 由来の汎用名 "OutputN" は N 番ポートに配置する
+          if (targetIndex == -1) {
+            final m = RegExp(r'^Output(\d+)$').firstMatch(name);
+            if (m != null) {
+              final portNum = int.tryParse(m.group(1)!);
+              if (portNum != null &&
+                  portNum >= 1 &&
+                  portNum <= fs.outputCount) {
+                int candidate = portNum - 1; // 0-based index for OutputN
+                if (fs.outputCount == 32) {
+                  final int reservedStart = 3; // Output4 から
+                  final int reservedEnd = 3 + fs.camera * 2 - 1; // 予約末尾
+                  final bool isInReserved =
+                      candidate >= reservedStart && candidate <= reservedEnd;
+                  final bool isCameraSignal = RegExp(
+                    r'^CAMERA_(\d+)_IMAGE_(EXPOSURE|ACQUISITION)',
+                  ).hasMatch(name);
+                  if (!isCameraSignal && isInReserved) {
+                    candidate = -1; // 予約ブロックは使わせない
+                  }
+                }
+                if (candidate != -1) {
+                  targetIndex = candidate;
+                }
               }
             }
           }

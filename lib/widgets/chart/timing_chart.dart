@@ -141,6 +141,8 @@ class TimingChartState extends State<TimingChart>
 
   final double chartMarginLeft = 16.0;
   final double chartMarginTop = 16.0;
+  // ヘッダー(トグル)の固定高さ。ヒットテスト補正に使用
+  final double _fixedHeaderHeight = 48.0;
 
   int? _startSignalIndex;
   int? _endSignalIndex;
@@ -386,14 +388,12 @@ class TimingChartState extends State<TimingChart>
   }
 
   void _handleTap(TapUpDetails details) {
-    final box = context.findRenderObject() as RenderBox?;
-    if (box == null) return;
-    final localPos = box.globalToLocal(details.globalPosition);
+    final chartLocalPos = details.localPosition;
     final adjustedPos = Offset(
-      localPos.dx -
+      chartLocalPos.dx -
           chartMarginLeft +
           (_hScrollController.hasClients ? _hScrollController.offset : 0),
-      localPos.dy -
+      chartLocalPos.dy -
           chartMarginTop +
           (_vScrollController.hasClients ? _vScrollController.offset : 0),
     );
@@ -424,11 +424,11 @@ class TimingChartState extends State<TimingChart>
 
     // ラベル領域をクリックしているか判定
     final bool inLabelArea =
-        localPos.dx >= chartMarginLeft &&
-        localPos.dx <= chartMarginLeft + labelWidth;
+        chartLocalPos.dx >= chartMarginLeft &&
+        chartLocalPos.dx <= chartMarginLeft + labelWidth;
 
     if (inLabelArea) {
-      final row = _getSignalIndexFromDy(localPos.dy);
+      final row = _getSignalIndexFromDy(chartLocalPos.dy);
       if (row >= 0 && row < _visibleIndexes.length) {
         final originalRow = _visibleIndexes[row];
         final int maxTime =
@@ -455,8 +455,8 @@ class TimingChartState extends State<TimingChart>
       return; // ラベルクリックでのビット反転は行わない
     }
 
-    final clickSig = _getSignalIndexFromDy(localPos.dy);
-    final clickTim = _getTimeIndexFromDx(localPos.dx);
+    final clickSig = _getSignalIndexFromDy(chartLocalPos.dy);
+    final clickTim = _getTimeIndexFromDx(chartLocalPos.dx);
 
     if (clickTim < 0 || clickSig < 0 || clickSig >= _visibleIndexes.length) {
       _clearSelection();
@@ -502,7 +502,7 @@ class TimingChartState extends State<TimingChart>
         (edSigAbs - stSigAbs + 1) * _cellHeight,
       );
 
-      if (selectionRectGlobal.contains(localPos)) {
+      if (selectionRectGlobal.contains(chartLocalPos)) {
         _toggleSignalsInSelection();
       } else {
         _clearSelection();
@@ -534,13 +534,14 @@ class TimingChartState extends State<TimingChart>
     final box = context.findRenderObject() as RenderBox?;
     if (box == null) return;
     final localPos = box.globalToLocal(details.globalPosition);
+    final chartLocalPos = Offset(localPos.dx, localPos.dy - _fixedHeaderHeight);
 
     // 先にコメントボックスのヒットを判定（チャート領域外でもドラッグ可能にする）
     final adjustedPosForAnn = Offset(
-      localPos.dx -
+      chartLocalPos.dx -
           chartMarginLeft +
           (_hScrollController.hasClients ? _hScrollController.offset : 0),
-      localPos.dy -
+      chartLocalPos.dy -
           chartMarginTop +
           (_vScrollController.hasClients ? _vScrollController.offset : 0),
     );
@@ -560,18 +561,18 @@ class TimingChartState extends State<TimingChart>
 
     // --- ラベル領域でのドラッグ開始判定 ---
     final bool inLabelArea =
-        (localPos.dx +
+        (chartLocalPos.dx +
                 (_hScrollController.hasClients
                     ? _hScrollController.offset
                     : 0)) >=
             chartMarginLeft &&
-        (localPos.dx +
+        (chartLocalPos.dx +
                 (_hScrollController.hasClients
                     ? _hScrollController.offset
                     : 0)) <=
             chartMarginLeft + labelWidth;
 
-    final sigIndex = _getSignalIndexFromDy(localPos.dy);
+    final sigIndex = _getSignalIndexFromDy(chartLocalPos.dy);
     if (inLabelArea && sigIndex >= 0 && sigIndex < _visibleIndexes.length) {
       // ラベルドラッグ開始
       setState(() {
@@ -582,13 +583,14 @@ class TimingChartState extends State<TimingChart>
       return; // selection 処理には入らない
     }
 
-    if (localPos.dy > chartMarginTop + _visibleIndexes.length * _cellHeight) {
+    if (chartLocalPos.dy >
+        chartMarginTop + _visibleIndexes.length * _cellHeight) {
       _dragStartGlobal = null;
       return;
     }
 
-    final sig = _getSignalIndexFromDy(localPos.dy);
-    final tim = _getTimeIndexFromDx(localPos.dx);
+    final sig = _getSignalIndexFromDy(chartLocalPos.dy);
+    final tim = _getTimeIndexFromDx(chartLocalPos.dx);
 
     if (tim < 0 || sig < 0 || sig >= _visibleIndexes.length) {
       _clearSelection();
@@ -611,18 +613,22 @@ class TimingChartState extends State<TimingChart>
     if (_draggingAnnotationId != null &&
         _draggingStartLocal != null &&
         _draggingInitialBoxTopLeft != null) {
-      final box = context.findRenderObject() as RenderBox?;
-      if (box == null) return;
-      final localPos = box.globalToLocal(details.globalPosition);
+      final chartLocalPos = details.localPosition;
       final adjustedPos = Offset(
-        localPos.dx -
+        chartLocalPos.dx -
             chartMarginLeft +
             (_hScrollController.hasClients ? _hScrollController.offset : 0),
-        localPos.dy -
+        chartLocalPos.dy -
             chartMarginTop +
             (_vScrollController.hasClients ? _vScrollController.offset : 0),
       );
       final delta = adjustedPos - _draggingStartLocal!;
+      // 上方向にはみ出さないようにYをクランプ
+      Offset deltaClamped = delta;
+      final proposedTopLeft = _draggingInitialBoxTopLeft! + delta;
+      if (proposedTopLeft.dy < 0) {
+        deltaClamped = Offset(delta.dx, -_draggingInitialBoxTopLeft!.dy);
+      }
 
       final annIndex = annotations.indexWhere(
         (a) => a.id == _draggingAnnotationId,
@@ -630,8 +636,8 @@ class TimingChartState extends State<TimingChart>
       if (annIndex != -1) {
         final current = annotations[annIndex];
         // offsetX/offsetY はコメントの基準位置からの差分として扱う
-        final newOffsetX = (current.offsetX ?? 0) + delta.dx;
-        final newOffsetY = (current.offsetY ?? 0) + delta.dy;
+        final newOffsetX = (current.offsetX ?? 0) + deltaClamped.dx;
+        final newOffsetY = (current.offsetY ?? 0) + deltaClamped.dy;
         setState(() {
           annotations[annIndex] = current.copyWith(
             offsetX: newOffsetX,
@@ -640,18 +646,16 @@ class TimingChartState extends State<TimingChart>
           _highlightTimeIndices = [..._highlightTimeIndices];
           _forceRepaint();
         });
-        // 次回は差分をリセットするため、基準を更新
-        _draggingStartLocal = adjustedPos;
-        _draggingInitialBoxTopLeft = _draggingInitialBoxTopLeft! + delta;
+        // 次回は差分をリセットするため、基準を更新（クランプ後の実移動量で更新）
+        _draggingStartLocal = _draggingStartLocal! + deltaClamped;
+        _draggingInitialBoxTopLeft = _draggingInitialBoxTopLeft! + deltaClamped;
       }
       return;
     }
     // ラベルドラッグ中は位置を追跡
     if (_isLabelDrag) {
-      final box = context.findRenderObject() as RenderBox?;
-      if (box == null) return;
-      final localPos = box.globalToLocal(details.globalPosition);
-      int sig = _getSignalIndexFromDy(localPos.dy);
+      final chartLocalPos = details.localPosition;
+      int sig = _getSignalIndexFromDy(chartLocalPos.dy);
       sig = sig.clamp(0, _visibleIndexes.length - 1);
       if (sig != _labelDragCurrentRow) {
         setState(() {
@@ -663,12 +667,10 @@ class TimingChartState extends State<TimingChart>
 
     if (_dragStartGlobal == null) return;
 
-    final box = context.findRenderObject() as RenderBox?;
-    if (box == null) return;
-    final localPos = box.globalToLocal(details.globalPosition);
+    final chartLocalPos = details.localPosition;
 
-    final sig = _getSignalIndexFromDy(localPos.dy);
-    final tim = _getTimeIndexFromDx(localPos.dx);
+    final sig = _getSignalIndexFromDy(chartLocalPos.dy);
+    final tim = _getTimeIndexFromDx(chartLocalPos.dx);
 
     final clampedSig = sig.clamp(0, _visibleIndexes.length - 1);
     final maxTimeIndex =
@@ -731,10 +733,8 @@ class TimingChartState extends State<TimingChart>
   // ===== メモリ編集（非等間隔）用ハンドラ =====
   void _onPanStartEditSteps(DragStartDetails details) {
     if (!_isEditingSteps) return;
-    final box = context.findRenderObject() as RenderBox?;
-    if (box == null) return;
-    final localPos = box.globalToLocal(details.globalPosition);
-    final double dx = localPos.dx;
+    final chartLocalPos = details.localPosition;
+    final double dx = chartLocalPos.dx;
     // チャート内部X（canvas.translate(chartMarginLeft, ...) を打ち消す）
     final double chartX =
         dx -
@@ -782,10 +782,8 @@ class TimingChartState extends State<TimingChart>
         signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
     if (idx < 0 || idx >= maxLen) return;
 
-    final box = context.findRenderObject() as RenderBox?;
-    if (box == null) return;
-    final localPos = box.globalToLocal(details.globalPosition);
-    final double dx = localPos.dx;
+    final chartLocalPos = details.localPosition;
+    final double dx = chartLocalPos.dx;
     final double chartX =
         dx -
         chartMarginLeft +
@@ -838,10 +836,8 @@ class TimingChartState extends State<TimingChart>
   // クリック（タップ）で境界を選択し、その後のドラッグで反映させる
   void _onTapUpEditSteps(TapUpDetails details) {
     if (!_isEditingSteps) return;
-    final box = context.findRenderObject() as RenderBox?;
-    if (box == null) return;
-    final localPos = box.globalToLocal(details.globalPosition);
-    final double dx = localPos.dx;
+    final chartLocalPos = details.localPosition;
+    final double dx = chartLocalPos.dx;
     final double chartX =
         dx -
         chartMarginLeft +
@@ -944,14 +940,12 @@ class TimingChartState extends State<TimingChart>
 
   // ロングプレスでのドラッグ（タッチデバイス向け）
   void _onLongPressStart(LongPressStartDetails details) {
-    final box = context.findRenderObject() as RenderBox?;
-    if (box == null) return;
-    final localPos = box.globalToLocal(details.globalPosition);
+    final chartLocalPos = details.localPosition;
     final adjustedPos = Offset(
-      localPos.dx -
+      chartLocalPos.dx -
           chartMarginLeft +
           (_hScrollController.hasClients ? _hScrollController.offset : 0),
-      localPos.dy -
+      chartLocalPos.dy -
           chartMarginTop +
           (_vScrollController.hasClients ? _vScrollController.offset : 0),
     );
@@ -971,25 +965,29 @@ class TimingChartState extends State<TimingChart>
 
   void _onLongPressMoveUpdate(LongPressMoveUpdateDetails details) {
     if (_draggingAnnotationId == null || _draggingStartLocal == null) return;
-    final box = context.findRenderObject() as RenderBox?;
-    if (box == null) return;
-    final localPos = box.globalToLocal(details.globalPosition);
+    final chartLocalPos = details.localPosition;
     final adjustedPos = Offset(
-      localPos.dx -
+      chartLocalPos.dx -
           chartMarginLeft +
           (_hScrollController.hasClients ? _hScrollController.offset : 0),
-      localPos.dy -
+      chartLocalPos.dy -
           chartMarginTop +
           (_vScrollController.hasClients ? _vScrollController.offset : 0),
     );
     final delta = adjustedPos - _draggingStartLocal!;
+    // 上方向にはみ出さないようにYをクランプ
+    Offset deltaClamped = delta;
+    final proposedTopLeft = _draggingInitialBoxTopLeft ?? Offset.zero + delta;
+    if (_draggingInitialBoxTopLeft != null && proposedTopLeft.dy < 0) {
+      deltaClamped = Offset(delta.dx, -_draggingInitialBoxTopLeft!.dy);
+    }
     final annIndex = annotations.indexWhere(
       (a) => a.id == _draggingAnnotationId,
     );
     if (annIndex != -1) {
       final current = annotations[annIndex];
-      final newOffsetX = (current.offsetX ?? 0) + delta.dx;
-      final newOffsetY = (current.offsetY ?? 0) + delta.dy;
+      final newOffsetX = (current.offsetX ?? 0) + deltaClamped.dx;
+      final newOffsetY = (current.offsetY ?? 0) + deltaClamped.dy;
       setState(() {
         annotations[annIndex] = current.copyWith(
           offsetX: newOffsetX,
@@ -998,7 +996,9 @@ class TimingChartState extends State<TimingChart>
         _highlightTimeIndices = [..._highlightTimeIndices];
         _forceRepaint();
       });
-      _draggingStartLocal = adjustedPos;
+      _draggingStartLocal = _draggingStartLocal! + deltaClamped;
+      _draggingInitialBoxTopLeft =
+          (_draggingInitialBoxTopLeft ?? Offset.zero) + deltaClamped;
     }
   }
 
@@ -1019,23 +1019,21 @@ class TimingChartState extends State<TimingChart>
 
     _lastRightClickPos = position;
 
-    final box = context.findRenderObject() as RenderBox?;
-    if (box == null) return;
-    final localPos = box.globalToLocal(position);
+    final chartLocalPos = position;
     final adjustedPos = Offset(
-      localPos.dx -
+      chartLocalPos.dx -
           chartMarginLeft +
           (_hScrollController.hasClients ? _hScrollController.offset : 0),
-      localPos.dy -
+      chartLocalPos.dy -
           chartMarginTop +
           (_vScrollController.hasClients ? _vScrollController.offset : 0),
     );
 
     // クリックされたタイムインデックスを先に計算しておく
-    final int clickedTime = _getTimeIndexFromDx(localPos.dx);
+    final int clickedTime = _getTimeIndexFromDx(chartLocalPos.dx);
 
     // 行インデックス（可視行）とラベル領域判定を事前に計算
-    final int clickedSig = _getSignalIndexFromDy(localPos.dy);
+    final int clickedSig = _getSignalIndexFromDy(chartLocalPos.dy);
 
     String? hitAnnId;
     for (final entry in _annotationHitRects.entries) {
@@ -1083,7 +1081,7 @@ class TimingChartState extends State<TimingChart>
                   ? 0
                   : signals.map((e) => e.length).fold(0, math.max);
           final double chartX =
-              localPos.dx -
+              chartLocalPos.dx -
               chartMarginLeft +
               (_hScrollController.hasClients ? _hScrollController.offset : 0);
           final double relX = (chartX - labelWidth).clamp(0, double.infinity);
@@ -1126,7 +1124,7 @@ class TimingChartState extends State<TimingChart>
             clickedTime = idx;
           }
         } else {
-          clickedTime = _getTimeIndexFromDx(localPos.dx);
+          clickedTime = _getTimeIndexFromDx(chartLocalPos.dx);
         }
 
         if (_hasValidSelection) {
@@ -1686,122 +1684,142 @@ class TimingChartState extends State<TimingChart>
               });
             }
 
-            return GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onPanStart: _onPanStartEditSteps,
-              onPanUpdate: _onPanUpdateEditSteps,
-              onPanEnd: _onPanEndEditSteps,
-              onTapUp: _onTapUpEditSteps,
-              child: Stack(
-                children: [
-                  SingleChildScrollView(
-                    controller: _hScrollController,
-                    scrollDirection: Axis.horizontal,
-                    physics: const NeverScrollableScrollPhysics(),
+            // 上部にトグル、下部にチャート本体を配置して重なりを回避
+            const double _topControlsHeight = 48.0;
+            // fitToScreen 時の高さ計算に上部コントロール分を控除
+            if (widget.fitToScreen) {
+              final availableHeight =
+                  (constraints.maxHeight.isFinite
+                      ? constraints.maxHeight
+                      : MediaQuery.of(context).size.height) -
+                  _topControlsHeight -
+                  chartMarginTop -
+                  commentAreaHeight;
+              final visibleRowCount = visibleIndexes.length;
+              if (visibleRowCount > 0) {
+                _cellHeight = math.max(availableHeight / visibleRowCount, 5.0);
+              }
+            }
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Align(
+                  alignment: Alignment.topRight,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 8, top: 8),
+                    child: _buildUnitToggle(context),
+                  ),
+                ),
+                Expanded(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onPanStart: _onPanStartEditSteps,
+                    onPanUpdate: _onPanUpdateEditSteps,
+                    onPanEnd: _onPanEndEditSteps,
+                    onTapUp: _onTapUpEditSteps,
                     child: SingleChildScrollView(
-                      controller: _vScrollController,
-                      scrollDirection: Axis.vertical,
+                      controller: _hScrollController,
+                      scrollDirection: Axis.horizontal,
                       physics: const NeverScrollableScrollPhysics(),
-                      child: RepaintBoundary(
-                        key: _repaintBoundaryKey,
-                        child: CustomPaint(
-                          key: _customPaintKey,
-                          isComplex: true,
-                          willChange: true,
-                          size: Size(totalWidth, totalHeight),
-                          painter: _StepTimingChartPainter(
-                            signals: visibleSignals,
-                            signalNames: visibleSignalNames,
-                            signalTypes: visibleSignalTypes,
-                            annotations: annotations,
-                            cellWidth: _cellWidth,
-                            cellHeight: _cellHeight,
-                            labelWidth: labelWidth,
-                            commentAreaHeight: commentAreaHeight,
-                            chartMarginLeft: chartMarginLeft,
-                            chartMarginTop: chartMarginTop,
-                            startSignalIndex: null,
-                            endSignalIndex: null,
-                            startTimeIndex: null,
-                            endTimeIndex: null,
-                            highlightTimeIndices: const [],
-                            omissionTimeIndices: _omissionTimeIndices,
-                            selectedAnnotationId: null,
-                            annotationRects: _annotationHitRects,
-                            showAllSignalTypes: widget.showAllSignalTypes,
-                            showIoNumbers: widget.showIoNumbers,
-                            portNumbers: visiblePortNumbers,
-                            timeUnitIsMs: settings.timeUnitIsMs,
-                            msPerStep: settings.msPerStep,
-                            stepDurationsMs: settingsRW.stepDurationsMs,
-                            activeStepIndex:
-                                (settings.timeUnitIsMs && _isEditingSteps)
-                                    ? _activeStepIndex
-                                    : null,
-                            showBottomUnitLabels:
-                                Provider.of<SettingsNotifier>(
-                                  context,
-                                ).showBottomUnitLabels,
-                            labelColor:
-                                Theme.of(context).brightness == Brightness.dark
-                                    ? Colors.white
-                                    : Colors.black,
-                            dashedColor:
-                                Theme.of(context).brightness ==
-                                            Brightness.dark &&
-                                        Provider.of<SettingsNotifier>(
-                                              context,
-                                            ).commentDashedColor ==
-                                            Colors.black
-                                    ? Colors.white
-                                    : Provider.of<SettingsNotifier>(
-                                      context,
-                                    ).commentDashedColor,
-                            arrowColor:
-                                Theme.of(context).brightness ==
-                                            Brightness.dark &&
-                                        Provider.of<SettingsNotifier>(
-                                              context,
-                                            ).commentArrowColor ==
-                                            Colors.black
-                                    ? Colors.white
-                                    : Provider.of<SettingsNotifier>(
-                                      context,
-                                    ).commentArrowColor,
-                            omissionColor:
-                                Theme.of(context).brightness ==
-                                            Brightness.dark &&
-                                        Provider.of<SettingsNotifier>(
-                                              context,
-                                            ).omissionLineColor ==
-                                            Colors.black
-                                    ? Colors.white
-                                    : Provider.of<SettingsNotifier>(
-                                      context,
-                                    ).omissionLineColor,
-                            omissionFillColor:
-                                Theme.of(context).scaffoldBackgroundColor,
-                            signalColors:
-                                Provider.of<SettingsNotifier>(
-                                  context,
-                                ).signalColors,
-                            draggingStartRow: null,
-                            draggingCurrentRow: null,
+                      child: SingleChildScrollView(
+                        controller: _vScrollController,
+                        scrollDirection: Axis.vertical,
+                        physics: const NeverScrollableScrollPhysics(),
+                        child: RepaintBoundary(
+                          key: _repaintBoundaryKey,
+                          child: CustomPaint(
+                            key: _customPaintKey,
+                            isComplex: true,
+                            willChange: true,
+                            size: Size(totalWidth, totalHeight),
+                            painter: _StepTimingChartPainter(
+                              signals: visibleSignals,
+                              signalNames: visibleSignalNames,
+                              signalTypes: visibleSignalTypes,
+                              annotations: annotations,
+                              cellWidth: _cellWidth,
+                              cellHeight: _cellHeight,
+                              labelWidth: labelWidth,
+                              commentAreaHeight: commentAreaHeight,
+                              chartMarginLeft: chartMarginLeft,
+                              chartMarginTop: chartMarginTop,
+                              startSignalIndex: null,
+                              endSignalIndex: null,
+                              startTimeIndex: null,
+                              endTimeIndex: null,
+                              highlightTimeIndices: const [],
+                              omissionTimeIndices: _omissionTimeIndices,
+                              selectedAnnotationId: null,
+                              annotationRects: _annotationHitRects,
+                              showAllSignalTypes: widget.showAllSignalTypes,
+                              showIoNumbers: widget.showIoNumbers,
+                              portNumbers: visiblePortNumbers,
+                              timeUnitIsMs: settings.timeUnitIsMs,
+                              msPerStep: settings.msPerStep,
+                              stepDurationsMs: settingsRW.stepDurationsMs,
+                              activeStepIndex:
+                                  (settings.timeUnitIsMs && _isEditingSteps)
+                                      ? _activeStepIndex
+                                      : null,
+                              showBottomUnitLabels:
+                                  Provider.of<SettingsNotifier>(
+                                    context,
+                                  ).showBottomUnitLabels,
+                              labelColor:
+                                  Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? Colors.white
+                                      : Colors.black,
+                              dashedColor:
+                                  Theme.of(context).brightness ==
+                                              Brightness.dark &&
+                                          Provider.of<SettingsNotifier>(
+                                                context,
+                                              ).commentDashedColor ==
+                                              Colors.black
+                                      ? Colors.white
+                                      : Provider.of<SettingsNotifier>(
+                                        context,
+                                      ).commentDashedColor,
+                              arrowColor:
+                                  Theme.of(context).brightness ==
+                                              Brightness.dark &&
+                                          Provider.of<SettingsNotifier>(
+                                                context,
+                                              ).commentArrowColor ==
+                                              Colors.black
+                                      ? Colors.white
+                                      : Provider.of<SettingsNotifier>(
+                                        context,
+                                      ).commentArrowColor,
+                              omissionColor:
+                                  Theme.of(context).brightness ==
+                                              Brightness.dark &&
+                                          Provider.of<SettingsNotifier>(
+                                                context,
+                                              ).omissionLineColor ==
+                                              Colors.black
+                                      ? Colors.white
+                                      : Provider.of<SettingsNotifier>(
+                                        context,
+                                      ).omissionLineColor,
+                              omissionFillColor:
+                                  Theme.of(context).scaffoldBackgroundColor,
+                              signalColors:
+                                  Provider.of<SettingsNotifier>(
+                                    context,
+                                  ).signalColors,
+                              draggingStartRow: null,
+                              draggingCurrentRow: null,
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                  Positioned(
-                    top:
-                        chartMarginTop - 32 < 8
-                            ? (chartMarginTop + 8)
-                            : (chartMarginTop - 32),
-                    right: 8,
-                    child: _buildUnitToggle(context),
-                  ),
-                ],
-              ),
+                ),
+              ],
             );
           },
         )
@@ -1923,170 +1941,199 @@ class TimingChartState extends State<TimingChart>
                 });
               }
 
-              return GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onPanDown: (details) {
-                  if (_isEditingSteps) return; // 編集中は他機能を無効化
-                  final box = context.findRenderObject() as RenderBox?;
-                  if (box == null) return;
-                  final localPos = box.globalToLocal(details.globalPosition);
-                  final adjustedPos = Offset(
-                    localPos.dx -
-                        chartMarginLeft +
-                        (_hScrollController.hasClients
-                            ? _hScrollController.offset
-                            : 0),
-                    localPos.dy -
-                        chartMarginTop +
-                        (_vScrollController.hasClients
-                            ? _vScrollController.offset
-                            : 0),
+              // 上部にトグル、下部にチャート本体を配置して重なりを回避
+              const double _topControlsHeight = 48.0;
+              if (widget.fitToScreen) {
+                final availableHeight =
+                    (constraints.maxHeight.isFinite
+                        ? constraints.maxHeight
+                        : MediaQuery.of(context).size.height) -
+                    _topControlsHeight -
+                    chartMarginTop -
+                    commentAreaHeight;
+                final visibleRowCount = visibleIndexes.length;
+                if (visibleRowCount > 0) {
+                  _cellHeight = math.max(
+                    availableHeight / visibleRowCount,
+                    5.0,
                   );
-                  for (final entry in _annotationHitRects.entries) {
-                    final rect = entry.value;
-                    if (rect.contains(adjustedPos)) {
-                      setState(() {
-                        _draggingAnnotationId = entry.key;
-                        _draggingStartLocal = adjustedPos;
-                        _draggingInitialBoxTopLeft = rect.topLeft;
-                        _selectedAnnotationId = entry.key;
-                      });
-                      break;
-                    }
-                  }
-                },
-                onPanStart:
-                    _isEditingSteps ? _onPanStartEditSteps : _onPanStart,
-                onPanUpdate:
-                    _isEditingSteps ? _onPanUpdateEditSteps : _onPanUpdate,
-                onPanEnd: _isEditingSteps ? _onPanEndEditSteps : _onPanEnd,
-                onLongPressStart: _isEditingSteps ? null : _onLongPressStart,
-                onLongPressMoveUpdate:
-                    _isEditingSteps ? null : _onLongPressMoveUpdate,
-                onLongPressEnd: _isEditingSteps ? null : _onLongPressEnd,
-                onTapUp: _isEditingSteps ? null : _handleTap,
-                onSecondaryTapDown:
-                    _isEditingSteps
-                        ? null
-                        : (details) =>
-                            _showContextMenu(context, details.globalPosition),
-                child: Stack(
-                  children: [
-                    SingleChildScrollView(
-                      controller: _hScrollController,
-                      scrollDirection: Axis.horizontal,
-                      physics:
-                          _draggingAnnotationId != null
-                              ? const NeverScrollableScrollPhysics()
-                              : null,
+                }
+              }
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Align(
+                    alignment: Alignment.topRight,
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 8, top: 8),
+                      child: _buildUnitToggle(context),
+                    ),
+                  ),
+                  Expanded(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onPanDown: (details) {
+                        if (_isEditingSteps) return; // 編集中は他機能を無効化
+                        final box = context.findRenderObject() as RenderBox?;
+                        if (box == null) return;
+                        final localPos = box.globalToLocal(
+                          details.globalPosition,
+                        );
+                        final adjustedPos = Offset(
+                          localPos.dx -
+                              chartMarginLeft +
+                              (_hScrollController.hasClients
+                                  ? _hScrollController.offset
+                                  : 0),
+                          localPos.dy -
+                              chartMarginTop +
+                              (_vScrollController.hasClients
+                                  ? _vScrollController.offset
+                                  : 0),
+                        );
+                        for (final entry in _annotationHitRects.entries) {
+                          final rect = entry.value;
+                          if (rect.contains(adjustedPos)) {
+                            setState(() {
+                              _draggingAnnotationId = entry.key;
+                              _draggingStartLocal = adjustedPos;
+                              _draggingInitialBoxTopLeft = rect.topLeft;
+                              _selectedAnnotationId = entry.key;
+                            });
+                            break;
+                          }
+                        }
+                      },
+                      onPanStart:
+                          _isEditingSteps ? _onPanStartEditSteps : _onPanStart,
+                      onPanUpdate:
+                          _isEditingSteps
+                              ? _onPanUpdateEditSteps
+                              : _onPanUpdate,
+                      onPanEnd:
+                          _isEditingSteps ? _onPanEndEditSteps : _onPanEnd,
+                      onLongPressStart:
+                          _isEditingSteps ? null : _onLongPressStart,
+                      onLongPressMoveUpdate:
+                          _isEditingSteps ? null : _onLongPressMoveUpdate,
+                      onLongPressEnd: _isEditingSteps ? null : _onLongPressEnd,
+                      onTapUp: _isEditingSteps ? null : _handleTap,
+                      onSecondaryTapDown:
+                          _isEditingSteps
+                              ? null
+                              : (details) => _showContextMenu(
+                                context,
+                                details.globalPosition,
+                              ),
                       child: SingleChildScrollView(
-                        controller: _vScrollController,
-                        scrollDirection: Axis.vertical,
+                        controller: _hScrollController,
+                        scrollDirection: Axis.horizontal,
                         physics:
                             _draggingAnnotationId != null
                                 ? const NeverScrollableScrollPhysics()
                                 : null,
-                        child: RepaintBoundary(
-                          key: _repaintBoundaryKey,
-                          child: CustomPaint(
-                            key: _customPaintKey,
-                            isComplex: true,
-                            willChange: true,
-                            size: Size(totalWidth, totalHeight),
-                            painter: _StepTimingChartPainter(
-                              signals: visibleSignals,
-                              signalNames: visibleSignalNames,
-                              signalTypes: visibleSignalTypes,
-                              annotations: annotations,
-                              cellWidth: _cellWidth,
-                              cellHeight: _cellHeight,
-                              labelWidth: labelWidth,
-                              commentAreaHeight: commentAreaHeight,
-                              chartMarginLeft: chartMarginLeft,
-                              chartMarginTop: chartMarginTop,
-                              startSignalIndex: _startSignalIndex,
-                              endSignalIndex: _endSignalIndex,
-                              startTimeIndex: _startTimeIndex,
-                              endTimeIndex: _endTimeIndex,
-                              highlightTimeIndices: _highlightTimeIndices,
-                              omissionTimeIndices: _omissionTimeIndices,
-                              selectedAnnotationId: _selectedAnnotationId,
-                              annotationRects: _annotationHitRects,
-                              showAllSignalTypes: widget.showAllSignalTypes,
-                              showIoNumbers: widget.showIoNumbers,
-                              portNumbers: visiblePortNumbers,
-                              timeUnitIsMs: settings.timeUnitIsMs,
-                              msPerStep: settings.msPerStep,
-                              stepDurationsMs: settingsRW.stepDurationsMs,
-                              activeStepIndex:
-                                  (settings.timeUnitIsMs && _isEditingSteps)
-                                      ? _activeStepIndex
-                                      : null,
-                              showBottomUnitLabels:
-                                  Provider.of<SettingsNotifier>(
-                                    context,
-                                  ).showBottomUnitLabels,
-                              labelColor:
-                                  Theme.of(context).brightness ==
-                                          Brightness.dark
-                                      ? Colors.white
-                                      : Colors.black,
-                              dashedColor:
-                                  Theme.of(context).brightness ==
-                                              Brightness.dark &&
-                                          Provider.of<SettingsNotifier>(
-                                                context,
-                                              ).commentDashedColor ==
-                                              Colors.black
-                                      ? Colors.white
-                                      : Provider.of<SettingsNotifier>(
-                                        context,
-                                      ).commentDashedColor,
-                              arrowColor:
-                                  Theme.of(context).brightness ==
-                                              Brightness.dark &&
-                                          Provider.of<SettingsNotifier>(
-                                                context,
-                                              ).commentArrowColor ==
-                                              Colors.black
-                                      ? Colors.white
-                                      : Provider.of<SettingsNotifier>(
-                                        context,
-                                      ).commentArrowColor,
-                              omissionColor:
-                                  Theme.of(context).brightness ==
-                                              Brightness.dark &&
-                                          Provider.of<SettingsNotifier>(
-                                                context,
-                                              ).omissionLineColor ==
-                                              Colors.black
-                                      ? Colors.white
-                                      : Provider.of<SettingsNotifier>(
-                                        context,
-                                      ).omissionLineColor,
-                              omissionFillColor:
-                                  Theme.of(context).scaffoldBackgroundColor,
-                              signalColors:
-                                  Provider.of<SettingsNotifier>(
-                                    context,
-                                  ).signalColors,
-                              draggingStartRow: _labelDragStartRow,
-                              draggingCurrentRow: _labelDragCurrentRow,
+                        child: SingleChildScrollView(
+                          controller: _vScrollController,
+                          scrollDirection: Axis.vertical,
+                          physics:
+                              _draggingAnnotationId != null
+                                  ? const NeverScrollableScrollPhysics()
+                                  : null,
+                          child: RepaintBoundary(
+                            key: _repaintBoundaryKey,
+                            child: CustomPaint(
+                              key: _customPaintKey,
+                              isComplex: true,
+                              willChange: true,
+                              size: Size(totalWidth, totalHeight),
+                              painter: _StepTimingChartPainter(
+                                signals: visibleSignals,
+                                signalNames: visibleSignalNames,
+                                signalTypes: visibleSignalTypes,
+                                annotations: annotations,
+                                cellWidth: _cellWidth,
+                                cellHeight: _cellHeight,
+                                labelWidth: labelWidth,
+                                commentAreaHeight: commentAreaHeight,
+                                chartMarginLeft: chartMarginLeft,
+                                chartMarginTop: chartMarginTop,
+                                startSignalIndex: _startSignalIndex,
+                                endSignalIndex: _endSignalIndex,
+                                startTimeIndex: _startTimeIndex,
+                                endTimeIndex: _endTimeIndex,
+                                highlightTimeIndices: _highlightTimeIndices,
+                                omissionTimeIndices: _omissionTimeIndices,
+                                selectedAnnotationId: _selectedAnnotationId,
+                                annotationRects: _annotationHitRects,
+                                showAllSignalTypes: widget.showAllSignalTypes,
+                                showIoNumbers: widget.showIoNumbers,
+                                portNumbers: visiblePortNumbers,
+                                timeUnitIsMs: settings.timeUnitIsMs,
+                                msPerStep: settings.msPerStep,
+                                stepDurationsMs: settingsRW.stepDurationsMs,
+                                activeStepIndex:
+                                    (settings.timeUnitIsMs && _isEditingSteps)
+                                        ? _activeStepIndex
+                                        : null,
+                                showBottomUnitLabels:
+                                    Provider.of<SettingsNotifier>(
+                                      context,
+                                    ).showBottomUnitLabels,
+                                labelColor:
+                                    Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? Colors.white
+                                        : Colors.black,
+                                dashedColor:
+                                    Theme.of(context).brightness ==
+                                                Brightness.dark &&
+                                            Provider.of<SettingsNotifier>(
+                                                  context,
+                                                ).commentDashedColor ==
+                                                Colors.black
+                                        ? Colors.white
+                                        : Provider.of<SettingsNotifier>(
+                                          context,
+                                        ).commentDashedColor,
+                                arrowColor:
+                                    Theme.of(context).brightness ==
+                                                Brightness.dark &&
+                                            Provider.of<SettingsNotifier>(
+                                                  context,
+                                                ).commentArrowColor ==
+                                                Colors.black
+                                        ? Colors.white
+                                        : Provider.of<SettingsNotifier>(
+                                          context,
+                                        ).commentArrowColor,
+                                omissionColor:
+                                    Theme.of(context).brightness ==
+                                                Brightness.dark &&
+                                            Provider.of<SettingsNotifier>(
+                                                  context,
+                                                ).omissionLineColor ==
+                                                Colors.black
+                                        ? Colors.white
+                                        : Provider.of<SettingsNotifier>(
+                                          context,
+                                        ).omissionLineColor,
+                                omissionFillColor:
+                                    Theme.of(context).scaffoldBackgroundColor,
+                                signalColors:
+                                    Provider.of<SettingsNotifier>(
+                                      context,
+                                    ).signalColors,
+                                draggingStartRow: _labelDragStartRow,
+                                draggingCurrentRow: _labelDragCurrentRow,
+                              ),
                             ),
                           ),
                         ),
                       ),
                     ),
-                    Positioned(
-                      top:
-                          chartMarginTop - 32 < 8
-                              ? (chartMarginTop + 8)
-                              : (chartMarginTop - 32),
-                      right: 8,
-                      child: _buildUnitToggle(context),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               );
             },
           ),
