@@ -22,6 +22,7 @@ import 'dart:math' as math;
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'dart:ui' as ui;
@@ -108,7 +109,16 @@ class TimingChartState extends State<TimingChart>
   // セル高さは `fitToScreen` が true の場合のみ動的に変化する。
   // デフォルト値は従来互換用に 40 としておく。
   double _cellHeight = 40;
+  double _zoomFactor = 1.0; // Horizontal scaling multiplier.
+  double _effectiveZoomFactor = 1.0;
+  double _minZoomFactorForView = 1.0;
+  static const double _minZoom = 0.1;
+  static const double _maxZoom = 3.0;
+  static const double _zoomStep = 0.25;
+  static const double _minZoomCellWidth = 2.0;
+  static const double _maxZoomCellWidth = 500.0;
 
+  bool _isModifierPressed = false;
   final double labelWidth = 200.0;
   // コメントエリアの高さ（動的計算時の下限値）
   static const double _minCommentAreaHeight = 100.0;
@@ -188,6 +198,10 @@ class TimingChartState extends State<TimingChart>
       _translateNames();
     };
     suggestionLanguageVersion.addListener(_langListener);
+
+    RawKeyboard.instance.addListener(_handleRawKeyEvent);
+    _isModifierPressed = HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed;
 
     signals =
         widget.initialSignals.map((list) => List<int>.from(list)).toList();
@@ -561,16 +575,8 @@ class TimingChartState extends State<TimingChart>
 
     // --- ラベル領域でのドラッグ開始判定 ---
     final bool inLabelArea =
-        (chartLocalPos.dx +
-                (_hScrollController.hasClients
-                    ? _hScrollController.offset
-                    : 0)) >=
-            chartMarginLeft &&
-        (chartLocalPos.dx +
-                (_hScrollController.hasClients
-                    ? _hScrollController.offset
-                    : 0)) <=
-            chartMarginLeft + labelWidth;
+        chartLocalPos.dx >= chartMarginLeft &&
+        chartLocalPos.dx <= chartMarginLeft + labelWidth;
 
     final sigIndex = _getSignalIndexFromDy(chartLocalPos.dy);
     if (inLabelArea && sigIndex >= 0 && sigIndex < _visibleIndexes.length) {
@@ -1017,9 +1023,13 @@ class TimingChartState extends State<TimingChart>
     final RenderBox overlay =
         Overlay.of(context).context.findRenderObject() as RenderBox;
 
-    _lastRightClickPos = position;
+    _lastRightClickPos = position; // グローバル保持
 
-    final chartLocalPos = position;
+    // グローバル座標 → チャート(CustomPaint)のローカル座標へ
+    final RenderBox? paintBox =
+        _customPaintKey.currentContext?.findRenderObject() as RenderBox?;
+    final Offset chartLocalPos =
+        paintBox != null ? paintBox.globalToLocal(position) : position;
     final adjustedPos = Offset(
       chartLocalPos.dx -
           chartMarginLeft +
@@ -1243,6 +1253,11 @@ class TimingChartState extends State<TimingChart>
 
     String newComment = "";
 
+    // ダイアログ入力時にチャートのキーボードフォーカスを外す
+    final bool prevCanRequest = _focusNode.canRequestFocus;
+    _focusNode.canRequestFocus = false;
+    FocusScope.of(context).unfocus();
+
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) {
@@ -1268,6 +1283,10 @@ class TimingChartState extends State<TimingChart>
         );
       },
     );
+
+    // フォーカス設定を元に戻す
+    _focusNode.canRequestFocus = prevCanRequest;
+    if (mounted) _focusNode.requestFocus();
 
     if (result == true && newComment.isNotEmpty) {
       final annId = "ann${DateTime.now().millisecondsSinceEpoch}";
@@ -1296,6 +1315,11 @@ class TimingChartState extends State<TimingChart>
 
     String newComment = "";
 
+    // ダイアログ入力時にチャートのキーボードフォーカスを外す
+    final bool prevCanRequest = _focusNode.canRequestFocus;
+    _focusNode.canRequestFocus = false;
+    FocusScope.of(context).unfocus();
+
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) {
@@ -1322,6 +1346,10 @@ class TimingChartState extends State<TimingChart>
       },
     );
 
+    // フォーカス設定を元に戻す
+    _focusNode.canRequestFocus = prevCanRequest;
+    if (mounted) _focusNode.requestFocus();
+
     if (result == true && newComment.isNotEmpty) {
       final annId = "ann${DateTime.now().millisecondsSinceEpoch}";
       final newAnnotation = TimingChartAnnotation(
@@ -1347,6 +1375,11 @@ class TimingChartState extends State<TimingChart>
     if (ann == null) return;
 
     String newText = ann.text;
+
+    // ダイアログ入力時にチャートのキーボードフォーカスを外す
+    final bool prevCanRequest = _focusNode.canRequestFocus;
+    _focusNode.canRequestFocus = false;
+    FocusScope.of(context).unfocus();
 
     final result = await showDialog<bool>(
       context: context,
@@ -1376,6 +1409,10 @@ class TimingChartState extends State<TimingChart>
         );
       },
     );
+
+    // フォーカス設定を元に戻す
+    _focusNode.canRequestFocus = prevCanRequest;
+    if (mounted) _focusNode.requestFocus();
 
     if (result == true && newText.isNotEmpty && newText != ann.text) {
       setState(() {
@@ -1569,6 +1606,158 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
+
+  void _zoomIn() {
+    final double current = math.max(_zoomFactor, _minZoomFactorForView);
+    final double next = math.min(current + _zoomStep, _maxZoom);
+    if ((next - _zoomFactor).abs() < 1e-6) return;
+    setState(() {
+      _zoomFactor = next;
+    });
+  }
+
+  void _zoomOut() {
+    final double current = math.max(_zoomFactor, _minZoomFactorForView);
+    final double next = math.max(current - _zoomStep, _minZoomFactorForView);
+    if ((next - _zoomFactor).abs() < 1e-6) return;
+    setState(() {
+      _zoomFactor = next;
+    });
+  }
+
+  void _resetZoom() {
+    final double target = math.max(_minZoomFactorForView, _minZoom);
+    if ((_zoomFactor - target).abs() < 1e-6) return;
+    setState(() {
+      _zoomFactor = target;
+    });
+  }
+
+  // ===== アンカー付きズーム用ヘルパー =====
+  double _getViewportWaveWidth() {
+    final double widgetWidth = context.size?.width ?? MediaQuery.of(context).size.width;
+    final double viewportWaveWidth = widgetWidth - chartMarginLeft - labelWidth;
+    return viewportWaveWidth.isFinite ? math.max(0.0, viewportWaveWidth) : 0.0;
+  }
+
+  double _computeTotalStepUnits() {
+    final settings = Provider.of<SettingsNotifier>(context, listen: false);
+    final int maxLen =
+        signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
+    if (maxLen <= 0) return 0.0;
+    if (settings.timeUnitIsMs) {
+      double sum = 0.0;
+      for (int i = 0; i < maxLen; i++) {
+        final dur =
+            (i < settings.stepDurationsMs.length)
+                ? settings.stepDurationsMs[i]
+                : settings.msPerStep;
+        sum += (settings.msPerStep > 0) ? (dur / settings.msPerStep) : 1.0;
+      }
+      return sum;
+    } else {
+      return maxLen.toDouble();
+    }
+  }
+
+  void _applyAnchorScrollCorrection({
+    required double anchorXInWave,
+    required double stepsUnitsBefore,
+  }) {
+    final double viewportWaveWidth = _getViewportWaveWidth();
+    final double contentWidth = _computeTotalStepUnits() * _cellWidth;
+    final double newContentX = stepsUnitsBefore * _cellWidth;
+    double newScroll = newContentX - anchorXInWave;
+    final double maxScroll = math.max(0.0, contentWidth - viewportWaveWidth);
+    newScroll = newScroll.clamp(0.0, maxScroll);
+    if (_hScrollController.hasClients) {
+      try {
+        _hScrollController.jumpTo(newScroll);
+      } catch (_) {
+        // ignore jump errors
+      }
+    }
+  }
+
+  void _zoomInWithAnchorAtCenter() {
+    final double viewportWaveWidth = _getViewportWaveWidth();
+    final double anchorXInWave = viewportWaveWidth / 2;
+    final double scrollBefore =
+        _hScrollController.hasClients ? _hScrollController.offset : 0.0;
+    final double stepsUnitsBefore =
+        (scrollBefore + anchorXInWave) / (_cellWidth <= 0 ? 1.0 : _cellWidth);
+    _zoomIn();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _applyAnchorScrollCorrection(
+        anchorXInWave: anchorXInWave,
+        stepsUnitsBefore: stepsUnitsBefore,
+      );
+    });
+  }
+
+  void _zoomOutWithAnchorAtCenter() {
+    final double viewportWaveWidth = _getViewportWaveWidth();
+    final double anchorXInWave = viewportWaveWidth / 2;
+    final double scrollBefore =
+        _hScrollController.hasClients ? _hScrollController.offset : 0.0;
+    final double stepsUnitsBefore =
+        (scrollBefore + anchorXInWave) / (_cellWidth <= 0 ? 1.0 : _cellWidth);
+    _zoomOut();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _applyAnchorScrollCorrection(
+        anchorXInWave: anchorXInWave,
+        stepsUnitsBefore: stepsUnitsBefore,
+      );
+    });
+  }
+
+  void _handlePointerSignal(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent) return;
+
+    final bool modifierPressed =
+        HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed;
+    if (!modifierPressed) return;
+
+    final double verticalDelta = event.scrollDelta.dy;
+    final double horizontalDelta = event.scrollDelta.dx;
+    final double dominantDelta = verticalDelta.abs() >= horizontalDelta.abs()
+        ? verticalDelta
+        : horizontalDelta;
+
+    // アンカー位置（カーソルX）を取得（波形エリア座標）
+    double viewportWaveWidth = _getViewportWaveWidth();
+    double anchorXInWave;
+    final box = context.findRenderObject() as RenderBox?;
+    if (box != null) {
+      final local = box.globalToLocal(event.position);
+      anchorXInWave = local.dx - chartMarginLeft - labelWidth;
+      if (!anchorXInWave.isFinite) anchorXInWave = viewportWaveWidth / 2;
+    } else {
+      anchorXInWave = viewportWaveWidth / 2;
+    }
+    anchorXInWave = anchorXInWave.clamp(0.0, viewportWaveWidth);
+
+    final double scrollBefore =
+        _hScrollController.hasClients ? _hScrollController.offset : 0.0;
+    final double stepsUnitsBefore =
+        (scrollBefore + anchorXInWave) / (_cellWidth <= 0 ? 1.0 : _cellWidth);
+
+    if (dominantDelta < 0) {
+      _zoomIn();
+    } else if (dominantDelta > 0) {
+      _zoomOut();
+    }
+
+    // ズーム反映後にスクロール位置を補正
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _applyAnchorScrollCorrection(
+        anchorXInWave: anchorXInWave,
+        stepsUnitsBefore: stepsUnitsBefore,
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -1577,8 +1766,10 @@ class TimingChartState extends State<TimingChart>
     final settingsTop = Provider.of<SettingsNotifier>(context);
 
     return (_isEditingSteps && settingsTop.timeUnitIsMs)
-        ? LayoutBuilder(
-          builder: (context, constraints) {
+        ? Listener(
+            onPointerSignal: _handlePointerSignal,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
             final settings = Provider.of<SettingsNotifier>(context);
             final maxLen =
                 signals.isEmpty
@@ -1620,18 +1811,46 @@ class TimingChartState extends State<TimingChart>
               totalSteps = maxLen.toDouble();
             }
 
+            double baseCellWidth;
             if (widget.fitToScreen) {
-              _cellWidth =
+              baseCellWidth =
                   totalSteps > 0
                       ? math.max(availableWidth / totalSteps, 5.0)
                       : 40.0;
             } else {
-              _cellWidth =
+              baseCellWidth =
                   totalSteps > 0
                       ? math.max(availableWidth / totalSteps, 20.0)
                       : 40.0;
             }
 
+            double minCellWidthForFullView = baseCellWidth;
+            if (totalSteps > 0 && availableWidth.isFinite && availableWidth > 0) {
+              final double perStepWidth = availableWidth / totalSteps;
+              if (perStepWidth.isFinite && perStepWidth > 0) {
+                minCellWidthForFullView = math.min(
+                  baseCellWidth,
+                  math.max(perStepWidth, _minZoomCellWidth),
+                );
+              }
+            }
+            minCellWidthForFullView =
+                (minCellWidthForFullView.clamp(_minZoomCellWidth, baseCellWidth))
+                    .toDouble();
+
+            final double minZoomFactorForView = baseCellWidth <= 0
+                ? 1.0
+                : (minCellWidthForFullView / baseCellWidth)
+                    .clamp(_minZoom, _maxZoom);
+            final double effectiveZoomFactor =
+                _zoomFactor.clamp(minZoomFactorForView, _maxZoom);
+
+            _cellWidth = (baseCellWidth * effectiveZoomFactor)
+                .clamp(minCellWidthForFullView, _maxZoomCellWidth)
+                .toDouble();
+
+            _minZoomFactorForView = minZoomFactorForView;
+            _effectiveZoomFactor = effectiveZoomFactor;
             // ▼ コメントエリアの高さを動的に算出
             final double commentAreaHeight = _calculateCommentAreaHeight();
 
@@ -1712,123 +1931,176 @@ class TimingChartState extends State<TimingChart>
                   ),
                 ),
                 Expanded(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onPanStart: _onPanStartEditSteps,
-                    onPanUpdate: _onPanUpdateEditSteps,
-                    onPanEnd: _onPanEndEditSteps,
-                    onTapUp: _onTapUpEditSteps,
-                    child: SingleChildScrollView(
-                      controller: _hScrollController,
-                      scrollDirection: Axis.horizontal,
-                      physics: const NeverScrollableScrollPhysics(),
-                      child: SingleChildScrollView(
-                        controller: _vScrollController,
-                        scrollDirection: Axis.vertical,
-                        physics: const NeverScrollableScrollPhysics(),
-                        child: RepaintBoundary(
-                          key: _repaintBoundaryKey,
-                          child: CustomPaint(
-                            key: _customPaintKey,
-                            isComplex: true,
-                            willChange: true,
-                            size: Size(totalWidth, totalHeight),
-                            painter: _StepTimingChartPainter(
-                              signals: visibleSignals,
-                              signalNames: visibleSignalNames,
-                              signalTypes: visibleSignalTypes,
-                              annotations: annotations,
-                              cellWidth: _cellWidth,
-                              cellHeight: _cellHeight,
-                              labelWidth: labelWidth,
-                              commentAreaHeight: commentAreaHeight,
-                              chartMarginLeft: chartMarginLeft,
-                              chartMarginTop: chartMarginTop,
-                              startSignalIndex: null,
-                              endSignalIndex: null,
-                              startTimeIndex: null,
-                              endTimeIndex: null,
-                              highlightTimeIndices: const [],
-                              omissionTimeIndices: _omissionTimeIndices,
-                              selectedAnnotationId: null,
-                              annotationRects: _annotationHitRects,
-                              showAllSignalTypes: widget.showAllSignalTypes,
-                              showIoNumbers: widget.showIoNumbers,
-                              portNumbers: visiblePortNumbers,
-                              timeUnitIsMs: settings.timeUnitIsMs,
-                              msPerStep: settings.msPerStep,
-                              stepDurationsMs: settingsRW.stepDurationsMs,
-                              activeStepIndex:
-                                  (settings.timeUnitIsMs && _isEditingSteps)
-                                      ? _activeStepIndex
-                                      : null,
-                              showBottomUnitLabels:
-                                  Provider.of<SettingsNotifier>(
-                                    context,
-                                  ).showBottomUnitLabels,
-                              labelColor:
-                                  Theme.of(context).brightness ==
-                                          Brightness.dark
-                                      ? Colors.white
-                                      : Colors.black,
-                              dashedColor:
-                                  Theme.of(context).brightness ==
-                                              Brightness.dark &&
-                                          Provider.of<SettingsNotifier>(
-                                                context,
-                                              ).commentDashedColor ==
-                                              Colors.black
-                                      ? Colors.white
-                                      : Provider.of<SettingsNotifier>(
+                  child: Stack(
+                    children: [
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onPanStart: _onPanStartEditSteps,
+                        onPanUpdate: _onPanUpdateEditSteps,
+                        onPanEnd: _onPanEndEditSteps,
+                        onTapUp: _onTapUpEditSteps,
+                        child: SingleChildScrollView(
+                          controller: _hScrollController,
+                          scrollDirection: Axis.horizontal,
+                          physics: const NeverScrollableScrollPhysics(),
+                          child: SingleChildScrollView(
+                            controller: _vScrollController,
+                            scrollDirection: Axis.vertical,
+                            physics: const NeverScrollableScrollPhysics(),
+                            clipBehavior: Clip.none,
+                            child: RepaintBoundary(
+                              key: _repaintBoundaryKey,
+                              child: CustomPaint(
+                                key: _customPaintKey,
+                                isComplex: true,
+                                willChange: true,
+                                size: Size(totalWidth, totalHeight),
+                                painter: _StepTimingChartPainter(
+                                  signals: visibleSignals,
+                                  signalNames: visibleSignalNames,
+                                  signalTypes: visibleSignalTypes,
+                                  annotations: annotations,
+                                  cellWidth: _cellWidth,
+                                  cellHeight: _cellHeight,
+                                  labelWidth: labelWidth,
+                                  commentAreaHeight: commentAreaHeight,
+                                  chartMarginLeft: chartMarginLeft,
+                                  chartMarginTop: chartMarginTop,
+                                  startSignalIndex: null,
+                                  endSignalIndex: null,
+                                  startTimeIndex: null,
+                                  endTimeIndex: null,
+                                  highlightTimeIndices: const [],
+                                  omissionTimeIndices: _omissionTimeIndices,
+                                  selectedAnnotationId: null,
+                                  annotationRects: _annotationHitRects,
+                                  showAllSignalTypes: widget.showAllSignalTypes,
+                                  showIoNumbers: widget.showIoNumbers,
+                                  portNumbers: visiblePortNumbers,
+                                  timeUnitIsMs: settings.timeUnitIsMs,
+                                  msPerStep: settings.msPerStep,
+                                  stepDurationsMs: settingsRW.stepDurationsMs,
+                                  activeStepIndex:
+                                      (settings.timeUnitIsMs && _isEditingSteps)
+                                          ? _activeStepIndex
+                                          : null,
+                                  showBottomUnitLabels:
+                                      Provider.of<SettingsNotifier>(
                                         context,
-                                      ).commentDashedColor,
-                              arrowColor:
-                                  Theme.of(context).brightness ==
-                                              Brightness.dark &&
-                                          Provider.of<SettingsNotifier>(
-                                                context,
-                                              ).commentArrowColor ==
-                                              Colors.black
-                                      ? Colors.white
-                                      : Provider.of<SettingsNotifier>(
+                                      ).showBottomUnitLabels,
+                                  labelColor:
+                                      Theme.of(context).brightness ==
+                                              Brightness.dark
+                                          ? Colors.white
+                                          : Colors.black,
+                                  dashedColor:
+                                      Theme.of(context).brightness ==
+                                                  Brightness.dark &&
+                                              Provider.of<SettingsNotifier>(
+                                                    context,
+                                                  ).commentDashedColor ==
+                                                  Colors.black
+                                          ? Colors.white
+                                          : Provider.of<SettingsNotifier>(
+                                            context,
+                                          ).commentDashedColor,
+                                  arrowColor:
+                                      Theme.of(context).brightness ==
+                                                  Brightness.dark &&
+                                              Provider.of<SettingsNotifier>(
+                                                    context,
+                                                  ).commentArrowColor ==
+                                                  Colors.black
+                                          ? Colors.white
+                                          : Provider.of<SettingsNotifier>(
+                                            context,
+                                          ).commentArrowColor,
+                                  omissionColor:
+                                      Theme.of(context).brightness ==
+                                                  Brightness.dark &&
+                                              Provider.of<SettingsNotifier>(
+                                                    context,
+                                                  ).omissionLineColor ==
+                                                  Colors.black
+                                          ? Colors.white
+                                          : Provider.of<SettingsNotifier>(
+                                            context,
+                                          ).omissionLineColor,
+                                  omissionFillColor:
+                                      Theme.of(context).scaffoldBackgroundColor,
+                                  signalColors:
+                                      Provider.of<SettingsNotifier>(
                                         context,
-                                      ).commentArrowColor,
-                              omissionColor:
-                                  Theme.of(context).brightness ==
-                                              Brightness.dark &&
-                                          Provider.of<SettingsNotifier>(
-                                                context,
-                                              ).omissionLineColor ==
-                                              Colors.black
-                                      ? Colors.white
-                                      : Provider.of<SettingsNotifier>(
-                                        context,
-                                      ).omissionLineColor,
-                              omissionFillColor:
-                                  Theme.of(context).scaffoldBackgroundColor,
-                              signalColors:
-                                  Provider.of<SettingsNotifier>(
-                                    context,
-                                  ).signalColors,
-                              draggingStartRow: null,
-                              draggingCurrentRow: null,
+                                      ).signalColors,
+                                  draggingStartRow: null,
+                                  draggingCurrentRow: null,
+                                ),
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
+                      // 左ラベルの固定オーバーレイ
+                      Positioned(
+                        left: chartMarginLeft,
+                        top: 0,
+                        child: IgnorePointer(
+                          child: ClipRect(
+                            child: Transform.translate(
+                              offset: Offset(
+                                0,
+                                chartMarginTop -
+                                    (_vScrollController.hasClients
+                                        ? _vScrollController.offset
+                                        : 0.0),
+                              ),
+                              child: SizedBox(
+                                width: labelWidth,
+                                height: totalHeight,
+                                child: CustomPaint(
+                                  isComplex: false,
+                                  willChange: true,
+                                  size: Size(labelWidth, totalHeight),
+                                  painter: _LabelsOverlayPainter(
+                                    signalNames: visibleSignalNames,
+                                    signalTypes: visibleSignalTypes,
+                                    showAllSignalTypes: widget.showAllSignalTypes,
+                                    showIoNumbers: widget.showIoNumbers,
+                                    portNumbers: visiblePortNumbers,
+                                    labelColor: Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? Colors.white
+                                        : Colors.black,
+                                    backgroundColor:
+                                        Theme.of(context).scaffoldBackgroundColor,
+                                    labelWidth: labelWidth,
+                                      chartMarginLeft: chartMarginLeft,
+                                    cellHeight: _cellHeight,
+                                    highlightStartRow: null,
+                                    highlightEndRow: null,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             );
           },
-        )
+        ),
+      )
         : KeyboardListener(
           focusNode: _focusNode,
           autofocus: true,
           onKeyEvent: _handleKeyEvent,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
+          child: Listener(
+            onPointerSignal: _handlePointerSignal,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
               final settings = Provider.of<SettingsNotifier>(context);
               final maxLen =
                   signals.isEmpty
@@ -1872,18 +2144,46 @@ class TimingChartState extends State<TimingChart>
                 totalSteps = maxLen.toDouble();
               }
 
+              double baseCellWidth;
               if (widget.fitToScreen) {
-                _cellWidth =
+                baseCellWidth =
                     totalSteps > 0
                         ? math.max(availableWidth / totalSteps, 5.0)
                         : 40.0;
               } else {
-                _cellWidth =
+                baseCellWidth =
                     totalSteps > 0
                         ? math.max(availableWidth / totalSteps, 20.0)
                         : 40.0;
               }
 
+              double minCellWidthForFullView = baseCellWidth;
+              if (totalSteps > 0 && availableWidth.isFinite && availableWidth > 0) {
+                final double perStepWidth = availableWidth / totalSteps;
+                if (perStepWidth.isFinite && perStepWidth > 0) {
+                  minCellWidthForFullView = math.min(
+                    baseCellWidth,
+                    math.max(perStepWidth, _minZoomCellWidth),
+                  );
+                }
+              }
+              minCellWidthForFullView = minCellWidthForFullView
+                  .clamp(_minZoomCellWidth, baseCellWidth)
+                  .toDouble();
+
+              final double minZoomFactorForView = baseCellWidth <= 0
+                  ? 1.0
+                  : (minCellWidthForFullView / baseCellWidth)
+                      .clamp(_minZoom, _maxZoom);
+              final double effectiveZoomFactor =
+                  _zoomFactor.clamp(minZoomFactorForView, _maxZoom);
+
+              _cellWidth = (baseCellWidth * effectiveZoomFactor)
+                  .clamp(minCellWidthForFullView, _maxZoomCellWidth)
+                  .toDouble();
+
+              _minZoomFactorForView = minZoomFactorForView;
+              _effectiveZoomFactor = effectiveZoomFactor;
               // ▼ コメントエリアの高さを動的に算出
               final double commentAreaHeight = _calculateCommentAreaHeight();
 
@@ -1971,9 +2271,11 @@ class TimingChartState extends State<TimingChart>
                     ),
                   ),
                   Expanded(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onPanDown: (details) {
+                    child: Stack(
+                      children: [
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onPanDown: (details) {
                         if (_isEditingSteps) return; // 編集中は他機能を無効化
                         final box = context.findRenderObject() as RenderBox?;
                         if (box == null) return;
@@ -2004,140 +2306,219 @@ class TimingChartState extends State<TimingChart>
                             break;
                           }
                         }
-                      },
-                      onPanStart:
-                          _isEditingSteps ? _onPanStartEditSteps : _onPanStart,
-                      onPanUpdate:
-                          _isEditingSteps
-                              ? _onPanUpdateEditSteps
-                              : _onPanUpdate,
-                      onPanEnd:
-                          _isEditingSteps ? _onPanEndEditSteps : _onPanEnd,
-                      onLongPressStart:
-                          _isEditingSteps ? null : _onLongPressStart,
-                      onLongPressMoveUpdate:
-                          _isEditingSteps ? null : _onLongPressMoveUpdate,
-                      onLongPressEnd: _isEditingSteps ? null : _onLongPressEnd,
-                      onTapUp: _isEditingSteps ? null : _handleTap,
-                      onSecondaryTapDown:
-                          _isEditingSteps
-                              ? null
-                              : (details) => _showContextMenu(
-                                context,
-                                details.globalPosition,
-                              ),
-                      child: SingleChildScrollView(
-                        controller: _hScrollController,
-                        scrollDirection: Axis.horizontal,
-                        physics:
-                            _draggingAnnotationId != null
-                                ? const NeverScrollableScrollPhysics()
-                                : null,
-                        child: SingleChildScrollView(
-                          controller: _vScrollController,
-                          scrollDirection: Axis.vertical,
-                          physics:
-                              _draggingAnnotationId != null
-                                  ? const NeverScrollableScrollPhysics()
-                                  : null,
-                          child: RepaintBoundary(
-                            key: _repaintBoundaryKey,
-                            child: CustomPaint(
-                              key: _customPaintKey,
-                              isComplex: true,
-                              willChange: true,
-                              size: Size(totalWidth, totalHeight),
-                              painter: _StepTimingChartPainter(
-                                signals: visibleSignals,
-                                signalNames: visibleSignalNames,
-                                signalTypes: visibleSignalTypes,
-                                annotations: annotations,
-                                cellWidth: _cellWidth,
-                                cellHeight: _cellHeight,
-                                labelWidth: labelWidth,
-                                commentAreaHeight: commentAreaHeight,
-                                chartMarginLeft: chartMarginLeft,
-                                chartMarginTop: chartMarginTop,
-                                startSignalIndex: _startSignalIndex,
-                                endSignalIndex: _endSignalIndex,
-                                startTimeIndex: _startTimeIndex,
-                                endTimeIndex: _endTimeIndex,
-                                highlightTimeIndices: _highlightTimeIndices,
-                                omissionTimeIndices: _omissionTimeIndices,
-                                selectedAnnotationId: _selectedAnnotationId,
-                                annotationRects: _annotationHitRects,
-                                showAllSignalTypes: widget.showAllSignalTypes,
-                                showIoNumbers: widget.showIoNumbers,
-                                portNumbers: visiblePortNumbers,
-                                timeUnitIsMs: settings.timeUnitIsMs,
-                                msPerStep: settings.msPerStep,
-                                stepDurationsMs: settingsRW.stepDurationsMs,
-                                activeStepIndex:
-                                    (settings.timeUnitIsMs && _isEditingSteps)
-                                        ? _activeStepIndex
-                                        : null,
-                                showBottomUnitLabels:
-                                    Provider.of<SettingsNotifier>(
-                                      context,
-                                    ).showBottomUnitLabels,
-                                labelColor:
-                                    Theme.of(context).brightness ==
-                                            Brightness.dark
-                                        ? Colors.white
-                                        : Colors.black,
-                                dashedColor:
-                                    Theme.of(context).brightness ==
-                                                Brightness.dark &&
-                                            Provider.of<SettingsNotifier>(
-                                                  context,
-                                                ).commentDashedColor ==
-                                                Colors.black
-                                        ? Colors.white
-                                        : Provider.of<SettingsNotifier>(
+                          },
+                          onPanStart:
+                              _isEditingSteps ? _onPanStartEditSteps : _onPanStart,
+                          onPanUpdate:
+                              _isEditingSteps
+                                  ? _onPanUpdateEditSteps
+                                  : _onPanUpdate,
+                          onPanEnd:
+                              _isEditingSteps ? _onPanEndEditSteps : _onPanEnd,
+                          onLongPressStart:
+                              _isEditingSteps ? null : _onLongPressStart,
+                          onLongPressMoveUpdate:
+                              _isEditingSteps ? null : _onLongPressMoveUpdate,
+                          onLongPressEnd: _isEditingSteps ? null : _onLongPressEnd,
+                          onTapUp: _isEditingSteps ? null : _handleTap,
+                          onSecondaryTapDown:
+                              _isEditingSteps
+                                  ? null
+                                  : (details) => _showContextMenu(
+                                    context,
+                                    details.globalPosition,
+                                  ),
+                          child: SingleChildScrollView(
+                            controller: _hScrollController,
+                            scrollDirection: Axis.horizontal,
+                            physics:
+                                (_draggingAnnotationId != null || _isModifierPressed)
+                                    ? const NeverScrollableScrollPhysics()
+                                    : null,
+                            child: SingleChildScrollView(
+                              controller: _vScrollController,
+                              scrollDirection: Axis.vertical,
+                              physics: const NeverScrollableScrollPhysics(),
+                              clipBehavior: Clip.none,
+                              child: RepaintBoundary(
+                                key: _repaintBoundaryKey,
+                                child: CustomPaint(
+                                  key: _customPaintKey,
+                                  isComplex: true,
+                                  willChange: true,
+                                  size: Size(totalWidth, totalHeight),
+                                  painter: _StepTimingChartPainter(
+                                    signals: visibleSignals,
+                                    signalNames: visibleSignalNames,
+                                    signalTypes: visibleSignalTypes,
+                                    annotations: annotations,
+                                    cellWidth: _cellWidth,
+                                    cellHeight: _cellHeight,
+                                    labelWidth: labelWidth,
+                                    commentAreaHeight: commentAreaHeight,
+                                    chartMarginLeft: chartMarginLeft,
+                                    chartMarginTop: chartMarginTop,
+                                    startSignalIndex: _startSignalIndex,
+                                    endSignalIndex: _endSignalIndex,
+                                    startTimeIndex: _startTimeIndex,
+                                    endTimeIndex: _endTimeIndex,
+                                    highlightTimeIndices: _highlightTimeIndices,
+                                    omissionTimeIndices: _omissionTimeIndices,
+                                    selectedAnnotationId: _selectedAnnotationId,
+                                    annotationRects: _annotationHitRects,
+                                    showAllSignalTypes: widget.showAllSignalTypes,
+                                    showIoNumbers: widget.showIoNumbers,
+                                    portNumbers: visiblePortNumbers,
+                                    timeUnitIsMs: settings.timeUnitIsMs,
+                                    msPerStep: settings.msPerStep,
+                                    stepDurationsMs: settingsRW.stepDurationsMs,
+                                    activeStepIndex:
+                                        (settings.timeUnitIsMs && _isEditingSteps)
+                                            ? _activeStepIndex
+                                            : null,
+                                    showBottomUnitLabels:
+                                        Provider.of<SettingsNotifier>(
                                           context,
-                                        ).commentDashedColor,
-                                arrowColor:
-                                    Theme.of(context).brightness ==
-                                                Brightness.dark &&
-                                            Provider.of<SettingsNotifier>(
-                                                  context,
-                                                ).commentArrowColor ==
-                                                Colors.black
-                                        ? Colors.white
-                                        : Provider.of<SettingsNotifier>(
+                                        ).showBottomUnitLabels,
+                                    labelColor:
+                                        Theme.of(context).brightness ==
+                                                Brightness.dark
+                                            ? Colors.white
+                                            : Colors.black,
+                                    dashedColor:
+                                        Theme.of(context).brightness ==
+                                                    Brightness.dark &&
+                                                Provider.of<SettingsNotifier>(
+                                                      context,
+                                                    ).commentDashedColor ==
+                                                    Colors.black
+                                            ? Colors.white
+                                            : Provider.of<SettingsNotifier>(
+                                              context,
+                                            ).commentDashedColor,
+                                    arrowColor:
+                                        Theme.of(context).brightness ==
+                                                    Brightness.dark &&
+                                                Provider.of<SettingsNotifier>(
+                                                      context,
+                                                    ).commentArrowColor ==
+                                                    Colors.black
+                                            ? Colors.white
+                                            : Provider.of<SettingsNotifier>(
+                                              context,
+                                            ).commentArrowColor,
+                                    omissionColor:
+                                        Theme.of(context).brightness ==
+                                                    Brightness.dark &&
+                                                Provider.of<SettingsNotifier>(
+                                                      context,
+                                                    ).omissionLineColor ==
+                                                    Colors.black
+                                            ? Colors.white
+                                            : Provider.of<SettingsNotifier>(
+                                              context,
+                                            ).omissionLineColor,
+                                    omissionFillColor:
+                                        Theme.of(context).scaffoldBackgroundColor,
+                                    signalColors:
+                                        Provider.of<SettingsNotifier>(
                                           context,
-                                        ).commentArrowColor,
-                                omissionColor:
-                                    Theme.of(context).brightness ==
-                                                Brightness.dark &&
-                                            Provider.of<SettingsNotifier>(
-                                                  context,
-                                                ).omissionLineColor ==
-                                                Colors.black
-                                        ? Colors.white
-                                        : Provider.of<SettingsNotifier>(
-                                          context,
-                                        ).omissionLineColor,
-                                omissionFillColor:
-                                    Theme.of(context).scaffoldBackgroundColor,
-                                signalColors:
-                                    Provider.of<SettingsNotifier>(
-                                      context,
-                                    ).signalColors,
-                                draggingStartRow: _labelDragStartRow,
-                                draggingCurrentRow: _labelDragCurrentRow,
+                                        ).signalColors,
+                                    draggingStartRow: _labelDragStartRow,
+                                    draggingCurrentRow: _labelDragCurrentRow,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
                         ),
-                      ),
+                        // 左ラベルの固定オーバーレイ（非編集モード）
+                      Positioned(
+                        left: 0,
+                          top: 0,
+                          child: IgnorePointer(
+                            child: ClipRect(
+                              child: Transform.translate(
+                                offset: Offset(
+                                  0,
+                                  chartMarginTop -
+                                      (_vScrollController.hasClients
+                                          ? _vScrollController.offset
+                                          : 0.0),
+                                ),
+                                child: SizedBox(
+                                width: chartMarginLeft + labelWidth,
+                                  height: totalHeight,
+                                  child: CustomPaint(
+                                    isComplex: false,
+                                    willChange: true,
+                                  size: Size(chartMarginLeft + labelWidth, totalHeight),
+                                    painter: _LabelsOverlayPainter(
+                                      signalNames: visibleSignalNames,
+                                      signalTypes: visibleSignalTypes,
+                                      showAllSignalTypes: widget.showAllSignalTypes,
+                                      showIoNumbers: widget.showIoNumbers,
+                                      portNumbers: visiblePortNumbers,
+                                      labelColor: Theme.of(context).brightness ==
+                                              Brightness.dark
+                                          ? Colors.white
+                                          : Colors.black,
+                                      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+                                      labelWidth: labelWidth,
+                                      chartMarginLeft: chartMarginLeft,
+                                      cellHeight: _cellHeight,
+                                      highlightStartRow: _startSignalIndex,
+                                      highlightEndRow: _endSignalIndex,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               );
             },
           ),
-        );
+        ),
+      );
+  }
+
+  Widget _buildZoomControls() {
+    final int zoomPercent = (_effectiveZoomFactor * 100).round();
+    final bool canZoomIn = _effectiveZoomFactor < _maxZoom - 0.001;
+    final bool canZoomOut =
+        _effectiveZoomFactor > _minZoomFactorForView + 0.001;
+    final bool canReset =
+        (_effectiveZoomFactor - _minZoomFactorForView).abs() > 0.001;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text('$zoomPercent%'),
+        const SizedBox(width: 6),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.zoom_out, size: 16),
+          label: const Text('Zoom out'),
+          onPressed: canZoomOut ? _zoomOutWithAnchorAtCenter : null,
+        ),
+        const SizedBox(width: 6),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.zoom_in, size: 16),
+          label: const Text('Zoom in'),
+          onPressed: canZoomIn ? _zoomInWithAnchorAtCenter : null,
+        ),
+        const SizedBox(width: 6),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.fit_screen, size: 16),
+          label: const Text('Fit'),
+          onPressed: canReset ? _resetZoom : null,
+        ),
+      ],
+    );
   }
 
   Widget _buildUnitToggle(BuildContext context) {
@@ -2201,6 +2582,8 @@ class TimingChartState extends State<TimingChart>
               },
             ),
           ],
+          const SizedBox(width: 12),
+          _buildZoomControls(),
         ],
       ),
     );
@@ -2249,6 +2632,11 @@ class TimingChartState extends State<TimingChart>
         final controller = TextEditingController(
           text: settings.stepDurationsMs.join(','),
         );
+        // 入力ダイアログ中はチャート側のキーボードフォーカスを外す
+        final bool prevCanRequest = _focusNode.canRequestFocus;
+        _focusNode.canRequestFocus = false;
+        FocusScope.of(context).unfocus();
+
         final ok =
             await showDialog<bool>(
               context: context,
@@ -2276,6 +2664,9 @@ class TimingChartState extends State<TimingChart>
                   ),
             ) ??
             false;
+        // フォーカス設定を復帰
+        _focusNode.canRequestFocus = prevCanRequest;
+        if (mounted) _focusNode.requestFocus();
         if (!ok) return;
         final parts = controller.text.split(',');
         final parsed = <double>[];
@@ -2452,8 +2843,19 @@ class TimingChartState extends State<TimingChart>
   @override
   void dispose() {
     suggestionLanguageVersion.removeListener(_langListener);
+    RawKeyboard.instance.removeListener(_handleRawKeyEvent);
     _focusNode.dispose();
     super.dispose();
+  }
+
+  void _handleRawKeyEvent(RawKeyEvent event) {
+    final bool pressed = HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed;
+    if (pressed != _isModifierPressed) {
+      setState(() {
+        _isModifierPressed = pressed;
+      });
+    }
   }
 
   void _handleKeyEvent(KeyEvent event) {
@@ -2692,6 +3094,15 @@ class _StepTimingChartPainter extends CustomPainter {
     // signals, signalNames, signalTypesの長さはすべて一致している前提
     final rowCount = signals.length;
 
+    // ラベル領域の背景を先に塗りつぶし（波形やグリッドのにじみ対策）
+    final double maskHeight = rowCount * cellHeight + commentAreaHeight;
+    final Paint labelMaskPaint = Paint()
+      ..color = omissionFillColor
+      ..style = PaintingStyle.fill;
+    // 右端を1px空けて塗りつぶし（0刻みの線を覆わない）
+    final double maskWidth = (labelWidth - 1).clamp(0.0, double.infinity);
+    canvas.drawRect(Rect.fromLTWH(0, 0, maskWidth, maskHeight), labelMaskPaint);
+
     // 0. ドラッグハイライト（背景）
     if (draggingStartRow != null) {
       final paintBg =
@@ -2725,8 +3136,7 @@ class _StepTimingChartPainter extends CustomPainter {
     }
 
     // 描画順序は背景から前景へ：
-    debugPrint('\n1. Drawing signal labels');
-    _gridManager.drawSignalLabels(canvas, rowCount);
+    // Labels are drawn by overlay painter to keep them pinned on the left.
 
     debugPrint('\n2. Drawing grid lines');
     final maxTimeSteps =
@@ -2738,14 +3148,22 @@ class _StepTimingChartPainter extends CustomPainter {
     _gridManager.drawHighlightedLines(canvas, highlightTimeIndices, size);
 
     debugPrint('\n4. Drawing signal waveforms');
+    // ラベル領域に波形がはみ出さないようクリップ
+    canvas.save();
+    final double clipHeight = rowCount * cellHeight + commentAreaHeight;
+    // クリップ開始を1px右へ（0刻みの線を確実に残す）
+    canvas.clipRect(Rect.fromLTWH(labelWidth + 1, 0, drawAreaWidth - (labelWidth + 1), clipHeight));
     // 現行の描画は step 等間隔のため、x = labelWidth + t*cellWidth
     // ms非等間隔対応は今後 mapper ベースに差し替え予定
     _signalsManager.drawSignalWaveforms(canvas, signals);
 
     debugPrint('\n4b. Drawing omission lines');
     _drawOmissionLines(canvas, rowCount);
+    canvas.restore();
 
     debugPrint('\n5. Drawing selection highlight');
+    canvas.save();
+    canvas.clipRect(Rect.fromLTWH(labelWidth + 1, 0, drawAreaWidth - (labelWidth + 1), rowCount * cellHeight + commentAreaHeight));
     _signalsManager.drawSelectionHighlight(
       canvas,
       startSignalIndex,
@@ -2753,9 +3171,13 @@ class _StepTimingChartPainter extends CustomPainter {
       startTimeIndex,
       endTimeIndex,
     );
+    canvas.restore();
 
     debugPrint('\n6. Drawing annotations with boundary lines');
+    canvas.save();
+    canvas.clipRect(Rect.fromLTWH(labelWidth + 1, 0, drawAreaWidth - (labelWidth + 1), rowCount * cellHeight + commentAreaHeight));
     _annotationsManager.drawAnnotations(canvas, size, rowCount);
+    canvas.restore();
 
     // 時間ラベル（下部）
     _gridManager.drawTimeLabels(canvas, size, rowCount, maxTimeSteps);
@@ -2856,5 +3278,147 @@ class _StepTimingChartPainter extends CustomPainter {
         msPerStep != oldDelegate.msPerStep ||
         !listEquals(stepDurationsMs, oldDelegate.stepDurationsMs) ||
         activeStepIndex != oldDelegate.activeStepIndex;
+  }
+}
+
+/// ラベルを独立して固定描画するオーバーレイ用ペインター
+class _LabelsOverlayPainter extends CustomPainter {
+  _LabelsOverlayPainter({
+    required this.signalNames,
+    required this.signalTypes,
+    required this.showAllSignalTypes,
+    required this.showIoNumbers,
+    required this.portNumbers,
+    required this.labelColor,
+    required this.backgroundColor,
+    required this.labelWidth,
+    required this.chartMarginLeft,
+    required this.cellHeight,
+    required this.highlightStartRow,
+    required this.highlightEndRow,
+  });
+
+  final List<String> signalNames;
+  final List<SignalType> signalTypes;
+  final bool showAllSignalTypes;
+  final bool showIoNumbers;
+  final List<int> portNumbers;
+  final Color labelColor;
+  final Color backgroundColor;
+  final double labelWidth;
+  final double chartMarginLeft;
+  final double cellHeight;
+  final int? highlightStartRow;
+  final int? highlightEndRow;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // 背景でラベル領域（左端〜ラベル右端）を塗りつぶし、下層の波形を完全に隠す
+    final bgPaint = Paint()
+      ..color = backgroundColor
+      ..style = PaintingStyle.fill;
+    // 右端を1px空けて塗る（0刻みの線を覆わない）
+    final double overlayWidth = (chartMarginLeft + labelWidth - 1)
+        .clamp(0.0, double.infinity);
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, overlayWidth, size.height),
+      bgPaint,
+    );
+
+    // 行区切り線を描画（ラベルごとの区切り）
+    final gridPaint = Paint()
+      ..color = labelColor.withOpacity(0.2)
+      ..strokeWidth = 1.0
+      ..style = PaintingStyle.stroke;
+    final double overlayWidthForLines = chartMarginLeft + labelWidth - 1;
+    final int rows = signalNames.length;
+    for (int i = 0; i <= rows; i++) {
+      final double y = i * cellHeight;
+      canvas.drawLine(Offset(0, y), Offset(overlayWidthForLines, y), gridPaint);
+    }
+
+    // ラベルの右端に縦の区切り線（1px）
+    final borderPaint = Paint()
+      ..color = labelColor.withOpacity(0.35)
+      ..strokeWidth = 1.0;
+    final double borderX = chartMarginLeft + labelWidth;
+    canvas.drawLine(Offset(borderX, 0), Offset(borderX, size.height), borderPaint);
+
+    final textPainter = TextPainter(
+      textDirection: TextDirection.ltr,
+      maxLines: 2,
+      ellipsis: '...',
+    );
+
+    for (int row = 0; row < signalNames.length && row < signalTypes.length; row++) {
+      final currentSignalType = signalTypes[row];
+      if (!showAllSignalTypes &&
+          (currentSignalType == SignalType.control ||
+              currentSignalType == SignalType.group ||
+              currentSignalType == SignalType.task)) {
+        continue;
+      }
+
+      bool isHighlighted = false;
+      if (highlightStartRow != null && highlightEndRow != null) {
+        final int minRow = highlightStartRow! < highlightEndRow!
+            ? highlightStartRow!
+            : highlightEndRow!;
+        final int maxRow = highlightStartRow! > highlightEndRow!
+            ? highlightStartRow!
+            : highlightEndRow!;
+        if (row >= minRow && row <= maxRow) {
+          isHighlighted = true;
+        }
+      }
+
+      String prefix = '';
+      if (showIoNumbers && row < portNumbers.length) {
+        final num = portNumbers[row];
+        if (num > 0) {
+          switch (currentSignalType) {
+            case SignalType.input:
+              prefix = 'Input$num: ';
+              break;
+            case SignalType.output:
+              prefix = 'Output$num: ';
+              break;
+            case SignalType.hwTrigger:
+              prefix = 'HW$num: ';
+              break;
+            default:
+              break;
+          }
+        }
+      }
+
+      final displayName = showIoNumbers ? '$prefix${signalNames[row]}' : signalNames[row];
+      textPainter.text = TextSpan(
+        text: displayName,
+        style: TextStyle(
+          color: isHighlighted ? Colors.orange : labelColor,
+          fontSize: 14,
+          fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal,
+        ),
+      );
+      textPainter.layout(maxWidth: labelWidth - 16);
+      final yCenter = row * cellHeight + (cellHeight - textPainter.height) / 2;
+      // ラベル文字はチャート左余白の後ろから描画
+      textPainter.paint(canvas, Offset(chartMarginLeft + 6, yCenter));
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _LabelsOverlayPainter oldDelegate) {
+    return signalNames != oldDelegate.signalNames ||
+        signalTypes != oldDelegate.signalTypes ||
+        showAllSignalTypes != oldDelegate.showAllSignalTypes ||
+        showIoNumbers != oldDelegate.showIoNumbers ||
+        portNumbers != oldDelegate.portNumbers ||
+        labelColor != oldDelegate.labelColor ||
+        labelWidth != oldDelegate.labelWidth ||
+        cellHeight != oldDelegate.cellHeight ||
+        highlightStartRow != oldDelegate.highlightStartRow ||
+        highlightEndRow != oldDelegate.highlightEndRow;
   }
 }

@@ -281,7 +281,7 @@ class ChartGridManager {
         final String label = i.toString();
         tp.text = TextSpan(text: label, style: textStyle);
         tp.layout();
-        final double tx = x - tp.width / 2;
+        final double tx = (x - tp.width / 2).clamp(labelWidth + 2, size.width - tp.width);
         final double ty = baseY;
         if (tx + tp.width >= labelWidth && tx <= size.width) {
           tp.paint(canvas, Offset(tx, ty));
@@ -305,7 +305,7 @@ class ChartGridManager {
           final String label = _formatMs(cursorMs);
           tp.text = TextSpan(text: label, style: textStyle);
           tp.layout();
-          final double tx = cursorX - tp.width / 2;
+          final double tx = (cursorX - tp.width / 2).clamp(labelWidth + 2, size.width - tp.width);
           final double ty = baseY;
           if (tx + tp.width >= labelWidth && tx <= size.width) {
             tp.paint(canvas, Offset(tx, ty));
