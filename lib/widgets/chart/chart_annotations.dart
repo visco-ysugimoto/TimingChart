@@ -262,7 +262,7 @@ class ChartAnnotationsManager {
       // 境界線の色を設定
       final boundaryPaint =
           Paint()
-            ..color = dashedColor.withOpacity(0.5)
+            ..color = dashedColor.withAlpha((0.5 * 255).round())
             ..strokeWidth = 2.0
             ..style = PaintingStyle.stroke;
 
@@ -499,7 +499,7 @@ class _ChartAnnotationsPainter extends CustomPainter {
         // アノテーションの線を描画
         final linePaint =
             Paint()
-              ..color = Colors.blue.withOpacity(0.7)
+              ..color = Colors.blue.withAlpha((0.7 * 255).round())
               ..strokeWidth = 1.0
               ..style = PaintingStyle.stroke;
 
@@ -576,7 +576,7 @@ class _ChartAnnotationsPainter extends CustomPainter {
         // 背景を描画（読みやすさのため）
         final bgPaint =
             Paint()
-              ..color = Colors.white.withOpacity(0.8)
+              ..color = Colors.white.withAlpha((0.8 * 255).round())
               ..style = PaintingStyle.fill;
         canvas.drawRect(textRect, bgPaint);
 
@@ -639,7 +639,7 @@ class ChartAnnotationsPainter extends CustomPainter {
         // アノテーションの線を描画
         final linePaint =
             Paint()
-              ..color = Colors.blue.withOpacity(0.7)
+              ..color = Colors.blue.withAlpha((0.7 * 255).round())
               ..strokeWidth = 1.0
               ..style = PaintingStyle.stroke;
 
@@ -717,7 +717,7 @@ class ChartAnnotationsPainter extends CustomPainter {
         // 背景を描画（読みやすさのため）
         final bgPaint =
             Paint()
-              ..color = Colors.white.withOpacity(0.8)
+              ..color = Colors.white.withAlpha((0.8 * 255).round())
               ..style = PaintingStyle.fill;
         canvas.drawRect(textRect, bgPaint);
 

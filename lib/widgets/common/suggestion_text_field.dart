@@ -78,7 +78,10 @@ class _SuggestionTextFieldState extends State<SuggestionTextField> {
         if (_internalController.text != newLabel) {
           setState(() {
             _internalController.text = newLabel;
-            _fieldController?.text = newLabel;
+            // 入力中（フォーカスあり）の場合はフィールドのテキストを強制更新しない
+            if (!(_attachedFocusNode?.hasFocus ?? false)) {
+              _fieldController?.text = newLabel;
+            }
           });
         }
       });
@@ -131,8 +134,7 @@ class _SuggestionTextFieldState extends State<SuggestionTextField> {
       }
     }
 
-    // デバッグログ
-    print('重複チェック - 使用済み値: $usedValues');
+    debugPrint('重複チェック - 使用済み値: $usedValues');
     return usedValues;
   }
 
@@ -146,11 +148,10 @@ class _SuggestionTextFieldState extends State<SuggestionTextField> {
     final filtered =
         suggestions.where((item) => !usedValues.contains(item.id)).toList();
 
-    // デバッグログ
-    print(
+    debugPrint(
       '候補フィルタリング - 元の候補数: ${suggestions.length}, フィルタ後: ${filtered.length}',
     );
-    print(
+    debugPrint(
       '除外された候補: ${suggestions.where((item) => usedValues.contains(item.id)).map((e) => e.label).toList()}',
     );
 
@@ -168,8 +169,7 @@ class _SuggestionTextFieldState extends State<SuggestionTextField> {
     final usedValues = _getUsedValues();
     final isDuplicate = usedValues.contains(inputId);
 
-    // デバッグログ
-    print('重複チェック - 入力: "$labelValue", ID: "$inputId", 重複: $isDuplicate');
+    debugPrint('重複チェック - 入力: "$labelValue", ID: "$inputId", 重複: $isDuplicate');
 
     return isDuplicate;
   }
@@ -209,8 +209,30 @@ class _SuggestionTextFieldState extends State<SuggestionTextField> {
   }
 
   void _onFocusChange() {
-    if (_attachedFocusNode != null && _attachedFocusNode!.hasFocus) {
+    if (_attachedFocusNode == null) return;
+    if (_attachedFocusNode!.hasFocus) {
       _updateSuggestions();
+    } else {
+      // フォーカスが外れたタイミングで親コントローラへ値を確定反映
+      _commitFieldToParent();
+    }
+  }
+
+  void _commitFieldToParent() {
+    if (_fieldController == null) return;
+    final text = _fieldController!.text;
+    if (widget.enableDuplicateCheck && _isDuplicate(text)) {
+      final matched = _latestItems.firstWhere(
+        (e) => e.label == text,
+        orElse: () => SuggestionItem(text, text),
+      );
+      widget.controller.text = matched.id;
+    } else {
+      final matched = _latestItems.firstWhere(
+        (e) => e.label == text,
+        orElse: () => SuggestionItem(text, text),
+      );
+      widget.controller.text = matched.id;
     }
   }
 
@@ -243,15 +265,15 @@ class _SuggestionTextFieldState extends State<SuggestionTextField> {
             );
           },
           onSelected: (SuggestionItem selection) {
+            // 候補選択時のみ親コントローラへ即時反映
             widget.controller.text = selection.id;
             widget.controller.selection = TextSelection.fromPosition(
               TextPosition(offset: widget.controller.text.length),
             );
             _internalController.text = selection.label;
           },
-          initialValue: TextEditingValue(
-            text: _idToLabel(widget.controller.text),
-          ),
+          // initialValue は毎ビルドで再適用されるため、
+          // Backspace/Delete の無効化につながる再初期化を避ける
           fieldViewBuilder: (
             BuildContext context,
             TextEditingController fieldTextEditingController,
@@ -266,7 +288,17 @@ class _SuggestionTextFieldState extends State<SuggestionTextField> {
               _attachedFocusNode!.addListener(_onFocusChange);
             }
 
+            // TextEditingController の再生成や初期値の再注入で
+            // バックスペース/デリートが効かなくなるのを避けるため、
+            // 一度だけ同期リスナーをアタッチし、以降は値を直接操作しない
             _attachSyncListener(fieldTextEditingController);
+
+            // 初回表示時に親の値をテキストフィールドへ反映（未フォーカス時のみ）
+            final currentLabel = _idToLabel(widget.controller.text);
+            if (!(fieldFocusNode.hasFocus) &&
+                fieldTextEditingController.text != currentLabel) {
+              fieldTextEditingController.text = currentLabel;
+            }
 
             return ValueListenableBuilder<TextEditingValue>(
               valueListenable: fieldTextEditingController,
@@ -285,14 +317,17 @@ class _SuggestionTextFieldState extends State<SuggestionTextField> {
                 // 値が入力されている／重複している場合のハイライト色を決定
                 Color backgroundColor;
                 if (isDuplicate) {
-                  backgroundColor =
-                      isDark
-                          ? Colors.red.withOpacity(0.35)
-                          : Colors.red.withOpacity(0.2);
+                  final highlightColor = Colors.red.withAlpha((0.35 * 255).round());
+                  final normalHighlightColor = Colors.red.withAlpha((0.2 * 255).round());
+                  backgroundColor = isDark
+                      ? highlightColor
+                      : normalHighlightColor;
                 } else if (value.text.isNotEmpty) {
                   // アクセントカラーを利用して入力済みをハイライト
                   final accent = Theme.of(context).colorScheme.secondary;
-                  backgroundColor = accent.withOpacity(isDark ? 0.35 : 0.2);
+                  backgroundColor = accent.withAlpha(
+                    ((isDark ? 0.35 : 0.2) * 255).round(),
+                  );
                 } else {
                   backgroundColor = defaultFill;
                 }
@@ -317,25 +352,26 @@ class _SuggestionTextFieldState extends State<SuggestionTextField> {
                     ),
                     onSubmitted: (_) => onFieldSubmitted(),
                     onChanged: (text) {
-                      if (widget.controller.text == text) return;
-
-                      // 重複チェック
+                      // 入力中は TextField 側のコントローラに任せ、
+                      // 親コントローラへの反映はフォーカス喪失時または確定時に行う
+                    },
+                    onEditingComplete: () {
+                      final text = fieldTextEditingController.text;
+                      // 重複チェック（必要なら）
                       if (widget.enableDuplicateCheck && _isDuplicate(text)) {
-                        // 重複している場合は元の候補から検索（フィルタリング前）
                         final matched = _latestItems.firstWhere(
                           (e) => e.label == text,
                           orElse: () => SuggestionItem(text, text),
                         );
                         widget.controller.text = matched.id;
-                        return;
+                      } else {
+                        final matched = _latestItems.firstWhere(
+                          (e) => e.label == text,
+                          orElse: () => SuggestionItem(text, text),
+                        );
+                        widget.controller.text = matched.id;
                       }
-
-                      // 入力が候補の label と一致する場合は id を保存
-                      final matched = _latestItems.firstWhere(
-                        (e) => e.label == text,
-                        orElse: () => SuggestionItem(text, text),
-                      );
-                      widget.controller.text = matched.id;
+                      onFieldSubmitted();
                     },
                   ),
                 );

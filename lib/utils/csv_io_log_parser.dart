@@ -23,11 +23,13 @@ class CsvTimelineEntry {
   final String type; // 'IN' or 'OUT'
   final String timestamp; // date+time string or time string
   final List<int> bits; // rightmost is Port1
+  final String? source; // どのCSVから来たか（例: 'DIO', 'PLC', 'EIP' 等）
 
   const CsvTimelineEntry({
     required this.type,
     required this.timestamp,
     required this.bits,
+    this.source,
   });
 }
 
@@ -171,6 +173,257 @@ class CsvIoLogParser {
       inPortCount: inPortCount,
       outPortCount: outPortCount,
     );
+  }
+
+  /// 複数CSV（例: DIO, PLC, EIP）を時刻で統合し、末尾200行のみを対象にしたタイムラインを返す
+  /// - csvs: エントリの key はソース識別子（'DIO'|'PLC'|'EIP' など）、value はCSVテキスト
+  /// - 同一時刻の並びは入力順を維持（安定ソート）
+  static CsvTimeline parseTimelineMulti(List<MapEntry<String, String>> csvs) {
+    final entries = <CsvTimelineEntry>[];
+    int inPortCount = 0;
+    int outPortCount = 0;
+
+    // 各CSVから全行を読み出し、timestampを付けて一次リスト化
+    for (final kv in csvs) {
+      final source = kv.key;
+      final csvText = kv.value;
+      final lines = csvText.split(RegExp(r'\r?\n'));
+      for (final raw in lines) {
+        final line = raw.trim();
+        if (line.isEmpty) continue;
+        final parts = line.split(',');
+        if (parts.length < 5) continue;
+        final date = parts[0].trim();
+        final time = parts[1].trim();
+        final ts = '$date $time';
+        final typeField = parts[2].trim().toUpperCase();
+        final rawBitFields = parts.sublist(3);
+
+        int lastNonEmpty = -1;
+        for (int i = rawBitFields.length - 1; i >= 0; i--) {
+          if (rawBitFields[i].trim().isNotEmpty) {
+            lastNonEmpty = i;
+            break;
+          }
+        }
+        if (lastNonEmpty < 0) continue;
+
+        final bits = <int>[];
+        for (int i = 0; i <= lastNonEmpty; i++) {
+          final s = rawBitFields[i].trim();
+          final v = int.tryParse(s) ?? 0;
+          bits.add(v != 0 ? 1 : 0);
+        }
+        if (bits.isEmpty) continue;
+
+        if (typeField == 'IN' || typeField == 'INPUT') {
+          inPortCount = bits.length > inPortCount ? bits.length : inPortCount;
+          entries.add(
+            CsvTimelineEntry(
+              type: 'IN',
+              timestamp: ts,
+              bits: bits,
+              source: source,
+            ),
+          );
+        } else if (typeField == 'OUT' || typeField == 'OUTPUT') {
+          outPortCount =
+              bits.length > outPortCount ? bits.length : outPortCount;
+          entries.add(
+            CsvTimelineEntry(
+              type: 'OUT',
+              timestamp: ts,
+              bits: bits,
+              source: source,
+            ),
+          );
+        }
+      }
+    }
+
+    // タイムスタンプで安定ソート
+    entries.sort((a, b) {
+      final ta = CsvIoLogParserTimestamps._parseCsvTimestamp(a.timestamp);
+      final tb = CsvIoLogParserTimestamps._parseCsvTimestamp(b.timestamp);
+      if (ta == null && tb == null) return 0;
+      if (ta == null) return -1;
+      if (tb == null) return 1;
+      return ta.compareTo(tb);
+    });
+
+    // 末尾200行のみ
+    final int startIndex = entries.length > 200 ? entries.length - 200 : 0;
+    final trimmed = entries.sublist(startIndex);
+
+    return CsvTimeline(
+      entries: trimmed,
+      inPortCount: inPortCount,
+      outPortCount: outPortCount,
+    );
+  }
+}
+
+/// CSVから一度でも0でない値が出力されたポートを検出するクラス
+class ActivePortDetector {
+  /// CSVから一度でも0でない値が出力されたポートを検出
+  /// 戻り値: Map<ソース名, Set<ポート番号>>
+  /// 例: {'DIO': {1, 3, 5}, 'PLC': {2, 4}, 'EIP': {6}}
+  static Map<String, Set<int>> detectActivePorts(
+    List<MapEntry<String, String>> csvs,
+  ) {
+    final activePorts = <String, Set<int>>{};
+
+    for (final kv in csvs) {
+      final source = kv.key; // 'DIO', 'PLC', 'EIP'
+      final csvText = kv.value;
+      final lines = csvText.split(RegExp(r'\r?\n'));
+
+      // 1) まず、このCSV内での最大カラム数（非空の最右インデックス+1）を求める
+      int detectedPortCount = 0;
+      for (final raw in lines) {
+        final line = raw.trim();
+        if (line.isEmpty) continue;
+        final parts = line.split(',');
+        if (parts.length < 5) continue;
+        final typeField = parts[2].trim().toUpperCase();
+        if (typeField != 'OUT' && typeField != 'OUTPUT') continue;
+        final rawBitFields = parts.sublist(3);
+        int lastNonEmpty = -1;
+        for (int i = rawBitFields.length - 1; i >= 0; i--) {
+          if (rawBitFields[i].trim().isNotEmpty) {
+            lastNonEmpty = i;
+            break;
+          }
+        }
+        if (lastNonEmpty >= 0) {
+          final width = lastNonEmpty + 1;
+          if (width > detectedPortCount) detectedPortCount = width;
+        }
+      }
+
+      if (detectedPortCount <= 0) {
+        // 有効な OUT 行が無い
+        continue;
+      }
+
+      // 2) 最大カラム数に基づいて右端=Port1の一貫した番号割当で活動ポートを検出
+      final portActivity = <int>{};
+      for (final raw in lines) {
+        final line = raw.trim();
+        if (line.isEmpty) continue;
+        final parts = line.split(',');
+        if (parts.length < 5) continue;
+        final typeField = parts[2].trim().toUpperCase();
+        if (typeField != 'OUT' && typeField != 'OUTPUT') continue;
+        final rawBitFields = parts.sublist(3);
+
+        // 末尾の空要素を除去（ただしポート番号は detectedPortCount を基準に計算）
+        int lastNonEmpty = -1;
+        for (int i = rawBitFields.length - 1; i >= 0; i--) {
+          if (rawBitFields[i].trim().isNotEmpty) {
+            lastNonEmpty = i;
+            break;
+          }
+        }
+        if (lastNonEmpty < 0) continue;
+
+        for (int i = 0; i <= lastNonEmpty; i++) {
+          final s = rawBitFields[i].trim();
+          final v = int.tryParse(s) ?? 0;
+          if (v != 0) {
+            // 右端（列 index = detectedPortCount-1）を Port1 とする
+            final portNumber = detectedPortCount - i;
+            portActivity.add(portNumber);
+          }
+        }
+      }
+
+      if (portActivity.isNotEmpty) {
+        activePorts[source] = portActivity;
+      }
+    }
+
+    return activePorts;
+  }
+
+  /// CSVから一度でも0でない値が入力として現れたポートを検出（IN専用）
+  /// 戻り値: Map<ソース名, Set<ポート番号>>
+  /// 例: {'DIO': {1, 3, 5}, 'PLC': {2, 4}, 'EIP': {6}}
+  static Map<String, Set<int>> detectActiveInputPorts(
+    List<MapEntry<String, String>> csvs,
+  ) {
+    final activePorts = <String, Set<int>>{};
+
+    for (final kv in csvs) {
+      final source = kv.key; // 'DIO', 'PLC', 'EIP'
+      final csvText = kv.value;
+      final lines = csvText.split(RegExp(r'\r?\n'));
+
+      // 1) このCSV内での IN 行における最大カラム数（非空の最右インデックス+1）を求める
+      int detectedPortCount = 0;
+      for (final raw in lines) {
+        final line = raw.trim();
+        if (line.isEmpty) continue;
+        final parts = line.split(',');
+        if (parts.length < 5) continue;
+        final typeField = parts[2].trim().toUpperCase();
+        if (typeField != 'IN' && typeField != 'INPUT') continue;
+        final rawBitFields = parts.sublist(3);
+        int lastNonEmpty = -1;
+        for (int i = rawBitFields.length - 1; i >= 0; i--) {
+          if (rawBitFields[i].trim().isNotEmpty) {
+            lastNonEmpty = i;
+            break;
+          }
+        }
+        if (lastNonEmpty >= 0) {
+          final width = lastNonEmpty + 1;
+          if (width > detectedPortCount) detectedPortCount = width;
+        }
+      }
+
+      if (detectedPortCount <= 0) {
+        // 有効な IN 行が無い
+        continue;
+      }
+
+      // 2) 最大カラム数に基づいて右端=Port1の一貫した番号割当で活動ポートを検出
+      final portActivity = <int>{};
+      for (final raw in lines) {
+        final line = raw.trim();
+        if (line.isEmpty) continue;
+        final parts = line.split(',');
+        if (parts.length < 5) continue;
+        final typeField = parts[2].trim().toUpperCase();
+        if (typeField != 'IN' && typeField != 'INPUT') continue;
+        final rawBitFields = parts.sublist(3);
+
+        int lastNonEmpty = -1;
+        for (int i = rawBitFields.length - 1; i >= 0; i--) {
+          if (rawBitFields[i].trim().isNotEmpty) {
+            lastNonEmpty = i;
+            break;
+          }
+        }
+        if (lastNonEmpty < 0) continue;
+
+        for (int i = 0; i <= lastNonEmpty; i++) {
+          final s = rawBitFields[i].trim();
+          final v = int.tryParse(s) ?? 0;
+          if (v != 0) {
+            // 右端（列 index = detectedPortCount-1）を Port1 とする
+            final portNumber = detectedPortCount - i;
+            portActivity.add(portNumber);
+          }
+        }
+      }
+
+      if (portActivity.isNotEmpty) {
+        activePorts[source] = portActivity;
+      }
+    }
+
+    return activePorts;
   }
 }
 

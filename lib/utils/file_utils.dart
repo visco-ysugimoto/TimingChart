@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:cross_file/cross_file.dart';
 import 'package:excel/excel.dart' as excel;
 // Remove unused imports and dependencies on Flutter Material for this utility file
@@ -53,7 +54,7 @@ class FileUtils {
 
       return true;
     } catch (e) {
-      print('Error exporting app config: $e');
+      debugPrint('Error exporting app config: $e');
       return false;
     }
   }
@@ -90,7 +91,7 @@ class FileUtils {
 
       return true;
     } catch (e) {
-      print('Error sharing app config: $e');
+      debugPrint('Error sharing app config: $e');
       return false;
     }
   }
@@ -132,7 +133,7 @@ class FileUtils {
         }
       }
     } catch (e) {
-      print('Error importing app config: $e');
+      debugPrint('Error importing app config: $e');
       return null;
     }
   }
@@ -187,7 +188,7 @@ class FileUtils {
 
       return true;
     } catch (e) {
-      print('Error exporting WaveDrom: $e');
+      debugPrint('Error exporting WaveDrom: $e');
       return false;
     }
   }
@@ -220,7 +221,7 @@ class FileUtils {
       await file.writeAsBytes(bytes);
       return true;
     } catch (e) {
-      print('Error exporting PNG: $e');
+      debugPrint('Error exporting PNG: $e');
       return false;
     }
   }
@@ -254,7 +255,7 @@ class FileUtils {
       await file.writeAsBytes(bytes);
       return true;
     } catch (e) {
-      print('Error exporting JPEG: $e');
+      debugPrint('Error exporting JPEG: $e');
       return false;
     }
   }
@@ -434,7 +435,7 @@ class FileUtils {
         return false;
       }
     } catch (e) {
-      print('Error exporting XLSX: $e');
+      debugPrint('Error exporting XLSX: $e');
       return false;
     }
   }
@@ -467,16 +468,17 @@ class FileUtils {
       await destFile.writeAsBytes(await sourceFile.readAsBytes());
       return destPath;
     } catch (e) {
-      print('Error picking ziq and converting to zip: $e');
+      debugPrint('Error picking ziq and converting to zip: $e');
       return null;
     }
   }
 
-  /// 指定した ZIP ファイルパスから、目的の3ファイルを読み込んで返す
+  /// 指定した ZIP ファイルパスから、目的のファイルを読み込んで返す
   /// - keys:
   ///   - 'vxVisMgr.ini' => viscotech/bin/vxVisMgr.ini の内容（テキスト）
   ///   - 'DioMonitorLog.csv' => viscotech/Support/DioMonitorLog.csv の内容（テキスト）
   ///   - 'Plc_DioMonitorLog.csv' => viscotech/Support/Plc_DioMonitorLog.csv の内容（テキスト）
+  ///   - 'FNL_DioMonitorLog.csv' => viscotech/Support/FNL_DioMonitorLog.csv の内容（テキスト）
   static Future<Map<String, String>> readRequiredFilesFromZip(String zipPath) async {
     final result = <String, String>{};
     try {
@@ -501,17 +503,81 @@ class FileUtils {
         return null;
       }
 
-      final ini = readTextFromArchive('viscotech/bin/vxVisMgr.ini');
-      final dio = readTextFromArchive('viscotech/Support/DioMonitorLog.csv');
-      final plc = readTextFromArchive('viscotech/Support/Plc_DioMonitorLog.csv');
+      // サブフォルダ構成の差異に強いフォールバック: ベースファイル名での検索
+      String? readByFileNameFallback(String fileName) {
+        final lower = fileName.toLowerCase();
+        final lowerStem = lower.endsWith('.csv') || lower.endsWith('.ini')
+            ? lower.substring(0, lower.lastIndexOf('.'))
+            : lower;
+        for (final entry in archive) {
+          if (!entry.isFile) continue;
+          final normalized = entry.name.replaceAll('\\', '/');
+          final lastSlash = normalized.lastIndexOf('/');
+          final base = lastSlash >= 0 ? normalized.substring(lastSlash + 1) : normalized;
+          final baseLower = base.toLowerCase();
+          // 完全一致 or ベース名の前方一致（例: DioMonitorLog_20250101.csv）
+          if (baseLower == lower || baseLower.startsWith(lowerStem)) {
+            try {
+              final data = entry.content as List<int>;
+              return String.fromCharCodes(data);
+            } catch (_) {
+              // ignore and continue
+            }
+          }
+        }
+        return null;
+      }
+
+      // 優先ターゲット群→見つからなければベース名でフォールバック
+      String? readWithFallback(List<String> targets, String baseName) {
+        for (final t in targets) {
+          final text = readTextFromArchive(t);
+          if (text != null) return text;
+        }
+        return readByFileNameFallback(baseName);
+      }
+
+      final ini = readWithFallback(
+        [
+          'viscotech/bin/vxVisMgr.ini',
+          'bin/vxVisMgr.ini',
+          'vxVisMgr.ini',
+        ],
+        'vxVisMgr.ini',
+      );
+      final dio = readWithFallback(
+        [
+          'viscotech/Support/DioMonitorLog.csv',
+          'Support/DioMonitorLog.csv',
+          'DioMonitorLog.csv',
+        ],
+        'DioMonitorLog.csv',
+      );
+      final plc = readWithFallback(
+        [
+          'viscotech/Support/Plc_DioMonitorLog.csv',
+          'Support/Plc_DioMonitorLog.csv',
+          'Plc_DioMonitorLog.csv',
+        ],
+        'Plc_DioMonitorLog.csv',
+      );
+      final fnl = readWithFallback(
+        [
+          'viscotech/Support/FNL_DioMonitorLog.csv',
+          'Support/FNL_DioMonitorLog.csv',
+          'FNL_DioMonitorLog.csv',
+        ],
+        'FNL_DioMonitorLog.csv',
+      );
 
       if (ini != null) result['vxVisMgr.ini'] = ini;
       if (dio != null) result['DioMonitorLog.csv'] = dio;
       if (plc != null) result['Plc_DioMonitorLog.csv'] = plc;
+      if (fnl != null) result['FNL_DioMonitorLog.csv'] = fnl;
 
       return result;
     } catch (e) {
-      print('Error reading required files from zip: $e');
+      debugPrint('Error reading required files from zip: $e');
       return result;
     }
   }

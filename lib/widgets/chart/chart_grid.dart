@@ -57,10 +57,9 @@ class ChartGridManager {
     int signalCount,
     int maxTimeSteps,
   ) {
-    final paintGuide =
-        Paint()
-          ..color = Colors.grey.withOpacity(0.5)
-          ..strokeWidth = 1;
+    final Paint guidePaint = Paint()
+      ..color = Colors.grey.withAlpha((0.5 * 255).round())
+      ..strokeWidth = 1;
 
     // 縦線（タイムインデックス）
     if (!timeUnitIsMs) {
@@ -70,7 +69,7 @@ class ChartGridManager {
         canvas.drawLine(
           Offset(x, 0),
           Offset(x, signalCount * cellHeight),
-          paintGuide,
+          guidePaint,
         );
       }
     } else {
@@ -90,7 +89,7 @@ class ChartGridManager {
                 ? (Paint()
                   ..color = Colors.orange
                   ..strokeWidth = 2)
-                : paintGuide;
+                : guidePaint;
         canvas.drawLine(
           Offset(cursorX, 0),
           Offset(cursorX, signalCount * cellHeight),
@@ -117,14 +116,14 @@ class ChartGridManager {
       }
 
       final y = visibleRow * cellHeight;
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paintGuide);
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), guidePaint);
       visibleRow++;
     }
     // 最後の線を描画
     canvas.drawLine(
       Offset(0, visibleRow * cellHeight),
       Offset(size.width, visibleRow * cellHeight),
-      paintGuide,
+      guidePaint,
     );
   }
 
@@ -145,30 +144,103 @@ class ChartGridManager {
         continue;
       }
 
-      final name = (row < signalNames.length) ? signalNames[row] : "";
+      final rawName =
+          (row >= 0 && row < signalNames.length) ? signalNames[row] : '';
+      String baseName = rawName;
+      String? detectedToken;
+      int? detectedNumber;
 
-      // 種別番号プレフィックスを生成
-      String prefix = "";
-      if (showIoNumbers && row < portNumbers.length) {
-        final num = portNumbers[row];
-        if (num > 0) {
-          switch (currentSignalType) {
-            case SignalType.input:
-              prefix = "Input$num: ";
-              break;
-            case SignalType.output:
-              prefix = "Output$num: ";
-              break;
-            case SignalType.hwTrigger:
-              prefix = "HW$num: ";
-              break;
-            default:
-              break;
+      void parseToken(String candidate) {
+        final match = RegExp(r'^(HWTrigger|HW|Input|Output|PLO|PLI|ESO|ESI)(\d+)?$')
+            .firstMatch(candidate);
+        if (match != null) {
+          detectedToken = match.group(1);
+          final numStr = match.group(2);
+          if (numStr != null && numStr.isNotEmpty) {
+            detectedNumber = int.tryParse(numStr);
+          }
+        } else {
+          final alt = RegExp(r'^(PLO|PLI|ESO|ESI)(\d+)$').firstMatch(candidate);
+          if (alt != null) {
+            detectedToken = alt.group(1);
+            detectedNumber = int.tryParse(alt.group(2)!);
           }
         }
       }
 
-      final displayName = showIoNumbers ? "$prefix$name" : name;
+      final colonIndex = rawName.indexOf(':');
+      if (colonIndex != -1) {
+        final head = rawName.substring(0, colonIndex).trim();
+        if (head.isNotEmpty) parseToken(head);
+        baseName = rawName.substring(colonIndex + 1).trim();
+        if (baseName.isEmpty) {
+          baseName = rawName;
+        }
+      } else {
+        final match = RegExp(r'^(PLO|PLI|ESO|ESI)(\d+)').firstMatch(rawName);
+        if (match != null) {
+          detectedToken = match.group(1);
+          detectedNumber = int.tryParse(match.group(2)!);
+          baseName = rawName.substring(match.end).trim();
+          if (baseName.isEmpty) {
+            baseName = rawName;
+          }
+        }
+      }
+
+      final int? portFromList = (row >= 0 &&
+              row < portNumbers.length &&
+              portNumbers[row] > 0)
+          ? portNumbers[row]
+          : null;
+      int? resolvedNumber = detectedNumber ?? portFromList;
+
+      String buildPrefix() {
+        final int? candidate = resolvedNumber;
+        if (!showIoNumbers || candidate == null || candidate <= 0) {
+          return '';
+        }
+        final int n = candidate;
+        if (detectedToken != null) {
+          switch (detectedToken) {
+            case 'PLI':
+            case 'PLIN':
+              return 'PLI$n';
+            case 'ESI':
+            case 'ESIN':
+              return 'ESI$n';
+            case 'PLO':
+            case 'PLON':
+              return 'PLO$n';
+            case 'ESO':
+            case 'ESON':
+              return 'ESO$n';
+            case 'HWTrigger':
+            case 'HW':
+              return 'HW$n';
+            case 'Input':
+              return 'Input$n';
+            case 'Output':
+              return 'Output$n';
+          }
+        }
+        switch (currentSignalType) {
+          case SignalType.input:
+            return 'Input$n';
+          case SignalType.output:
+            return 'Output$n';
+          case SignalType.hwTrigger:
+            return 'HW$n';
+          default:
+            return '';
+        }
+      }
+
+      final prefixLabel = buildPrefix();
+      final displayBase = baseName.isNotEmpty ? baseName : rawName;
+      final displayName = showIoNumbers
+          ? (prefixLabel.isNotEmpty ? '$prefixLabel: $displayBase' : displayBase)
+          : displayBase;
 
       // ハイライト判定
       bool isHighlighted = false;
@@ -267,7 +339,7 @@ class ChartGridManager {
     final double baseY = visibleRow * cellHeight + 4; // 最終行のすぐ下
 
     final textStyle = TextStyle(
-      color: labelColor.withOpacity(0.8),
+      color: labelColor.withAlpha((0.8 * 255).round()),
       fontSize: 12,
     );
     final tp = TextPainter(textDirection: TextDirection.ltr);
@@ -377,21 +449,20 @@ class _ChartGridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     try {
-      final paint =
-          Paint()
-            ..color = Colors.grey.withOpacity(0.3)
-            ..strokeWidth = 1.0;
+      final Paint gridPaint = Paint()
+        ..color = Colors.grey.withAlpha((0.5 * 255).round())
+        ..strokeWidth = 1;
 
       // 縦線を描画
       for (int i = 0; i <= timeSteps; i++) {
         final x = i * cellWidth;
-        canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+        canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
       }
 
       // 横線を描画
       for (int i = 0; i <= signalCount; i++) {
         final y = i * cellHeight;
-        canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+        canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
       }
     } catch (e) {
       debugPrint('エラー: グリッドの描画中にエラーが発生しました: $e');
@@ -422,10 +493,9 @@ class ChartGridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     try {
-      final gridPaint =
-          Paint()
-            ..color = Colors.grey.withOpacity(0.3)
-            ..strokeWidth = 1.0;
+      final Paint gridPaint = Paint()
+        ..color = Colors.grey.withAlpha((0.3 * 255).round())
+        ..strokeWidth = 1;
 
       final textPaint = TextStyle(color: Colors.black87, fontSize: 12);
 

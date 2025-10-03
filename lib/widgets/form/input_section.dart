@@ -54,26 +54,6 @@ class InputSection extends StatelessWidget {
     return SignalType.input;
   }
 
-  // Control信号の名前を取得する関数
-  String _getControlSignalName(int index) {
-    final totalInputs = count;
-
-    if (triggerOption == 'Code Trigger') {
-      if (totalInputs >= 32) {
-        if (index >= 1 && index <= 8) {
-          // Input2~9 を Control Code1~8 に変換
-          return 'Control Code${index}(bit)';
-        }
-      } else if (totalInputs == 16) {
-        if (index >= 1 && index <= 4) {
-          // Input2~5 を Control Code1~4 に変換
-          return 'Control Code${index}(bit)';
-        }
-      }
-    }
-    return 'Input ${index + 1}';
-  }
-
   @override
   Widget build(BuildContext context) {
     return Column(

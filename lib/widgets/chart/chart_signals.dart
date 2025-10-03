@@ -174,10 +174,8 @@ class ChartSignalsManager {
       (edSig - stSig + 1) * cellHeight,
     );
 
-    final paintSelection =
-        Paint()
-          ..color = Colors.blue.withOpacity(0.2)
-          ..style = PaintingStyle.fill;
+    final Paint paintSelection =
+        Paint()..color = Colors.blue.withAlpha((0.2 * 255).round());
 
     canvas.drawRect(selectionRect, paintSelection);
   }

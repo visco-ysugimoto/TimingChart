@@ -39,6 +39,7 @@ import 'package:provider/provider.dart';
 import '../../utils/chart_template_engine.dart';
 import 'dart:math' as math;
 import '../../providers/locale_notifier.dart';
+import '../../providers/form_controllers_notifier.dart';
 
 // セルのモードを表す列挙型
 enum CellMode { none, mode1, mode2, mode3, mode4, mode5 }
@@ -84,8 +85,11 @@ const cellModeLabelsEn = {
 
 class FormTab extends StatefulWidget {
   final List<TextEditingController> inputControllers;
+  final List<TextEditingController> plcEipInputControllers;
   final List<TextEditingController> outputControllers;
+  final List<TextEditingController> plcEipOutputControllers;
   final List<TextEditingController> hwTriggerControllers;
+  final FormControllersNotifier controllersNotifier;
   final ValueChanged<String?> onTriggerOptionChanged;
   final ValueChanged<int?> onInputPortChanged;
   final ValueChanged<int?> onOutputPortChanged;
@@ -101,12 +105,20 @@ class FormTab extends StatefulWidget {
   onUpdateChart;
   final VoidCallback onClearFields;
   final bool showImportExportButtons; // インポート/エクスポートボタンの表示制御フラグ
+  final void Function(
+    List<TextEditingController> src,
+    List<TextEditingController> dst,
+  )
+  onTransferOutputs;
 
   const FormTab({
     super.key,
     required this.inputControllers,
+    required this.plcEipInputControllers,
     required this.outputControllers,
+    required this.plcEipOutputControllers,
     required this.hwTriggerControllers,
+    required this.controllersNotifier,
     required this.onTriggerOptionChanged,
     required this.onInputPortChanged,
     required this.onOutputPortChanged,
@@ -114,6 +126,7 @@ class FormTab extends StatefulWidget {
     required this.onCameraChanged,
     required this.onUpdateChart,
     required this.onClearFields,
+    required this.onTransferOutputs,
     this.showImportExportButtons = false, // デフォルトは非表示
   });
 
@@ -121,7 +134,8 @@ class FormTab extends StatefulWidget {
   State<FormTab> createState() => FormTabState();
 }
 
-class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
+class FormTabState extends State<FormTab>
+    with AutomaticKeepAliveClientMixin, TickerProviderStateMixin {
   // --- AutomaticKeepAliveClientMixin ---
   // タブを切り替えても入力状態を保持するために true を返す
   @override
@@ -191,12 +205,87 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
   // PLC / EIP オプション
   String _plcEipOption = 'None';
 
+  // 出力欄のサブタブ（DIO / PLC-EIP）
+  TabController? _outputTabController;
+  int _outputTabIndex = 0;
+  // 入力欄のサブタブ（DIO / PLC-EIP）
+  TabController? _inputTabController;
+  int _inputTabIndex = 0;
+
   // 外部から PLC/EIP を反映するためのセッター
   void setPlcEipOption(String value) {
     if (value != 'None' && value != 'PLC' && value != 'EIP') return;
     setState(() {
       _plcEipOption = value;
     });
+    _ensureOutputTabController();
+    _ensureInputTabController();
+  }
+
+  void _ensureOutputTabController() {
+    if (_plcEipOption == 'None') {
+      _outputTabController?.dispose();
+      _outputTabController = null;
+      _outputTabIndex = 0;
+      return;
+    }
+    if (_outputTabController == null) {
+      _outputTabController = TabController(length: 2, vsync: this);
+      _outputTabController!.index = _outputTabIndex;
+      _outputTabController!.addListener(() {
+        if (_outputTabController!.indexIsChanging) return;
+        // タブ切替時に編集中のフィールドがあれば確定させる
+        if (mounted) {
+          FocusScope.of(context).unfocus();
+        }
+        setState(() {
+          _outputTabIndex = _outputTabController!.index;
+        });
+      });
+    }
+  }
+
+  void _ensureInputTabController() {
+    if (_plcEipOption == 'None') {
+      _inputTabController?.dispose();
+      _inputTabController = null;
+      _inputTabIndex = 0;
+      return;
+    }
+    if (_inputTabController == null) {
+      _inputTabController = TabController(length: 2, vsync: this);
+      _inputTabController!.index = _inputTabIndex;
+      _inputTabController!.addListener(() {
+        if (_inputTabController!.indexIsChanging) return;
+        if (mounted) {
+          FocusScope.of(context).unfocus();
+        }
+        setState(() {
+          _inputTabIndex = _inputTabController!.index;
+        });
+      });
+    }
+  }
+
+  void _transferOutputControllers(
+    List<TextEditingController> source,
+    List<TextEditingController> destination,
+  ) {
+    widget.onTransferOutputs(source, destination);
+    setState(() {
+      _updateSignalDataList();
+    });
+  }
+
+  void refreshSignalDataList() {
+    _updateSignalDataList();
+  }
+
+  @override
+  void dispose() {
+    _outputTabController?.dispose();
+    _inputTabController?.dispose();
+    super.dispose();
   }
 
   // TriggerOption に基づき Input テキストフィールド名を自動設定
@@ -206,45 +295,51 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
     // Single Trigger: Input1 に TRIGGER
     if (fs.triggerOption == 'Single Trigger') {
       if (widget.inputControllers.isNotEmpty) {
-        widget.inputControllers[0].text = 'TRIGGER';
+        widget.controllersNotifier.setInputText(0, 'TRIGGER');
       }
       return;
     }
 
     // Code Trigger: コード割当
     if (fs.triggerOption == 'Code Trigger') {
-      // 0-based index を使用
-      if (fs.inputCount >= 32) {
-        for (
-          int i = 0;
-          i < widget.inputControllers.length && i < fs.inputCount;
-          i++
-        ) {
-          if (i >= 1 && i <= 8) {
-            widget.inputControllers[i].text = 'Control Code${i}(bit)';
-          } else if (i >= 9 && i <= 14) {
-            widget.inputControllers[i].text = 'Group Code${i}(bit)';
-          } else if (i >= 15 && i <= 20) {
-            widget.inputControllers[i].text = 'Task Code${i}(bit)';
-          }
-        }
-      } else if (fs.inputCount == 16) {
-        for (
-          int i = 0;
-          i < widget.inputControllers.length && i < fs.inputCount;
-          i++
-        ) {
-          if (i >= 1 && i <= 4) {
-            widget.inputControllers[i].text = 'Control Code${i}(bit)';
-          } else if (i >= 5 && i <= 7) {
-            widget.inputControllers[i].text = 'Group Code${i}(bit)';
-          } else if (i >= 8 && i <= 13) {
-            widget.inputControllers[i].text = 'Task Code${i}(bit)';
-          }
-        }
-      }
+      _assignCodeTriggerInputNames(fs);
     }
     // 名前設定後、必要なら SignalData 再生成は呼び出し元で行う
+  }
+
+  void _assignCodeTriggerInputNames(TimingFormState fs) {
+    final controllers = widget.inputControllers;
+    String? nameForIndex(int index) {
+      if (fs.inputCount >= 32) {
+        if (index >= 1 && index <= 8) {
+          return 'Control Code${index}(bit)';
+        }
+        if (index >= 9 && index <= 14) {
+          return 'Group Code${index}(bit)';
+        }
+        if (index >= 15 && index <= 20) {
+          return 'Task Code${index}(bit)';
+        }
+      } else if (fs.inputCount == 16) {
+        if (index >= 1 && index <= 4) {
+          return 'Control Code${index}(bit)';
+        }
+        if (index >= 5 && index <= 7) {
+          return 'Group Code${index}(bit)';
+        }
+        if (index >= 8 && index <= 13) {
+          return 'Task Code${index}(bit)';
+        }
+      }
+      return null;
+    }
+
+    for (int i = 0; i < fs.inputCount && i < controllers.length; i++) {
+      final newName = nameForIndex(i);
+      if (newName != null && controllers[i].text != newName) {
+        controllers[i].text = newName;
+      }
+    }
   }
 
   // bool _hwVis(int index) =>
@@ -391,58 +486,19 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
 
     // 入力信号
     for (int i = 0; i < formState.inputCount; i++) {
-      SignalType signalType = SignalType.input;
-      bool isVisible = _inputVisibility[i];
-
-      // Code Triggerの場合、totalIOポートの値に応じてSignalTypeを設定
-      if (formState.triggerOption == 'Code Trigger') {
-        if (formState.inputCount >= 32) {
-          if (i >= 1 && i <= 8) {
-            // Input2~9
-            signalType = SignalType.control;
-            isVisible = false;
-            // Control信号の名前を自動設定
-            widget.inputControllers[i].text = 'Control Code${i}(bit)';
-          } else if (i >= 9 && i <= 14) {
-            // Input10~15
-            signalType = SignalType.group;
-            isVisible = false;
-            widget.inputControllers[i].text = 'Group Code${i}(bit)';
-          } else if (i >= 15 && i <= 20) {
-            // Input16~21
-            signalType = SignalType.task;
-            isVisible = false;
-            widget.inputControllers[i].text = 'Task Code${i}(bit)';
-          }
-        } else if (formState.inputCount == 16) {
-          if (i >= 1 && i <= 4) {
-            // Input2~5
-            signalType = SignalType.control;
-            isVisible = false;
-            // Control信号の名前を自動設定
-            widget.inputControllers[i].text = 'Control Code${i}(bit)';
-          } else if (i >= 5 && i <= 7) {
-            // Input6~8
-            signalType = SignalType.group;
-            isVisible = false;
-            widget.inputControllers[i].text = 'Group Code${i}(bit)';
-          } else if (i >= 8 && i <= 13) {
-            // Input9~14
-            signalType = SignalType.task;
-            isVisible = false;
-            widget.inputControllers[i].text = 'Task Code${i}(bit)';
-          }
-        }
-      }
+      final signalType = _inferSignalType(formState, i);
+      final isVisible = _inferVisibility(formState, i);
+      final name =
+          (i < widget.inputControllers.length &&
+                  widget.inputControllers[i].text.isNotEmpty)
+              ? widget.inputControllers[i].text
+              : 'Input ${i + 1}';
 
       _signalDataList.add(
         SignalData(
-          name:
-              widget.inputControllers[i].text.isNotEmpty
-                  ? widget.inputControllers[i].text
-                  : "Input ${i + 1}",
+          name: name,
           signalType: signalType,
-          values: List.filled(32, 0), // 初期値は0で埋める
+          values: List.filled(32, 0),
           isVisible: isVisible,
         ),
       );
@@ -478,6 +534,27 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
                 i < _outputVisibility.length ? _outputVisibility[i] : true,
           ),
         );
+      }
+    }
+
+    // PLC/EIP 出力信号（最後に追加）
+    if (_plcEipOption != 'None') {
+      for (int i = 0; i < formState.outputCount; i++) {
+        if (i < widget.plcEipOutputControllers.length &&
+            widget.plcEipOutputControllers[i].text.isNotEmpty) {
+          final base = _plcEipOption == 'PLC' ? 'PLO${i + 1}' : 'ESO${i + 1}';
+          final user = widget.plcEipOutputControllers[i].text;
+          final label = '$base: $user';
+          _signalDataList.add(
+            SignalData(
+              name: label,
+              signalType: SignalType.output,
+              values: List.filled(32, 0),
+              isVisible:
+                  i < _outputVisibility.length ? _outputVisibility[i] : true,
+            ),
+          );
+        }
       }
     }
 
@@ -705,7 +782,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
       Map<int, SignalData> outputSignalMap = {};
       Map<int, SignalData> hwTriggerSignalMap = {};
 
-      // 入力信号（位置を保持）
+      // 入力信号（位置を保持）- DIO入力
       for (int i = 0; i < formState.inputCount; i++) {
         if (i < widget.inputControllers.length &&
             widget.inputControllers[i].text.isNotEmpty) {
@@ -719,7 +796,10 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
               if (i >= 1 && i <= 8) {
                 signalType = SignalType.control;
                 isVisible = false;
-                widget.inputControllers[i].text = 'Control Code${i}(bit)';
+                widget.controllersNotifier.setInputText(
+                  i,
+                  'Control Code${i}(bit)',
+                );
               } else if (i >= 9 && i <= 14) {
                 signalType = SignalType.group;
                 isVisible = false;
@@ -731,7 +811,10 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
               if (i >= 1 && i <= 4) {
                 signalType = SignalType.control;
                 isVisible = false;
-                widget.inputControllers[i].text = 'Control Code${i}(bit)';
+                widget.controllersNotifier.setInputText(
+                  i,
+                  'Control Code${i}(bit)',
+                );
               } else if (i >= 5 && i <= 7) {
                 signalType = SignalType.group;
                 isVisible = false;
@@ -749,6 +832,24 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
             values: prevValueMap[name] ?? List.filled(defaultWaveLength, 0),
             isVisible: isVisible,
           );
+        }
+      }
+
+      // PLC/EIP 入力信号（位置を保持）- DIO入力の後ろに拡張キーで並べる
+      if (_plcEipOption != 'None') {
+        for (int i = 0; i < formState.inputCount; i++) {
+          if (i < widget.plcEipInputControllers.length &&
+              widget.plcEipInputControllers[i].text.isNotEmpty) {
+            final String name = widget.plcEipInputControllers[i].text;
+            final int key = formState.inputCount + i; // DIO入力の後ろに配置
+            inputSignalMap[key] = SignalData(
+              name: name,
+              signalType: SignalType.input,
+              values: prevValueMap[name] ?? List.filled(defaultWaveLength, 0),
+              isVisible:
+                  i < _inputVisibility.length ? _inputVisibility[i] : true,
+            );
+          }
         }
       }
 
@@ -770,20 +871,77 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
 
       // 出力信号（位置を保持）
       for (int i = 0; i < formState.outputCount; i++) {
+        final String baseKey = 'Output ${i + 1}';
+        final List<int> fallbackValues =
+            prevValueMap[baseKey] ?? List.filled(defaultWaveLength, 0);
+
         if (i < widget.outputControllers.length &&
             widget.outputControllers[i].text.isNotEmpty) {
           final String name = widget.outputControllers[i].text;
+
+          // Output{i} 形式の動的信号名を検出
+          String displayName = name;
+          if (name.startsWith('Output') && name.length > 6) {
+            final portStr = name.substring(6);
+            final port = int.tryParse(portStr);
+            if (port != null && port > 0) {
+              displayName = name; // 動的信号名をそのまま使用
+            }
+          }
+
           outputSignalMap[i] = SignalData(
-            name: name,
+            name: displayName,
             signalType: SignalType.output,
-            // 名前変更後でも同じポート番号(i+1)の旧汎用名(OutputN)から値を引き継ぐ
             values:
                 prevValueMap[name] ??
                 prevValueMap['Output${i + 1}'] ??
-                List.filled(defaultWaveLength, 0),
+                fallbackValues,
             isVisible:
                 i < _outputVisibility.length ? _outputVisibility[i] : true,
           );
+        }
+      }
+
+      // PLC/EIP 出力信号（位置を保持）: DIO の後ろに拡張キーで並べる
+      if (_plcEipOption != 'None') {
+        for (int i = 0; i < formState.outputCount; i++) {
+          if (i < widget.plcEipOutputControllers.length &&
+              widget.plcEipOutputControllers[i].text.isNotEmpty) {
+            final String prefix = _plcEipOption == 'PLC' ? 'PLO' : 'ESO';
+            final base = '$prefix${i + 1}';
+            final user = widget.plcEipOutputControllers[i].text;
+
+            // PLO{i} または ESO{i} 形式の動的信号名を検出
+            String label;
+            if ((user.startsWith('PLO') || user.startsWith('ESO')) &&
+                user.length > 3) {
+              final portStr = user.substring(3);
+              final port = int.tryParse(portStr);
+              if (port != null && port > 0) {
+                label = user; // 動的信号名をそのまま使用
+              } else {
+                label = user.isNotEmpty ? '$base: $user' : base;
+              }
+            } else {
+              label = user.isNotEmpty ? '$base: $user' : base;
+            }
+
+            final int key = formState.outputCount + i; // DIOの後ろに配置
+            final String fallbackBase = 'Output ${i + 1}';
+            outputSignalMap[key] = SignalData(
+              name: label,
+              signalType: SignalType.output,
+              values:
+                  prevValueMap[label] ??
+                  prevValueMap[user] ??
+                  prevValueMap[base] ??
+                  prevValueMap['Output${i + 1}'] ??
+                  prevValueMap[fallbackBase] ??
+                  List.filled(defaultWaveLength, 0),
+              isVisible:
+                  i < _outputVisibility.length ? _outputVisibility[i] : true,
+            );
+          }
         }
       }
 
@@ -801,6 +959,15 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
           _signalDataList.add(inputSignalMap[i]!);
         }
       }
+      // 拡張入力キー（PLC/EIP）も順序通りに追加
+      if (_plcEipOption != 'None') {
+        for (int i = 0; i < formState.inputCount; i++) {
+          final int key = formState.inputCount + i;
+          if (inputSignalMap.containsKey(key)) {
+            _signalDataList.add(inputSignalMap[key]!);
+          }
+        }
+      }
       for (int i = 0; i < formState.hwPort; i++) {
         if (hwTriggerSignalMap.containsKey(i)) {
           _signalDataList.add(hwTriggerSignalMap[i]!);
@@ -810,6 +977,14 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
         if (outputSignalMap.containsKey(i)) {
           _signalDataList.add(outputSignalMap[i]!);
         }
+      }
+
+      // 拡張出力キー（PLC/EIP）も順序通りに追加
+      final extraOutputKeys =
+          outputSignalMap.keys.where((k) => k >= formState.outputCount).toList()
+            ..sort();
+      for (final k in extraOutputKeys) {
+        _signalDataList.add(outputSignalMap[k]!);
       }
 
       // ---- 旧順序に基づいて並べ替え ----
@@ -869,13 +1044,11 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
     );
 
     // デバッグ出力
-    print('ChartDataGenerator.generateTimingChart の結果:');
-    print('  返却されたデータ行数: ${chartData.length}');
+    debugPrint('ChartDataGenerator.generateTimingChart の結果:');
+    debugPrint('  返却されたデータ行数: ${chartData.length}');
     if (chartData.isNotEmpty) {
-      print('  最初の行のデータ例: ${chartData[0]}');
-      print(
-        '  データにゼロ以外の値が含まれているか: ${chartData.any((row) => row.any((value) => value != 0))}',
-      );
+      debugPrint('  最初の行のデータ例: ${chartData[0]}');
+      debugPrint('  最初の信号名: ${_signalDataList.firstOrNull?.name ?? 'N/A'}');
     }
 
     return chartData;
@@ -904,11 +1077,10 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
       }
     }
 
-    // Output信号のデータを位置順に追加
-    for (int i = 0; i < formState.outputCount; i++) {
-      if (outputSignalMap.containsKey(i)) {
-        chartData.add(List.filled(timeLength, 0));
-      }
+    // Output信号のデータを位置順に追加（拡張キーも含めてソート）
+    final outputKeys = outputSignalMap.keys.toList()..sort();
+    for (int i = 0; i < outputKeys.length; i++) {
+      chartData.add(List.filled(timeLength, 0));
     }
 
     return chartData;
@@ -960,6 +1132,12 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
           idx = widget.inputControllers.indexWhere(
             (c) => c.text == signal.name,
           );
+          if (idx == -1) {
+            // PLC/EIP入力コントローラでも探す
+            idx = widget.plcEipInputControllers.indexWhere(
+              (c) => c.text == signal.name,
+            );
+          }
           ports.add(idx >= 0 ? idx + 1 : 0);
           break;
         case SignalType.hwTrigger:
@@ -969,10 +1147,28 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
           ports.add(idx >= 0 ? idx + 1 : 0);
           break;
         case SignalType.output:
+          // DIO 出力
           idx = widget.outputControllers.indexWhere(
             (c) => c.text == signal.name,
           );
-          ports.add(idx >= 0 ? idx + 1 : 0);
+          if (idx >= 0) {
+            ports.add(idx + 1);
+            break;
+          }
+          // PLC/EIP 出力（ラベル形式 PLO{i} / ESO{i} をポート番号に変換）
+          if (signal.name.startsWith('PLO')) {
+            final String raw = signal.name.substring(3);
+            final numStr = raw.contains(':') ? raw.split(':').first : raw;
+            final port = int.tryParse(numStr) ?? 0;
+            ports.add(port);
+          } else if (signal.name.startsWith('ESO')) {
+            final String raw = signal.name.substring(3);
+            final numStr = raw.contains(':') ? raw.split(':').first : raw;
+            final port = int.tryParse(numStr) ?? 0;
+            ports.add(port);
+          } else {
+            ports.add(0);
+          }
           break;
         default:
           ports.add(0);
@@ -1065,15 +1261,13 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
     _actualChartData = List.from(outChartData);
 
     // デバッグ出力
-    print('チャート更新時のデータ:');
-    print('  信号名: $names');
-    print('  信号タイプ: $types');
-    print('  チャートデータ行数: ${chartData.length}');
+    debugPrint('チャート更新時のデータ:');
+    debugPrint('  信号名: $names');
+    debugPrint('  信号タイプ: $types');
+    debugPrint('  チャートデータ行数: ${chartData.length}');
     if (chartData.isNotEmpty) {
-      print('  最初の行のデータ例: ${chartData[0]}');
-      print(
-        '  データにゼロ以外の値が含まれているか: ${chartData.any((row) => row.any((value) => value != 0))}',
-      );
+      debugPrint('  最初の行のデータ例: ${chartData[0]}');
+      debugPrint('  最初の信号名: ${chartData[0].firstOrNull ?? 'N/A'}');
     }
 
     // チャートを更新 (ID → ラベルへ変換)
@@ -1086,6 +1280,12 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
           idx = widget.inputControllers.indexWhere(
             (c) => c.text == outNames[i],
           );
+          if (idx == -1) {
+            // PLC/EIP入力コントローラでも探す
+            idx = widget.plcEipInputControllers.indexWhere(
+              (c) => c.text == outNames[i],
+            );
+          }
           ports.add(idx >= 0 ? idx + 1 : 0);
           break;
         case SignalType.hwTrigger:
@@ -1377,24 +1577,26 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
   // AppConfigを現在の状態から作成
   AppConfig _createAppConfig() {
     // デバッグ情報を出力
-    print('===== デバッグ情報: エクスポート時のチャートデータ =====');
-    print('保存されたチャートデータの行数: ${_actualChartData.length}');
+    debugPrint('===== デバッグ情報: エクスポート時のチャートデータ =====');
+    debugPrint('保存されたチャートデータの行数: ${_actualChartData.length}');
     if (_actualChartData.isNotEmpty) {
-      print('最初の行のデータ例: ${_actualChartData[0]}');
-      print(
+      debugPrint('最初の行のデータ例: ${_actualChartData[0]}');
+      debugPrint(
         'データにゼロ以外の値が含まれているか: ${_actualChartData.any((row) => row.any((value) => value != 0))}',
       );
     }
 
     // ChartDataGeneratorの実装を確認
-    print('FormState情報:');
-    print('  formState.inputCount: ${formState.inputCount}');
-    print('  formState.outputCount: ${formState.outputCount}');
-    print('  formState.hwPort: ${formState.hwPort}');
-    print('  formState.camera: ${formState.camera}');
-    print('  テーブルデータ行数: ${_tableData.length}');
+    debugPrint('FormState情報:');
+    debugPrint('  formState.inputCount: ${formState.inputCount}');
+    debugPrint('  formState.outputCount: ${formState.outputCount}');
+    debugPrint('  formState.hwPort: ${formState.hwPort}');
+    debugPrint('  formState.camera: ${formState.camera}');
+    debugPrint('  テーブルデータ行数: ${_tableData.length}');
     if (_tableData.isNotEmpty) {
-      print('  最初の行のモード: ${_tableData[0].map((c) => c.toString()).join(', ')}');
+      debugPrint(
+        '  最初の行のモード: ${_tableData[0].map((c) => c.toString()).join(', ')}',
+      );
     }
 
     // 更新されたSignalDataリストを作成
@@ -1412,7 +1614,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
           values = List.filled(32, 0);
         }
 
-        print('入力信号 $i の値: $values');
+        debugPrint('入力信号 $i の値: $values');
 
         updatedSignals.add(
           SignalData(
@@ -1439,7 +1641,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
           values = List.filled(32, 0);
         }
 
-        print('出力信号 $i の値: $values');
+        debugPrint('出力信号 $i の値: $values');
 
         updatedSignals.add(
           SignalData(
@@ -1466,7 +1668,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
           values = List.filled(32, 0);
         }
 
-        print('HWトリガー信号 $i の値: $values');
+        debugPrint('HWトリガー信号 $i の値: $values');
 
         updatedSignals.add(
           SignalData(
@@ -1484,11 +1686,11 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
       }
     }
 
-    print('作成された信号の数: ${updatedSignals.length}');
+    debugPrint('作成された信号の数: ${updatedSignals.length}');
     if (updatedSignals.isNotEmpty) {
-      print('最初の信号の値: ${updatedSignals[0].values}');
+      debugPrint('最初の信号の値: ${updatedSignals[0].values}');
     }
-    print('=============================================');
+    debugPrint('=============================================');
 
     return AppConfig.fromCurrentState(
       formState: formState,
@@ -1658,7 +1860,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
     // _actualChartDataがあれば、それを優先して使用
     if (_actualChartData.isNotEmpty &&
         _actualChartData.any((row) => row.any((val) => val != 0))) {
-      print("getSignalDataList: _actualChartDataから非ゼロデータを検出");
+      debugPrint("getSignalDataList: _actualChartDataから非ゼロデータを検出");
 
       // 位置関係を保持してSignalDataを構築
       List<SignalData> result = [];
@@ -1724,7 +1926,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
                         : true,
               ),
             );
-            print(
+            debugPrint(
               "HWTrigger[$i] の値: ${_actualChartData[dataIndex].take(10)}..., 非ゼロ値: ${_actualChartData[dataIndex].any((v) => v != 0)}",
             );
             dataIndex++;
@@ -1745,7 +1947,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
                     i < _outputVisibility.length ? _outputVisibility[i] : true,
               ),
             );
-            print(
+            debugPrint(
               "Output[$i] の値: ${_actualChartData[dataIndex].take(10)}..., 非ゼロ値: ${_actualChartData[dataIndex].any((v) => v != 0)}",
             );
             dataIndex++;
@@ -1753,15 +1955,50 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
         }
       }
 
+      if (_plcEipOption != 'None') {
+        for (int i = 0; i < formState.outputCount; i++) {
+          if (i >= widget.plcEipOutputControllers.length) continue;
+          final text = widget.plcEipOutputControllers[i].text;
+          if (text.isEmpty) continue;
+
+          final String prefix = _plcEipOption == 'PLC' ? 'PLO' : 'ESO';
+          final String name = '$prefix${i + 1}: $text';
+
+          if (dataIndex < _actualChartData.length) {
+            result.add(
+              SignalData(
+                name: name,
+                signalType: SignalType.output,
+                values: List.from(_actualChartData[dataIndex]),
+                isVisible:
+                    i < _outputVisibility.length ? _outputVisibility[i] : true,
+              ),
+            );
+            dataIndex++;
+          } else {
+            // 既存データが無い場合でも 0 波形で追加
+            result.add(
+              SignalData(
+                name: name,
+                signalType: SignalType.output,
+                values: List.filled(32, 0),
+                isVisible:
+                    i < _outputVisibility.length ? _outputVisibility[i] : true,
+              ),
+            );
+          }
+        }
+      }
+
       if (result.isNotEmpty) {
-        print("getSignalDataList: 構築したSignalDataList: ${result.length}個");
+        debugPrint("getSignalDataList: 構築したSignalDataList: ${result.length}個");
         return result;
       }
     }
 
     // データがない場合は既存のリストをコピーして返す
     _updateSignalDataList();
-    print(
+    debugPrint(
       "getSignalDataList: 既存のSignalDataListを使用: ${_signalDataList.length}個",
     );
     return List.from(_signalDataList);
@@ -1851,7 +2088,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
         existingChartData.any((row) => row.any((val) => val != 0));
 
     if (hasExistingNonZeroData) {
-      print("既存の非ゼロチャートデータが見つかりました - データを保持します");
+      debugPrint("既存の非ゼロチャートデータが見つかりました - データを保持します");
     }
 
     // 新しいチャートデータを生成
@@ -1860,7 +2097,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
     if (hasExistingNonZeroData &&
         existingChartData.length == newChartData.length) {
       // 既存データと新しいデータの長さが同じ場合、非ゼロ値を保持する
-      print("既存のチャートデータと新しいチャートデータをマージします");
+      debugPrint("既存のチャートデータと新しいチャートデータをマージします");
       List<List<int>> mergedData = [];
 
       for (int i = 0; i < existingChartData.length; i++) {
@@ -1928,6 +2165,10 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
       Map<String, int> existingInputMap = {};
       Map<String, int> existingOutputMap = {};
       Map<String, int> existingHwTriggerMap = {};
+      // PLC/EIP 側に既に存在する名前は DIO へは書き込まないため、先に収集
+      final Map<String, int> existingPlcMap = {};
+      // PLC/EIP 入力側に既に存在する名前は DIO へは書き込まないため、先に収集
+      final Map<String, int> existingPlcInputMap = {};
 
       // 既存の値とその位置を記録
       for (int i = 0; i < widget.inputControllers.length; i++) {
@@ -1945,11 +2186,22 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
           existingHwTriggerMap[widget.hwTriggerControllers[i].text] = i;
         }
       }
+      for (int i = 0; i < widget.plcEipOutputControllers.length; i++) {
+        if (widget.plcEipOutputControllers[i].text.isNotEmpty) {
+          existingPlcMap[widget.plcEipOutputControllers[i].text] = i;
+        }
+      }
+      for (int i = 0; i < widget.plcEipInputControllers.length; i++) {
+        if (widget.plcEipInputControllers[i].text.isNotEmpty) {
+          existingPlcInputMap[widget.plcEipInputControllers[i].text] = i;
+        }
+      }
 
       // 全てのコントローラーをクリア
       for (var c in widget.inputControllers) c.text = '';
       for (var c in widget.outputControllers) c.text = '';
       for (var c in widget.hwTriggerControllers) c.text = '';
+      for (var c in widget.plcEipInputControllers) c.text = '';
 
       for (int i = 0; i < chartData.length; i++) {
         final name = i < signalNames.length ? signalNames[i] : 'Signal $i';
@@ -1980,9 +2232,20 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
               }
             }
           }
-          if (targetIndex >= 0 &&
-              targetIndex < widget.inputControllers.length) {
-            widget.inputControllers[targetIndex].text = name;
+          // 注意: PLC/EIP 入力側に既に存在する名前は DIO へは書き込まない
+          if (existingPlcInputMap.containsKey(name)) {
+            // PLC/EIP入力側に書き込む
+            final plcTargetIndex = existingPlcInputMap[name]!;
+            if (plcTargetIndex >= 0 &&
+                plcTargetIndex < widget.plcEipInputControllers.length) {
+              widget.plcEipInputControllers[plcTargetIndex].text = name;
+            }
+          } else {
+            // DIO入力側に書き込む
+            if (targetIndex >= 0 &&
+                targetIndex < widget.inputControllers.length) {
+              widget.inputControllers[targetIndex].text = name;
+            }
           }
         } else if (type == SignalType.output) {
           // 1) 既存の位置（INI の Port.No 反映済み）を最優先
@@ -2068,9 +2331,12 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
           }
 
           // 4) 決定した欄に書き込む
-          if (targetIndex >= 0 &&
-              targetIndex < widget.outputControllers.length) {
-            widget.outputControllers[targetIndex].text = name;
+          // 注意: PLC/EIP 側に既に存在する名前は DIO へは書き込まない
+          if (!existingPlcMap.containsKey(name)) {
+            if (targetIndex >= 0 &&
+                targetIndex < widget.outputControllers.length) {
+              widget.outputControllers[targetIndex].text = name;
+            }
           }
         } else if (type == SignalType.hwTrigger) {
           int targetIndex = existingHwTriggerMap[name] ?? -1;
@@ -2317,14 +2583,17 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
     // セクションヘッダーのスタイルを定義
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final Color headerBg =
-        isDark
-            ? Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3)
-            : Theme.of(context).colorScheme.surfaceVariant;
+        Theme.of(context).colorScheme.surfaceContainerHighest;
+    final Color background = headerBg.withAlpha((0.3 * 255).round());
     final Color borderColor =
         isDark ? Colors.grey.shade700 : Colors.grey.shade300;
+    // final Color tableBackground = Theme.of(context)
+    //     .colorScheme
+    //     .surfaceContainerHighest
+    //     .withAlpha((0.3 * 255).round());
 
     final headerDecoration = BoxDecoration(
-      color: headerBg,
+      color: background,
       border: Border(bottom: BorderSide(color: borderColor, width: 1)),
       boxShadow: [
         BoxShadow(
@@ -2335,14 +2604,19 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
       ],
     );
 
-    // 非アクティブなヘッダー用のスタイル
     final inactiveHeaderDecoration = BoxDecoration(
-      color: headerBg.withOpacity(0.2),
+      color: Color.alphaBlend(
+        Colors.black.withAlpha((0.2 * 255).round()),
+        background,
+      ),
       border: Border(bottom: BorderSide(color: borderColor, width: 1)),
     );
 
     const headerPadding = EdgeInsets.symmetric(horizontal: 16, vertical: 10);
     const headerHeight = 48.0; // ヘッダーの高さ
+
+    // 出力セクションのタブコントローラを必要に応じて準備
+    _ensureOutputTabController();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2468,6 +2742,18 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
+                  if (_plcEipOption != 'None') ...[
+                    ElevatedButton.icon(
+                      onPressed:
+                          () => _transferOutputControllers(
+                            widget.outputControllers,
+                            widget.plcEipOutputControllers,
+                          ),
+                      icon: const Icon(Icons.swap_horiz),
+                      label: const Text('DIO ↔ PLC/EIP'),
+                    ),
+                    const SizedBox(width: 16),
+                  ],
                   // インポート/エクスポートボタンは条件付きで表示
                   if (widget.showImportExportButtons) ...[
                     ElevatedButton.icon(
@@ -2552,11 +2838,32 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
                                       fontSize: 16,
                                     ),
                                   ),
+                                  const SizedBox(width: 12),
+                                  if (_plcEipOption != 'None' &&
+                                      _inputTabController != null)
+                                    Expanded(
+                                      child: Align(
+                                        alignment: Alignment.centerRight,
+                                        child: TabBar(
+                                          controller: _inputTabController,
+                                          isScrollable: true,
+                                          tabAlignment: TabAlignment.center,
+                                          labelPadding:
+                                              const EdgeInsets.symmetric(
+                                                horizontal: 8.0,
+                                              ),
+                                          tabs: const [
+                                            Tab(text: 'DIO'),
+                                            Tab(text: 'PLC/EIP'),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
                                 ],
                               ),
                             ),
                           ),
-                          // Output Signals ヘッダー
+                          // Output Signals ヘッダー（タブをラベル内に配置）
                           Expanded(
                             child: Container(
                               decoration: headerDecoration,
@@ -2572,6 +2879,27 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
                                       fontSize: 16,
                                     ),
                                   ),
+                                  const SizedBox(width: 12),
+                                  if (_plcEipOption != 'None' &&
+                                      _outputTabController != null)
+                                    Expanded(
+                                      child: Align(
+                                        alignment: Alignment.centerRight,
+                                        child: TabBar(
+                                          controller: _outputTabController,
+                                          isScrollable: true,
+                                          tabAlignment: TabAlignment.center,
+                                          labelPadding:
+                                              const EdgeInsets.symmetric(
+                                                horizontal: 8.0,
+                                              ),
+                                          tabs: const [
+                                            Tab(text: 'DIO'),
+                                            Tab(text: 'PLC/EIP'),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
                                 ],
                               ),
                             ),
@@ -2622,16 +2950,27 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
                                 padding: const EdgeInsets.only(right: 8.0),
                                 child: SingleChildScrollView(
                                   padding: const EdgeInsets.only(bottom: 640.0),
-                                  child: InputSection(
-                                    controllers: widget.inputControllers,
-                                    count: formState.inputCount,
-                                    visibilityList: _inputVisibility,
-                                    onVisibilityChanged:
-                                        (index) => _toggleSignalVisibility(
-                                          index,
-                                          SignalType.input,
-                                        ),
-                                    triggerOption: formState.triggerOption,
+                                  child: Builder(
+                                    builder: (_) {
+                                      final bool useTabs =
+                                          _plcEipOption != 'None';
+                                      final bool showDio =
+                                          !useTabs || _inputTabIndex == 0;
+                                      return InputSection(
+                                        controllers:
+                                            showDio
+                                                ? widget.inputControllers
+                                                : widget.plcEipInputControllers,
+                                        count: formState.inputCount,
+                                        visibilityList: _inputVisibility,
+                                        onVisibilityChanged:
+                                            (index) => _toggleSignalVisibility(
+                                              index,
+                                              SignalType.input,
+                                            ),
+                                        triggerOption: formState.triggerOption,
+                                      );
+                                    },
                                   ),
                                 ),
                               ),
@@ -2643,15 +2982,27 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
                                 padding: const EdgeInsets.only(right: 8.0),
                                 child: SingleChildScrollView(
                                   padding: const EdgeInsets.only(bottom: 640.0),
-                                  child: OutputSection(
-                                    controllers: widget.outputControllers,
-                                    count: formState.outputCount,
-                                    visibilityList: _outputVisibility,
-                                    onVisibilityChanged:
-                                        (index) => _toggleSignalVisibility(
-                                          index,
-                                          SignalType.output,
-                                        ),
+                                  child: Builder(
+                                    builder: (_) {
+                                      final bool useTabs =
+                                          _plcEipOption != 'None';
+                                      final bool showDio =
+                                          !useTabs || _outputTabIndex == 0;
+                                      return OutputSection(
+                                        controllers:
+                                            showDio
+                                                ? widget.outputControllers
+                                                : widget
+                                                    .plcEipOutputControllers,
+                                        count: formState.outputCount,
+                                        visibilityList: _outputVisibility,
+                                        onVisibilityChanged:
+                                            (index) => _toggleSignalVisibility(
+                                              index,
+                                              SignalType.output,
+                                            ),
+                                      );
+                                    },
                                   ),
                                 ),
                               ),
@@ -2816,10 +3167,9 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
           // ダークモードでも Camera Configuration Table と同じ外観に合わせる
           color:
               (Theme.of(context).brightness == Brightness.dark)
-                  ? Theme.of(
-                    context,
-                  ).colorScheme.surfaceVariant.withOpacity(0.3)
-                  : Theme.of(context).colorScheme.surfaceVariant,
+                  ? Theme.of(context).colorScheme.surfaceContainerHighest
+                      .withAlpha((0.3 * 255).round())
+                  : Theme.of(context).colorScheme.surfaceContainerHighest,
         ),
         children: [
           const TableCell(
@@ -2855,7 +3205,12 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
               child: InkWell(
                 onTap: () => _changeRowMode(row),
                 child: Container(
-                  color: rowModeColors[_rowModes[row]]?.withOpacity(0.3),
+                  color:
+                      rowModeColors[_rowModes[row]]?.withAlpha(
+                        (0.3 * 255).round(),
+                      ) ??
+                      Theme.of(context).colorScheme.surfaceContainerHighest
+                          .withAlpha((0.3 * 255).round()),
                   padding: const EdgeInsets.all(8.0),
                   child: Center(
                     child: Column(
@@ -2915,7 +3270,11 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
     return Container(
       height: kMinInteractiveDimension,
       decoration: BoxDecoration(
-        color: cellModeColors[_tableData[row][col]]?.withOpacity(0.2),
+        color:
+            cellModeColors[_tableData[row][col]]?.withAlpha(
+              (0.3 * 255).round(),
+            ) ??
+            Colors.transparent,
         borderRadius: BorderRadius.circular(4),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 4.0), // パディングを縮小
@@ -2985,7 +3344,7 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
     final Color? bgColor = cellModeColors[_columnModes.isNotEmpty
             ? _columnModes[col]
             : CellMode.none]
-        ?.withOpacity(0.3);
+        ?.withAlpha((0.3 * 255).round());
 
     // 許可するモード（mode4, mode5 を除外）
     final List<CellMode> allowedModes =
@@ -3045,5 +3404,39 @@ class FormTabState extends State<FormTab> with AutomaticKeepAliveClientMixin {
         ),
       ),
     );
+  }
+
+  SignalType _inferSignalType(TimingFormState fs, int index) {
+    if (fs.triggerOption != 'Code Trigger') return SignalType.input;
+    if (fs.inputCount >= 32) {
+      if (index >= 1 && index <= 8) return SignalType.control;
+      if (index >= 9 && index <= 14) return SignalType.group;
+      if (index >= 15 && index <= 20) return SignalType.task;
+    } else if (fs.inputCount == 16) {
+      if (index >= 1 && index <= 4) return SignalType.control;
+      if (index >= 5 && index <= 7) return SignalType.group;
+      if (index >= 8 && index <= 13) return SignalType.task;
+    }
+    return SignalType.input;
+  }
+
+  bool _inferVisibility(TimingFormState fs, int index) {
+    if (fs.triggerOption != 'Code Trigger') return true;
+    if (fs.inputCount >= 32) {
+      return index == 0 || index > 20;
+    }
+    if (fs.inputCount == 16) {
+      return index == 0 || index > 13;
+    }
+    return true;
+  }
+
+  String get plcOption => _plcEipOption;
+
+  String formatPlcLabel(int index, String user) {
+    final prefix = _plcEipOption == 'PLC' ? 'PLO' : 'ESO';
+    return user.isNotEmpty
+        ? '$prefix${index + 1}: $user'
+        : '$prefix${index + 1}';
   }
 }
