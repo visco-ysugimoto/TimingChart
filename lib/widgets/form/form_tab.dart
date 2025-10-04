@@ -2231,10 +2231,18 @@ class FormTabState extends State<FormTab>
       }
 
       // 全てのコントローラーをクリア
-      for (var c in widget.inputControllers) c.text = '';
-      for (var c in widget.outputControllers) c.text = '';
-      for (var c in widget.hwTriggerControllers) c.text = '';
-      for (var c in widget.plcEipInputControllers) c.text = '';
+      for (var c in widget.inputControllers) {
+        c.text = '';
+      }
+      for (var c in widget.outputControllers) {
+        c.text = '';
+      }
+      for (var c in widget.hwTriggerControllers) {
+        c.text = '';
+      }
+      for (var c in widget.plcEipInputControllers) {
+        c.text = '';
+      }
 
       for (int i = 0; i < chartData.length; i++) {
         final name = i < signalNames.length ? signalNames[i] : 'Signal $i';
@@ -2701,6 +2709,8 @@ class FormTabState extends State<FormTab>
                         setState(() {
                           _plcEipOption = newValue;
                         });
+                        _ensureOutputTabController();
+                        _ensureInputTabController();
                       },
                       label: 'PLC / EIP',
                     ),
@@ -2793,12 +2803,12 @@ class FormTabState extends State<FormTab>
                             widget.plcEipOutputControllers,
                           ),
                       icon: const Icon(Icons.swap_horiz),
-                      label: const Text('DIO ↔ PLC/EIP'),
+                      label: const Text('DO ↔ PLO/ESO'),
                     ),
                     const SizedBox(width: 16),
                   ],
                   // インポート/エクスポートボタンは条件付きで表示
-                  if (widget.showImportExportButtons) ...[
+                  /*if (widget.showImportExportButtons) ...[
                     ElevatedButton.icon(
                       onPressed: _importConfig,
                       icon: const Icon(Icons.upload_file),
@@ -2819,7 +2829,7 @@ class FormTabState extends State<FormTab>
                       ),
                     ),
                     const SizedBox(width: 16),
-                  ],
+                  ],*/
                   ElevatedButton(
                     onPressed: () {
                       // テーブルデータをクリア
@@ -2896,8 +2906,8 @@ class FormTabState extends State<FormTab>
                                                 horizontal: 8.0,
                                               ),
                                           tabs: const [
-                                            Tab(text: 'DIO'),
-                                            Tab(text: 'PLC/EIP'),
+                                            Tab(text: 'DI'),
+                                            Tab(text: 'PLI/ESI'),
                                           ],
                                         ),
                                       ),
@@ -2937,8 +2947,8 @@ class FormTabState extends State<FormTab>
                                                 horizontal: 8.0,
                                               ),
                                           tabs: const [
-                                            Tab(text: 'DIO'),
-                                            Tab(text: 'PLC/EIP'),
+                                            Tab(text: 'DO'),
+                                            Tab(text: 'PLO/ESO'),
                                           ],
                                         ),
                                       ),
