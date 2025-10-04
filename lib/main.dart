@@ -466,6 +466,79 @@ class _MyHomePageState extends State<MyHomePage>
   List<TextEditingController> get _hwTriggerControllers =>
       _controllersNotifier.hwTriggerControllers;
 
+  Future<void> _transferInputs(
+    List<TextEditingController> dioControllers,
+    List<TextEditingController> plcControllers,
+  ) async {
+    final form = _formTabKey.currentState;
+    final chart = _timingChartKey.currentState;
+
+    final currentNames =
+        chart?.getSignalIdNames() ?? _chartSignals.map((s) => s.name).toList();
+    final currentValues =
+        chart != null
+            ? chart.getChartData()
+            : _chartSignals.map((s) => s.values).toList();
+
+    final nameToValues = <String, List<int>>{};
+    for (int i = 0; i < currentNames.length; i++) {
+      nameToValues[currentNames[i]] = List<int>.from(currentValues[i]);
+    }
+
+    final int len = math.min(dioControllers.length, plcControllers.length);
+    for (int i = 0; i < len; i++) {
+      final oldDioName = dioControllers[i].text.trim();
+      final oldPlcName = plcControllers[i].text.trim();
+
+      final dioValues = oldDioName.isNotEmpty ? nameToValues[oldDioName] : null;
+      final plcValues = oldPlcName.isNotEmpty ? nameToValues[oldPlcName] : null;
+
+      final tmp = dioControllers[i].text;
+      dioControllers[i].text = plcControllers[i].text;
+      plcControllers[i].text = tmp;
+
+      final newDioName = dioControllers[i].text.trim();
+      final newPlcName = plcControllers[i].text.trim();
+
+      final defaultPlcName = _defaultPlcInputName(form?.plcOption, i);
+      final defaultDioName = 'Input${i + 1}';
+
+      if (dioValues != null) {
+        final targetName = newPlcName.isNotEmpty ? newPlcName : defaultPlcName;
+        if (targetName.isNotEmpty) {
+          nameToValues[targetName] = dioValues;
+        }
+      }
+
+      if (plcValues != null) {
+        final targetName = newDioName.isNotEmpty ? newDioName : defaultDioName;
+        if (targetName.isNotEmpty) {
+          nameToValues[targetName] = plcValues;
+        }
+      }
+    }
+
+    final updatedSignals =
+        _chartSignals.map((signal) {
+          final stored = nameToValues[signal.name];
+          if (stored != null) {
+            return signal.copyWith(values: stored);
+          }
+          return signal;
+        }).toList();
+
+    setState(() {
+      _chartSignals = updatedSignals;
+    });
+
+    form?.registerExternalSignalValues(nameToValues);
+
+    if (chart != null) {
+      chart.updateSignalNames(updatedSignals.map((e) => e.name).toList());
+      chart.updateSignals(updatedSignals.map((e) => e.values).toList());
+    }
+  }
+
   Future<void> _transferOutputs(
     List<TextEditingController> dioControllers,
     List<TextEditingController> plcControllers,
@@ -523,10 +596,22 @@ class _MyHomePageState extends State<MyHomePage>
       _chartSignals = updatedSignals;
     });
 
+    form?.registerExternalSignalValues(nameToValues);
+
     if (chart != null) {
       chart.updateSignalNames(updatedSignals.map((e) => e.name).toList());
       chart.updateSignals(updatedSignals.map((e) => e.values).toList());
     }
+  }
+
+  String _defaultPlcInputName(String? option, int index) {
+    if (option == 'PLC') {
+      return 'PLI${index + 1}';
+    }
+    if (option == 'EIP') {
+      return 'ESI${index + 1}';
+    }
+    return '';
   }
 
   @override
@@ -2548,6 +2633,7 @@ class _MyHomePageState extends State<MyHomePage>
                     _scheduleFormUpdate((n) => n.update(camera: newValue));
                   }
                 },
+                onTransferInputs: _transferInputs,
                 onTransferOutputs: _transferOutputs,
                 onUpdateChart: (
                   signalNames,

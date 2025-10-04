@@ -105,7 +105,13 @@ class FormTab extends StatefulWidget {
   onUpdateChart;
   final VoidCallback onClearFields;
   final bool showImportExportButtons; // インポート/エクスポートボタンの表示制御フラグ
-  final void Function(
+  final Future<void> Function(
+    List<TextEditingController> src,
+    List<TextEditingController> dst,
+  )
+  onTransferInputs;
+
+  final Future<void> Function(
     List<TextEditingController> src,
     List<TextEditingController> dst,
   )
@@ -126,6 +132,7 @@ class FormTab extends StatefulWidget {
     required this.onCameraChanged,
     required this.onUpdateChart,
     required this.onClearFields,
+    required this.onTransferInputs,
     required this.onTransferOutputs,
     this.showImportExportButtons = false, // デフォルトは非表示
   });
@@ -204,6 +211,7 @@ class FormTabState extends State<FormTab>
 
   // PLC / EIP オプション
   String _plcEipOption = 'None';
+  Map<String, List<int>> _externalSignalValues = {};
 
   // 出力欄のサブタブ（DIO / PLC-EIP）
   TabController? _outputTabController;
@@ -267,11 +275,23 @@ class FormTabState extends State<FormTab>
     }
   }
 
-  void _transferOutputControllers(
+  Future<void> _transferInputControllers(
     List<TextEditingController> source,
     List<TextEditingController> destination,
-  ) {
-    widget.onTransferOutputs(source, destination);
+  ) async {
+    await widget.onTransferInputs(source, destination);
+    if (!mounted) return;
+    setState(() {
+      _updateSignalDataList();
+    });
+  }
+
+  Future<void> _transferOutputControllers(
+    List<TextEditingController> source,
+    List<TextEditingController> destination,
+  ) async {
+    await widget.onTransferOutputs(source, destination);
+    if (!mounted) return;
     setState(() {
       _updateSignalDataList();
     });
@@ -279,6 +299,13 @@ class FormTabState extends State<FormTab>
 
   void refreshSignalDataList() {
     _updateSignalDataList();
+  }
+
+  void registerExternalSignalValues(Map<String, List<int>> values) {
+    _externalSignalValues = {
+      for (final entry in values.entries)
+        entry.key: List<int>.from(entry.value),
+    };
   }
 
   @override
@@ -768,6 +795,12 @@ class FormTabState extends State<FormTab>
       final Map<String, List<int>> prevValueMap = {
         for (final sig in _signalDataList) sig.name: List<int>.from(sig.values),
       };
+      if (_externalSignalValues.isNotEmpty) {
+        for (final entry in _externalSignalValues.entries) {
+          prevValueMap[entry.key] = List<int>.from(entry.value);
+        }
+        _externalSignalValues.clear();
+      }
       final int defaultWaveLength =
           prevValueMap.isNotEmpty ? prevValueMap.values.first.length : 32;
 
@@ -2743,6 +2776,16 @@ class FormTabState extends State<FormTab>
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   if (_plcEipOption != 'None') ...[
+                    ElevatedButton.icon(
+                      onPressed:
+                          () => _transferInputControllers(
+                            widget.inputControllers,
+                            widget.plcEipInputControllers,
+                          ),
+                      icon: const Icon(Icons.swap_horiz),
+                      label: const Text('DI ↔ PLI/ESI'),
+                    ),
+                    const SizedBox(width: 12),
                     ElevatedButton.icon(
                       onPressed:
                           () => _transferOutputControllers(
