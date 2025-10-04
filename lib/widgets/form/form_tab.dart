@@ -26,6 +26,7 @@ import '../../models/form/form_state.dart';
 import '../../models/chart/chart_data_generator.dart'; // 新しいジェネレータをインポート
 import '../../models/chart/signal_type.dart'; // SignalTypeのインポートを追加
 import '../../models/chart/signal_data.dart'; // SignalDataクラスをインポート
+import '../../models/chart/io_channel_source.dart'; // IoChannelSourceのインポートを追加
 import '../../models/backup/app_config.dart'; // AppConfigをインポート
 import '../../utils/file_utils.dart'; // FileUtilsをインポート
 import 'input_section.dart';
@@ -100,6 +101,7 @@ class FormTab extends StatefulWidget {
     List<List<int>>,
     List<SignalType>,
     List<int>,
+    List<IoChannelSource>,
     bool,
   )
   onUpdateChart;
@@ -1210,6 +1212,50 @@ class FormTabState extends State<FormTab>
     return ports;
   }
 
+  // SignalDataリストからIoChannelSourceリストを生成
+  List<IoChannelSource> generateIoChannelSources() {
+    List<IoChannelSource> sources = [];
+
+    for (var signal in _signalDataList) {
+      if (!signal.isVisible) continue;
+
+      switch (signal.signalType) {
+        case SignalType.input:
+          // DIO入力かPLC/EIP入力かを判定
+          final isPlcEipInput = widget.plcEipInputControllers.any(
+            (c) => c.text == signal.name,
+          );
+          if (isPlcEipInput) {
+            sources.add(_plcEipOption == 'PLC' 
+              ? IoChannelSource.plc 
+              : IoChannelSource.eip);
+          } else {
+            sources.add(IoChannelSource.dio);
+          }
+          break;
+        case SignalType.hwTrigger:
+          sources.add(IoChannelSource.dio);
+          break;
+        case SignalType.output:
+          // DIO出力かPLC/EIP出力かを判定
+          final isPlcEipOutput = widget.plcEipOutputControllers.any(
+            (c) => c.text == signal.name,
+          );
+          if (isPlcEipOutput) {
+            sources.add(_plcEipOption == 'PLC' 
+              ? IoChannelSource.plc 
+              : IoChannelSource.eip);
+          } else {
+            sources.add(IoChannelSource.dio);
+          }
+          break;
+        default:
+          sources.add(IoChannelSource.unknown);
+      }
+    }
+    return sources;
+  }
+
   // 更新ボタンクリック時の処理
   Future<void> _onUpdateChart() async {
     _updateSignalDataList();
@@ -1338,7 +1384,7 @@ class FormTabState extends State<FormTab>
       }
     }
 
-    widget.onUpdateChart(outNames, outChartData, outTypes, ports, false);
+    widget.onUpdateChart(outNames, outChartData, outTypes, ports, generateIoChannelSources(), false);
 
     // --- 追加: 完了通知 ---
     ScaffoldMessenger.of(
@@ -1599,7 +1645,7 @@ class FormTabState extends State<FormTab>
       }
     }
 
-    widget.onUpdateChart(outNames, outValues, outTypes, outPorts, true);
+    widget.onUpdateChart(outNames, outValues, outTypes, outPorts, generateIoChannelSources(), true);
 
     // --- 追加: ユーザーへ完了通知 ---
     ScaffoldMessenger.of(
@@ -2170,6 +2216,7 @@ class FormTabState extends State<FormTab>
       generateFilteredChartData(),
       generateSignalTypes(),
       generatePortNumbers(),
+      generateIoChannelSources(),
       false,
     );
   }

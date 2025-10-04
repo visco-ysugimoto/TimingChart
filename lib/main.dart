@@ -2640,6 +2640,7 @@ class _MyHomePageState extends State<MyHomePage>
                   chartData,
                   signalTypes,
                   portNumbers,
+                  ioSources,
                   bool overrideFlag,
                 ) {
                   setState(() {
@@ -2724,7 +2725,7 @@ class _MyHomePageState extends State<MyHomePage>
                     _chartSignals = newChartSignals;
 
                     var effectiveSources = List<IoChannelSource>.from(
-                      newChartSources,
+                      ioSources, // フォームから渡されたioSourcesを使用
                     );
 
                     // === 追加: 既存の並び順を保持 (overrideFlag が false の場合のみ) ===
