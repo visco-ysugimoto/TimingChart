@@ -20,10 +20,10 @@ class SettingsWindow extends StatefulWidget {
   final ValueChanged<bool> onShowIoNumbersChanged;
 
   const SettingsWindow({
-    Key? key,
+    super.key,
     required this.showIoNumbers,
     required this.onShowIoNumbersChanged,
-  }) : super(key: key);
+  });
 
   @override
   State<SettingsWindow> createState() => _SettingsWindowState();
@@ -32,8 +32,6 @@ class SettingsWindow extends StatefulWidget {
 class _SettingsWindowState extends State<SettingsWindow> {
   late bool _showIoNumbers;
   int _selectedIndex = 0;
-
-  final _navDestinations = const [];
 
   @override
   void initState() {
