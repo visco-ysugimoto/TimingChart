@@ -22,6 +22,7 @@ FormTab（フォーム入力タブ）
 */
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:collection/collection.dart';
 import '../../models/form/form_state.dart';
 import '../../models/chart/chart_data_generator.dart'; // 新しいジェネレータをインポート
 import '../../models/chart/signal_type.dart'; // SignalTypeのインポートを追加
@@ -183,6 +184,7 @@ class FormTabState extends State<FormTab>
 
   // SignalDataのリストを保持
   List<SignalData> _signalDataList = [];
+  Map<String, List<int>> _portValues = {};
 
   // 実際のチャートデータを保持（更新時に保存）
   List<List<int>> _actualChartData = [];
@@ -790,10 +792,14 @@ class FormTabState extends State<FormTab>
     widget.onClearFields();
   }
 
-  // SignalDataリストを更新（位置情報を保持）
+  // SignalDataリストを更新し、位置情報を保持する
   void _updateSignalDataList() {
+    final Map<String, List<int>> prevPortValues = {
+      for (final entry in _portValues.entries)
+        entry.key: List<int>.from(entry.value),
+    };
+
     setState(() {
-      // === 追加: 既存の値をマッピング ===
       final Map<String, List<int>> prevValueMap = {
         for (final sig in _signalDataList) sig.name: List<int>.from(sig.values),
       };
@@ -806,18 +812,89 @@ class FormTabState extends State<FormTab>
       final int defaultWaveLength =
           prevValueMap.isNotEmpty ? prevValueMap.values.first.length : 32;
 
-      // 既存順序を保持するためのリスト
       final List<String> prevOrder =
           _signalDataList.map((s) => s.name).toList();
 
       _signalDataList = [];
 
-      // 各タイプごとに位置情報付きでSignalDataを作成
-      Map<int, SignalData> inputSignalMap = {};
-      Map<int, SignalData> outputSignalMap = {};
-      Map<int, SignalData> hwTriggerSignalMap = {};
+      final Map<int, SignalData> inputSignalMap = {};
+      final Map<int, SignalData> outputSignalMap = {};
+      final Map<int, SignalData> hwTriggerSignalMap = {};
+      final Map<String, List<int>> newPortValues = {};
 
-      // 入力信号（位置を保持）- DIO入力
+      List<int> resolveValues({
+        required String primaryKey,
+        String? alternateKey,
+        required String name,
+        List<String> additionalNames = const [],
+      }) {
+        final List<int>? fromPort =
+            prevPortValues[primaryKey] ??
+            (alternateKey != null ? prevPortValues[alternateKey] : null);
+        if (fromPort != null) {
+          return List<int>.from(fromPort);
+        }
+
+        final List<int>? direct = prevValueMap[name];
+        if (direct != null) {
+          return List<int>.from(direct);
+        }
+
+        for (final fallbackName in additionalNames) {
+          if (fallbackName.isEmpty) continue;
+          final List<int>? fallback = prevValueMap[fallbackName];
+          if (fallback != null) {
+            return List<int>.from(fallback);
+          }
+        }
+
+        final String normalized = _normalizeSignalName(name);
+        final MapEntry<String, List<int>>? normalizedEntry = prevValueMap
+            .entries
+            .firstWhereOrNull(
+              (entry) => _normalizeSignalName(entry.key) == normalized,
+            );
+        if (normalizedEntry != null) {
+          return List<int>.from(normalizedEntry.value);
+        }
+
+        for (final fallbackName in additionalNames) {
+          if (fallbackName.isEmpty) continue;
+          final String fallbackNormalized = _normalizeSignalName(fallbackName);
+          final MapEntry<String, List<int>>? fallbackEntry = prevValueMap
+              .entries
+              .firstWhereOrNull(
+                (entry) =>
+                    _normalizeSignalName(entry.key) == fallbackNormalized,
+              );
+          if (fallbackEntry != null) {
+            return List<int>.from(fallbackEntry.value);
+          }
+        }
+
+        return List.filled(defaultWaveLength, 0);
+      }
+
+      String dioInputKey(int index) => 'dio-input:$index';
+      String plcInputKey(int index) => 'plc-input:$index';
+      String hwKey(int index) => 'hw:$index';
+      String dioOutputKey(int index) => 'dio-output:$index';
+      String plcOutputKey(int index) => 'plc-output:$index';
+
+      List<String> inputFallbackNames(int index) => <String>[
+        'Input${index + 1}',
+        'Input ${index + 1}',
+        'PLI${index + 1}',
+        'ESI${index + 1}',
+      ];
+
+      List<String> outputFallbackNames(int index) => <String>[
+        'Output${index + 1}',
+        'Output ${index + 1}',
+        'PLO${index + 1}',
+        'ESO${index + 1}',
+      ];
+
       for (int i = 0; i < formState.inputCount; i++) {
         if (i < widget.inputControllers.length &&
             widget.inputControllers[i].text.isNotEmpty) {
@@ -825,7 +902,6 @@ class FormTabState extends State<FormTab>
           bool isVisible =
               i < _inputVisibility.length ? _inputVisibility[i] : true;
 
-          // Code Triggerの場合、totalIOポートの値に応じてSignalTypeを設定
           if (formState.triggerOption == 'Code Trigger') {
             if (formState.inputCount >= 32) {
               if (i >= 1 && i <= 8) {
@@ -861,99 +937,114 @@ class FormTabState extends State<FormTab>
           }
 
           final String name = widget.inputControllers[i].text;
+          final List<int> values = resolveValues(
+            primaryKey: dioInputKey(i),
+            alternateKey: plcInputKey(i),
+            name: name,
+            additionalNames: inputFallbackNames(i),
+          );
+
           inputSignalMap[i] = SignalData(
             name: name,
             signalType: signalType,
-            values: prevValueMap[name] ?? List.filled(defaultWaveLength, 0),
+            values: values,
             isVisible: isVisible,
           );
+          newPortValues[dioInputKey(i)] = List<int>.from(values);
         }
       }
 
-      // PLC/EIP 入力信号（位置を保持）- DIO入力の後ろに拡張キーで並べる
       if (_plcEipOption != 'None') {
         for (int i = 0; i < formState.inputCount; i++) {
           if (i < widget.plcEipInputControllers.length &&
               widget.plcEipInputControllers[i].text.isNotEmpty) {
             final String name = widget.plcEipInputControllers[i].text;
-            final int key = formState.inputCount + i; // DIO入力の後ろに配置
+            final int key = formState.inputCount + i;
+            final List<int> values = resolveValues(
+              primaryKey: plcInputKey(i),
+              alternateKey: dioInputKey(i),
+              name: name,
+              additionalNames: inputFallbackNames(i),
+            );
             inputSignalMap[key] = SignalData(
               name: name,
               signalType: SignalType.input,
-              values: prevValueMap[name] ?? List.filled(defaultWaveLength, 0),
+              values: values,
               isVisible:
                   i < _inputVisibility.length ? _inputVisibility[i] : true,
             );
+            newPortValues[plcInputKey(i)] = List<int>.from(values);
           }
         }
       }
 
-      // HWトリガー信号（位置を保持）
       for (int i = 0; i < formState.hwPort; i++) {
         if (widget.hwTriggerControllers[i].text.isNotEmpty) {
           final String name = widget.hwTriggerControllers[i].text;
+          final List<int> values = resolveValues(
+            primaryKey: hwKey(i),
+            name: name,
+          );
           hwTriggerSignalMap[i] = SignalData(
             name: name,
             signalType: SignalType.hwTrigger,
-            values: prevValueMap[name] ?? List.filled(defaultWaveLength, 0),
+            values: values,
             isVisible:
                 i < _hwTriggerVisibility.length
                     ? _hwTriggerVisibility[i]
                     : true,
           );
+          newPortValues[hwKey(i)] = List<int>.from(values);
         }
       }
 
-      // 出力信号（位置を保持）
       for (int i = 0; i < formState.outputCount; i++) {
-        final String baseKey = 'Output ${i + 1}';
-        final List<int> fallbackValues =
-            prevValueMap[baseKey] ?? List.filled(defaultWaveLength, 0);
-
         if (i < widget.outputControllers.length &&
             widget.outputControllers[i].text.isNotEmpty) {
           final String name = widget.outputControllers[i].text;
 
-          // Output{i} 形式の動的信号名を検出
           String displayName = name;
           if (name.startsWith('Output') && name.length > 6) {
-            final portStr = name.substring(6);
-            final port = int.tryParse(portStr);
+            final String portStr = name.substring(6);
+            final int? port = int.tryParse(portStr);
             if (port != null && port > 0) {
-              displayName = name; // 動的信号名をそのまま使用
+              displayName = name;
             }
           }
+
+          final List<int> values = resolveValues(
+            primaryKey: dioOutputKey(i),
+            alternateKey: plcOutputKey(i),
+            name: displayName,
+            additionalNames: outputFallbackNames(i),
+          );
 
           outputSignalMap[i] = SignalData(
             name: displayName,
             signalType: SignalType.output,
-            values:
-                prevValueMap[name] ??
-                prevValueMap['Output${i + 1}'] ??
-                fallbackValues,
+            values: values,
             isVisible:
                 i < _outputVisibility.length ? _outputVisibility[i] : true,
           );
+          newPortValues[dioOutputKey(i)] = List<int>.from(values);
         }
       }
 
-      // PLC/EIP 出力信号（位置を保持）: DIO の後ろに拡張キーで並べる
       if (_plcEipOption != 'None') {
         for (int i = 0; i < formState.outputCount; i++) {
           if (i < widget.plcEipOutputControllers.length &&
               widget.plcEipOutputControllers[i].text.isNotEmpty) {
             final String prefix = _plcEipOption == 'PLC' ? 'PLO' : 'ESO';
-            final base = '$prefix${i + 1}';
-            final user = widget.plcEipOutputControllers[i].text;
+            final String base = '$prefix${i + 1}';
+            final String user = widget.plcEipOutputControllers[i].text;
 
-            // PLO{i} または ESO{i} 形式の動的信号名を検出
             String label;
             if ((user.startsWith('PLO') || user.startsWith('ESO')) &&
                 user.length > 3) {
-              final portStr = user.substring(3);
-              final port = int.tryParse(portStr);
+              final String portStr = user.substring(3);
+              final int? port = int.tryParse(portStr);
               if (port != null && port > 0) {
-                label = user; // 動的信号名をそのまま使用
+                label = user;
               } else {
                 label = user.isNotEmpty ? '$base: $user' : base;
               }
@@ -961,26 +1052,39 @@ class FormTabState extends State<FormTab>
               label = user.isNotEmpty ? '$base: $user' : base;
             }
 
-            final int key = formState.outputCount + i; // DIOの後ろに配置
+            final int key = formState.outputCount + i;
             final String fallbackBase = 'Output ${i + 1}';
+            final List<String> additionalNames =
+                <String>[
+                      user,
+                      base,
+                      'Output${i + 1}',
+                      fallbackBase,
+                      ...outputFallbackNames(i),
+                    ]
+                    .where((element) => element.trim().isNotEmpty)
+                    .toSet()
+                    .toList();
+
+            final List<int> values = resolveValues(
+              primaryKey: plcOutputKey(i),
+              alternateKey: dioOutputKey(i),
+              name: label,
+              additionalNames: additionalNames,
+            );
+
             outputSignalMap[key] = SignalData(
               name: label,
               signalType: SignalType.output,
-              values:
-                  prevValueMap[label] ??
-                  prevValueMap[user] ??
-                  prevValueMap[base] ??
-                  prevValueMap['Output${i + 1}'] ??
-                  prevValueMap[fallbackBase] ??
-                  List.filled(defaultWaveLength, 0),
+              values: values,
               isVisible:
                   i < _outputVisibility.length ? _outputVisibility[i] : true,
             );
+            newPortValues[plcOutputKey(i)] = List<int>.from(values);
           }
         }
       }
 
-      // 位置情報付きでチャートデータを生成 (現在は未使用だが呼び出しを維持)
       generateTimingChartDataWithPositions(
         inputSignalMap,
         outputSignalMap,
@@ -988,13 +1092,11 @@ class FormTabState extends State<FormTab>
         timeLength: defaultWaveLength,
       );
 
-      // SignalDataリストを順序通りに構築（Input -> HWTrigger -> Output）
       for (int i = 0; i < formState.inputCount; i++) {
         if (inputSignalMap.containsKey(i)) {
           _signalDataList.add(inputSignalMap[i]!);
         }
       }
-      // 拡張入力キー（PLC/EIP）も順序通りに追加
       if (_plcEipOption != 'None') {
         for (int i = 0; i < formState.inputCount; i++) {
           final int key = formState.inputCount + i;
@@ -1014,19 +1116,17 @@ class FormTabState extends State<FormTab>
         }
       }
 
-      // 拡張出力キー（PLC/EIP）も順序通りに追加
-      final extraOutputKeys =
+      final List<int> extraOutputKeys =
           outputSignalMap.keys.where((k) => k >= formState.outputCount).toList()
             ..sort();
-      for (final k in extraOutputKeys) {
+      for (final int k in extraOutputKeys) {
         _signalDataList.add(outputSignalMap[k]!);
       }
 
-      // ---- 旧順序に基づいて並べ替え ----
       if (prevOrder.isNotEmpty) {
         _signalDataList.sort((a, b) {
-          int ia = prevOrder.indexOf(a.name);
-          int ib = prevOrder.indexOf(b.name);
+          final int ia = prevOrder.indexOf(a.name);
+          final int ib = prevOrder.indexOf(b.name);
           if (ia >= 0 && ib >= 0) return ia.compareTo(ib);
           if (ia >= 0) return -1;
           if (ib >= 0) return 1;
@@ -1034,7 +1134,6 @@ class FormTabState extends State<FormTab>
         });
       }
 
-      // === CODE_OPTION / Command Option を必ず含める ===
       if (formState.triggerOption == 'Code Trigger' &&
           !_signalDataList.any((s) => s.name == 'CODE_OPTION')) {
         _signalDataList.insert(
@@ -1064,7 +1163,19 @@ class FormTabState extends State<FormTab>
           ),
         );
       }
+
+      _portValues = newPortValues;
     });
+  }
+
+  String _normalizeSignalName(String name) {
+    var trimmed = name.trim();
+    if (trimmed.isEmpty) return '';
+    final int colonIndex = trimmed.indexOf(':');
+    if (colonIndex >= 0) {
+      trimmed = trimmed.substring(colonIndex + 1).trim();
+    }
+    return trimmed.replaceAll(RegExp(r'[\s_:-]+'), '').toLowerCase();
   }
 
   // カメラテーブルの情報に基づいて時系列データを生成
@@ -1226,9 +1337,11 @@ class FormTabState extends State<FormTab>
             (c) => c.text == signal.name,
           );
           if (isPlcEipInput) {
-            sources.add(_plcEipOption == 'PLC' 
-              ? IoChannelSource.plc 
-              : IoChannelSource.eip);
+            sources.add(
+              _plcEipOption == 'PLC'
+                  ? IoChannelSource.plc
+                  : IoChannelSource.eip,
+            );
           } else {
             sources.add(IoChannelSource.dio);
           }
@@ -1242,9 +1355,11 @@ class FormTabState extends State<FormTab>
             (c) => c.text == signal.name,
           );
           if (isPlcEipOutput) {
-            sources.add(_plcEipOption == 'PLC' 
-              ? IoChannelSource.plc 
-              : IoChannelSource.eip);
+            sources.add(
+              _plcEipOption == 'PLC'
+                  ? IoChannelSource.plc
+                  : IoChannelSource.eip,
+            );
           } else {
             sources.add(IoChannelSource.dio);
           }
@@ -1384,7 +1499,14 @@ class FormTabState extends State<FormTab>
       }
     }
 
-    widget.onUpdateChart(outNames, outChartData, outTypes, ports, generateIoChannelSources(), false);
+    widget.onUpdateChart(
+      outNames,
+      outChartData,
+      outTypes,
+      ports,
+      generateIoChannelSources(),
+      false,
+    );
 
     // --- 追加: 完了通知 ---
     ScaffoldMessenger.of(
@@ -1645,7 +1767,14 @@ class FormTabState extends State<FormTab>
       }
     }
 
-    widget.onUpdateChart(outNames, outValues, outTypes, outPorts, generateIoChannelSources(), true);
+    widget.onUpdateChart(
+      outNames,
+      outValues,
+      outTypes,
+      outPorts,
+      generateIoChannelSources(),
+      true,
+    );
 
     // --- 追加: ユーザーへ完了通知 ---
     ScaffoldMessenger.of(
