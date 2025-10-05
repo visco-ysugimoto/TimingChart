@@ -69,6 +69,12 @@ class TimingChart extends StatefulWidget {
   final List<int> portNumbers;
   final List<IoChannelSource> ioSources;
   final String plcEipMode;
+  final void Function(
+    List<String> names,
+    List<List<int>> values,
+    List<SignalType> types,
+  )?
+  onSignalsChanged;
 
   const TimingChart({
     super.key,
@@ -83,6 +89,7 @@ class TimingChart extends StatefulWidget {
     required this.portNumbers,
     this.ioSources = const [],
     this.plcEipMode = 'None',
+    this.onSignalsChanged,
   });
 
   @override
@@ -267,6 +274,22 @@ class TimingChartState extends State<TimingChart>
       _forceRepaint();
     });
     _controller?.setSignals(signals);
+  }
+
+  void _notifySignalsChanged() {
+    final callback = widget.onSignalsChanged;
+    if (callback == null) return;
+    final names = List<String>.from(_idSignalNames);
+    final values = signals
+        .map((row) => List<int>.from(row))
+        .toList(growable: false);
+    final types = List<SignalType>.from(widget.signalTypes);
+    callback(names, values, types);
+  }
+
+  void _commitSignalsFromChartEdit() {
+    _controller?.setSignals(signals);
+    _notifySignalsChanged();
   }
 
   // アノテーションを更新するメソッド
@@ -605,7 +628,7 @@ class TimingChartState extends State<TimingChart>
           _highlightTimeIndices = [..._highlightTimeIndices];
           _forceRepaint();
         });
-        _controller?.setSignals(signals);
+        _commitSignalsFromChartEdit();
       }
     }
   }
@@ -1528,7 +1551,7 @@ class TimingChartState extends State<TimingChart>
       _highlightTimeIndices = [..._highlightTimeIndices];
       _forceRepaint();
     });
-    _controller?.setSignals(signals);
+    _commitSignalsFromChartEdit();
   }
 
   void _insertZerosToSelection() {
@@ -1552,7 +1575,7 @@ class TimingChartState extends State<TimingChart>
       _normalizeSignalLengths();
       _clearSelection();
     });
-    _controller?.setSignals(signals);
+    _commitSignalsFromChartEdit();
   }
 
   void _deleteRange() {
@@ -1574,7 +1597,7 @@ class TimingChartState extends State<TimingChart>
       _normalizeSignalLengths();
       _clearSelection();
     });
-    _controller?.setSignals(signals);
+    _commitSignalsFromChartEdit();
   }
 
   void _duplicateRange() {
@@ -1647,7 +1670,7 @@ class TimingChartState extends State<TimingChart>
       // 再描画
       _forceRepaint();
     });
-    _controller?.setSignals(signals);
+    _commitSignalsFromChartEdit();
     _controller?.setAnnotations(annotations);
   }
 

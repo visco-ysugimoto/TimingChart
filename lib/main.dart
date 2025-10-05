@@ -604,6 +604,54 @@ class _MyHomePageState extends State<MyHomePage>
     }
   }
 
+  void _handleChartSignalsChanged(
+    List<String> names,
+    List<List<int>> values,
+    List<SignalType> types,
+  ) {
+    if (names.length != values.length) {
+      return;
+    }
+
+    final nameToValues = <String, List<int>>{};
+    for (int i = 0; i < names.length; i++) {
+      nameToValues[names[i]] = List<int>.from(values[i]);
+    }
+
+    final form = _formTabKey.currentState;
+    if (form != null && form.mounted) {
+      form.registerExternalSignalValues(nameToValues);
+      form.refreshSignalDataList();
+    }
+
+    setState(() {
+      final currentByName = {
+        for (final signal in _chartSignals) signal.name: signal,
+      };
+      final List<SignalData> updatedSignals = [];
+      for (int i = 0; i < names.length; i++) {
+        final existing = currentByName[names[i]];
+        final copiedValues = List<int>.from(values[i]);
+        if (existing != null) {
+          final signalType = types.length > i ? types[i] : existing.signalType;
+          updatedSignals.add(
+            existing.copyWith(signalType: signalType, values: copiedValues),
+          );
+        } else {
+          final signalType = types.length > i ? types[i] : SignalType.input;
+          updatedSignals.add(
+            SignalData(
+              name: names[i],
+              signalType: signalType,
+              values: copiedValues,
+            ),
+          );
+        }
+      }
+      _chartSignals = updatedSignals;
+    });
+  }
+
   String _defaultPlcInputName(String? option, int index) {
     if (option == 'PLC') {
       return 'PLI${index + 1}';
@@ -2831,6 +2879,7 @@ class _MyHomePageState extends State<MyHomePage>
                 portNumbers: _chartPortNumbers,
                 ioSources: _chartIoSources,
                 plcEipMode: _plcEipOption,
+                onSignalsChanged: _handleChartSignalsChanged,
               ),
             ],
           ),
