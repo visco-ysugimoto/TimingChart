@@ -1149,25 +1149,32 @@ class TimingChartState extends State<TimingChart>
 
     _lastRightClickPos = position; // グローバル保持
 
+    final RenderBox? rootBox =
+        context.findRenderObject() as RenderBox?;
+    final Offset rootLocalPos =
+        rootBox != null ? rootBox.globalToLocal(position) : position;
+
     // グローバル座標からチャート(CustomPaint)のローカル座標へ
     final RenderBox? paintBox =
         _customPaintKey.currentContext?.findRenderObject() as RenderBox?;
-    final Offset chartLocalPos =
-        paintBox != null ? paintBox.globalToLocal(position) : position;
+    final Offset chartLocalPos = paintBox != null
+        ? paintBox.globalToLocal(position)
+        : Offset(
+            rootLocalPos.dx +
+                (_hScrollController.hasClients ? _hScrollController.offset : 0),
+            rootLocalPos.dy +
+                (_vScrollController.hasClients ? _vScrollController.offset : 0),
+          );
     final adjustedPos = Offset(
-      chartLocalPos.dx -
-          chartMarginLeft +
-          (_hScrollController.hasClients ? _hScrollController.offset : 0),
-      chartLocalPos.dy -
-          chartMarginTop +
-          (_vScrollController.hasClients ? _vScrollController.offset : 0),
+      chartLocalPos.dx - chartMarginLeft,
+      chartLocalPos.dy - chartMarginTop,
     );
 
     // タップされたタイムインデックスを計算しておく
-    final int clickedTime = _getTimeIndexFromDx(chartLocalPos.dx);
+    final int clickedTime = _getTimeIndexFromDx(rootLocalPos.dx);
 
     // 行インデックス（可視行）とラベル領域判定を事前に計算
-    final int clickedSig = _getSignalIndexFromDy(chartLocalPos.dy);
+    final int clickedSig = _getSignalIndexFromDy(rootLocalPos.dy);
 
     String? hitAnnId;
     for (final entry in _annotationHitRects.entries) {
@@ -1215,10 +1222,9 @@ class TimingChartState extends State<TimingChart>
                   ? 0
                   : signals.map((e) => e.length).fold(0, math.max);
           final double chartX =
-              chartLocalPos.dx -
-              chartMarginLeft +
-              (_hScrollController.hasClients ? _hScrollController.offset : 0);
-          final double relX = (chartX - labelWidth).clamp(0, double.infinity);
+              chartLocalPos.dx - chartMarginLeft;
+          final double relX =
+              (chartX - labelWidth).clamp(0, double.infinity);
           // 累積行
           final List<double> pos = List<double>.filled(maxLen + 1, 0.0);
           for (int i = 0; i < maxLen; i++) {
@@ -1258,7 +1264,7 @@ class TimingChartState extends State<TimingChart>
             clickedTime = idx;
           }
         } else {
-          clickedTime = _getTimeIndexFromDx(chartLocalPos.dx);
+          clickedTime = _getTimeIndexFromDx(rootLocalPos.dx);
         }
 
         if (_hasValidSelection) {
