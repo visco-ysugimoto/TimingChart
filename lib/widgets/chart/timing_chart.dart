@@ -387,22 +387,37 @@ class TimingChartState extends State<TimingChart>
     super.didUpdateWidget(oldWidget);
     final bool namesChanged =
         !listEquals(widget.initialSignalNames, oldWidget.initialSignalNames);
-    if (namesChanged ||
-        !_areSignalsEqual(widget.initialSignals, oldWidget.initialSignals) ||
-        !_areAnnotationsEqual(
-          widget.initialAnnotations,
-          oldWidget.initialAnnotations,
-        )) {
+    final bool signalsChanged =
+        !_areSignalsEqual(widget.initialSignals, oldWidget.initialSignals);
+    final bool annotationsChanged = !_areAnnotationsEqual(
+      widget.initialAnnotations,
+      oldWidget.initialAnnotations,
+    );
+    if (namesChanged || signalsChanged || annotationsChanged) {
       setState(() {
         if (namesChanged) {
           _idSignalNames = List.from(widget.initialSignalNames);
           signalNames = List.from(_idSignalNames); // 仮で ID 表示
           _translateNames();
         }
-        signals =
-            widget.initialSignals.map((list) => List<int>.from(list)).toList();
-        annotations = List.from(widget.initialAnnotations);
+        if (signalsChanged) {
+          signals = widget.initialSignals
+              .map((list) => List<int>.from(list))
+              .toList();
+        }
+        if (annotationsChanged) {
+          annotations = List.from(widget.initialAnnotations);
+        }
       });
+      if (annotationsChanged) {
+        _controller?.setAnnotations(annotations);
+      }
+      if (signalsChanged) {
+        _controller?.setSignals(signals);
+      }
+      if (namesChanged) {
+        _controller?.setSignalNames(_idSignalNames);
+      }
     }
   }
 
@@ -775,6 +790,7 @@ class TimingChartState extends State<TimingChart>
           _highlightTimeIndices = [..._highlightTimeIndices];
           _forceRepaint();
         });
+        _controller?.setAnnotations(annotations);
         // 次回の差分計算のため、基準を更新クランプ後実移動量で更新
         _draggingStartLocal = _draggingStartLocal! + deltaClamped;
         _draggingInitialBoxTopLeft = _draggingInitialBoxTopLeft! + deltaClamped;
@@ -1326,6 +1342,7 @@ class TimingChartState extends State<TimingChart>
                 );
                 _forceRepaint();
               });
+              _controller?.setAnnotations(annotations);
             }
           }
           break;
@@ -1711,6 +1728,7 @@ class TimingChartState extends State<TimingChart>
     });
     _commitSignalsFromChartEdit();
     _controller?.setAnnotations(annotations);
+    _controller?.setOmissionTimeIndices(_omissionTimeIndices);
   }
 
   void _normalizeSignalLengths() {
@@ -1741,6 +1759,7 @@ class TimingChartState extends State<TimingChart>
       }
       _forceRepaint();
     });
+    _controller?.setOmissionTimeIndices(_omissionTimeIndices);
   }
 
   void _zoomIn() {
@@ -3182,6 +3201,7 @@ class TimingChartState extends State<TimingChart>
         _forceRepaint();
       }
     });
+    _controller?.setAnnotations(annotations);
   }
 
   // ======== キーボードショートカット関連 ========
