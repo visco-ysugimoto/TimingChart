@@ -1,22 +1,22 @@
 /*
-TimingChart�E�タイミングチャート描画�E�E
+TimingChart - タイミングチャート描画
 
-こ�EウィジェチE��でできること
-- チE��タル信号の波形�E�E/1�E�をグリチE��上に描画
-- ラベルのドラチE��で行�E並び替え、篁E��選択で一括反転/挿入/削除/褁E��
-- 右クリチE��メニューからコメント追加・編雁E�E削除、波線（省略区間）�E描画
-- 画像�E力！ENG/JPEG�E�用のキャプチャ
+このウィジェットでできること
+- チタル信号の波形/1をグリチー上に描画
+- ラベルのドラチーで行並び替え、範選択で一括反転/挿入/削除/褁ー
+- 右クリチーメニューからコメント追加・編雁ー削除、波線（省略区間）描画
+- 画像力！ENG/JPEG用のキャプチャ
 
-入力と出力（親からの受け取り / 親へ提供する情報�E�E
+入力と出力（親からの受け取り / 親へ提供する情報
 - initialSignalNames/initialSignals/initialAnnotations/signalTypes/portNumbers を受け取り表示
 - getChartData(), getAnnotations(), getSignalIdNames(), getOmissionTimeIndices() で親が取得可能
-- updateSignals()/updateSignalNames()/updateAnnotations() で親が�E描画要求可能
+- updateSignals()/updateSignalNames()/updateAnnotations() で親が描画要求可能
 
-設計�E要点
-- 画面サイズに合わせたセル幁Eセル高�E動的計算！EitToScreen�E�E
-- SignalType で補助信号(control/group/task)を描ぁE描かなぁE��刁E��
-- ラベルは ID から現在言語�Eラベルへ翻訳�E�EuggestionLoader 経由�E�E
-- CustomPainter へ責務�E割�E�グリチE��/波形/コメント）して見通し改喁E
+設計�E要点
+- 画面サイズに合わせたセル幁Eセル高動的計算！EitToScreen
+- SignalType で補助信号(control/group/task)を描画かなうか決定
+- ラベルは ID から現在言語ラベルへ翻訳suggestionLoader 経由
+- CustomPainter へ責務割り当てグリッド/波形/コメント）して見通し改善
 */
 import 'dart:math' as math;
 import 'package:collection/collection.dart';
@@ -49,21 +49,14 @@ class TimingChart extends StatefulWidget {
   final List<TimingChartAnnotation> initialAnnotations;
   final List<SignalType> signalTypes;
   final TimingChartController? controller;
-
-  /// 画面サイズに合わせてチャート�E体をフィチE��させるかどぁE��、E
-  ///
-  /// true の場合�E、横幁E��けでなく縦方向（信号数�E�も含めて
-  /// 表示領域に収まるよぁE��セルサイズを�E動調整します、E
-  /// false�E�デフォルト）�E場合�E従来と同じ動作で、横方向�Eみ縮小し、E
-  /// セル高さは固宁E40px になります、E
   final bool fitToScreen;
 
-  /// Control / Group / Task 種別を含むすべての信号を描画対象にするかどぁE��、E
-  /// 省略時�E従来互換で false�E�これらの補助信号は描画しなぁE��、E
+  /// Control / Group / Task 種別を含むすべての信号を描画対象にするかどうか
+  /// 省略時従来互換で falseこれらの補助信号は描画しない
   final bool showAllSignalTypes;
 
-  /// 入出力信号ラベルに番号 (Input1 などの末尾数孁E を表示するかどぁE��、E
-  /// 省略時�E true (番号を表示)、E
+  /// 入出力信号ラベルに番号 (Input1 などの末尾数孁ー を表示するかどうか
+  /// 省略時従来互換で true (番号を表示)、
   final bool showIoNumbers;
 
   final List<int> portNumbers;
@@ -100,7 +93,7 @@ class TimingChartState extends State<TimingChart>
     with AutomaticKeepAliveClientMixin {
   TimingChartController? _controller;
   late final VoidCallback _controllerListener;
-  // 保持用: ID 名リスチE
+  // 保持用: ID 名リスチー
   late List<String> _idSignalNames;
 
   // 言語変更監視用
@@ -113,23 +106,27 @@ class TimingChartState extends State<TimingChart>
   late List<String> signalNames;
   late List<TimingChartAnnotation> annotations;
   List<int> _highlightTimeIndices = [];
-  // 省略信号を描画する対象の時刻インチE��クス
+  // 省略信号を描画する対象の時刻インデックス
   List<int> _omissionTimeIndices = [];
   List<int> _visibleIndexes = [];
+  List<String> _visibleSignalNamesCache = [];
+  List<SignalType> _visibleSignalTypesCache = [];
+  List<int> _visiblePortNumbersCache = [];
+  List<IoChannelSource> _visibleIoSourcesCache = [];
 
-  // ===== ラベルドラチE��用 =====
+  // ===== ラベルドラチー用 =====
   bool _isLabelDrag = false;
   int? _labelDragStartRow;
   int? _labelDragCurrentRow;
 
   double _cellWidth = 40;
-  // セル高さは `fitToScreen` ぁEtrue の場合�Eみ動的に変化する、E
-  // チE��ォルト値は従来互換用に 40 としておく、E
+  // セル高さは `fitToScreen`の場合は動的に変化する
+  // チャートォルト値は従来互換用に 40 としておく
   double _cellHeight = 40;
   double _zoomFactor = 1.0; // Horizontal scaling multiplier.
   double _effectiveZoomFactor = 1.0;
   double _minZoomFactorForView = 1.0;
-  double _maxZoomFactorForView = 10.0; // レイアウト時に動的に設定（上限撤廁E�Eため�E�E
+  double _maxZoomFactorForView = 10.0; // レイアウト時に動的に設定（上限撤廁ため
   static const double _minZoom = 0.1;
   static const double _zoomStep = 0.25;
   static const double _minZoomCellWidth = 2.0;
@@ -137,38 +134,58 @@ class TimingChartState extends State<TimingChart>
 
   bool _isModifierPressed = false;
   final double labelWidth = 200.0;
-  // コメントエリアの高さ�E�動皁E��算時の下限値�E�E
+  // コメントエリアの高さ動的に計算時の下限値
   static const double _minCommentAreaHeight = 100.0;
 
-  // コメントが無ぁE��合に確保する最小下余白
+  // コメントが無い場合に確保する最小下余白
   static const double _noCommentBottomMargin = 40.0;
 
-  /// コメントがはみ出さなぁE��ぁE��忁E��な高さを概算で計算する、E
-  ///
-  /// 現在の描画ロジチE��では、コメントが重なるごとに 20px ずつ下方向に
-  /// ずらしてぁE��ため、E
-  ///   base + 20px * (コメント数 - 1) でおおよその忁E��E��域を見積もる、E
-  /// 実際のチE��スト高さを完�Eに反映するわけではなぁE��、E
-  /// 大量�Eコメント�E力時でも最低限刁E��取られなぁE��け�E余白を確保できる、E
   double _calculateCommentAreaHeight() {
     if (annotations.isEmpty) return _noCommentBottomMargin;
 
     const double baseHeight = 40.0; // 1 段目の想定高さ
-    const double stepHeight = 20.0; // 衝突回避で 1 段深くするごとの増�E
+    const double stepHeight = 20.0; // 衝突回避で 1 段深くする
 
     final int layers = annotations.length - 1;
     final double estimated = baseHeight + stepHeight * layers;
 
-    // コメント�EチE��ス高さの1.5倍程度の余白を確俁E
+    // コメントチャートス高さの1.5倍程度の余白を確俁ー
     final double expanded = estimated * 1.5;
 
     // 最低でも下限値は確保しつつ、ゆとりを持たせた値を返す
     return math.max(_minCommentAreaHeight, expanded);
   }
 
+  void _ensureVisibleCachesUpToDate() {
+    final int expectedLength = _visibleIndexes.length;
+    if (_visibleSignalNamesCache.length == expectedLength &&
+        _visibleSignalTypesCache.length == expectedLength &&
+        _visiblePortNumbersCache.length == expectedLength &&
+        _visibleIoSourcesCache.length == expectedLength) {
+      return;
+    }
+
+    _visibleSignalNamesCache = [
+      for (final idx in _visibleIndexes) signalNames[idx],
+    ];
+    _visibleSignalTypesCache = [
+      for (final idx in _visibleIndexes) widget.signalTypes[idx],
+    ];
+    _visiblePortNumbersCache = [
+      for (final idx in _visibleIndexes)
+        (idx < widget.portNumbers.length) ? widget.portNumbers[idx] : 0,
+    ];
+    _visibleIoSourcesCache = [
+      for (final idx in _visibleIndexes)
+        (idx < widget.ioSources.length)
+            ? widget.ioSources[idx]
+            : IoChannelSource.unknown,
+    ];
+  }
+
   final double chartMarginLeft = 16.0;
   final double chartMarginTop = 16.0;
-  // ヘッダー(トグル)の固定高さ。ヒチE��チE��ト補正に使用
+  // ヘッダー(トグル)の固定高さ。ヒチーチャートト補正に使用
   final double _fixedHeaderHeight = 48.0;
 
   int? _startSignalIndex;
@@ -181,10 +198,10 @@ class TimingChartState extends State<TimingChart>
   String? _selectedAnnotationId;
 
   Map<String, Rect> _annotationHitRects = {};
-  // コメント�EチE��スドラチE��用
+  // コメントチャートスドラチー用
   String? _draggingAnnotationId;
-  Offset? _draggingStartLocal; // ドラチE��開始時のローカル座樁E
-  Offset? _draggingInitialBoxTopLeft; // ドラチE��開始時のボックス位置
+  Offset? _draggingStartLocal; // ドラチー開始時のローカル座標
+  Offset? _draggingInitialBoxTopLeft; // ドラチー開始時のボックス位置
 
   Offset? _dragStartGlobal;
 
@@ -195,9 +212,9 @@ class TimingChartState extends State<TimingChart>
   final ScrollController _hScrollController = ScrollController();
   final ScrollController _vScrollController = ScrollController();
 
-  // ===== メモリ編雁E��ード！Es非等間隔�E寸法編雁E��E=====
+  // ===== メモリ編集！非等間隔寸法編集！=====
   bool _isEditingSteps = false;
-  int? _activeStepIndex; // 強調する墁E�� i�E�E は 0..maxTimeSteps�E�E
+  int? _activeStepIndex; // 強調するインデックスは 0..maxTimeSteps
   double? _dragStartX;
 
   @override
@@ -206,11 +223,11 @@ class TimingChartState extends State<TimingChart>
     _idSignalNames = List.from(widget.initialSignalNames);
     signalNames = List.from(_idSignalNames); // 仮で ID 表示
 
-    // 初期化時に ID ↁE現在言語ラベルへ変換してから描画する
+    // 初期化時にID 現在言語ラベルへ変換してから描画する
     // 初期翻訳
     _translateNames();
 
-    // 言語変更リスナ�E
+    // 言語変更リスナー
     _langListener = () {
       _translateNames();
     };
@@ -221,7 +238,6 @@ class TimingChartState extends State<TimingChart>
         HardwareKeyboard.instance.isControlPressed ||
         HardwareKeyboard.instance.isMetaPressed;
 
-    // コントローラ初期化（外部提供がなければ冁E��で生�E�E�E
     _controller =
         widget.controller ??
         TimingChartController.fromInitial(
@@ -237,14 +253,16 @@ class TimingChartState extends State<TimingChart>
       if (!mounted) return;
       final List<List<int>> controllerSignals =
           _controller!.signals.map((e) => List<int>.from(e)).toList();
-      final List<String> controllerNames =
-          List<String>.from(_controller!.signalNames);
-      final bool namesChanged =
-          !listEquals(_idSignalNames, controllerNames);
-      final List<TimingChartAnnotation> controllerAnnotations =
-          List.from(_controller!.annotations);
-      final List<int> controllerOmission =
-          List<int>.from(_controller!.omissionTimeIndices);
+      final List<String> controllerNames = List<String>.from(
+        _controller!.signalNames,
+      );
+      final bool namesChanged = !listEquals(_idSignalNames, controllerNames);
+      final List<TimingChartAnnotation> controllerAnnotations = List.from(
+        _controller!.annotations,
+      );
+      final List<int> controllerOmission = List<int>.from(
+        _controller!.omissionTimeIndices,
+      );
 
       setState(() {
         signals = controllerSignals;
@@ -256,7 +274,7 @@ class TimingChartState extends State<TimingChart>
       if (namesChanged) {
         _translateNames();
       }
-      // ziq インポ�Eト等で signals 長が変わった際、ms モード�Eために stepDurations 長を同朁E
+      // インポート等で signals 長が変わった際、ms モードのために stepDurations 長を同じにする
       final settingsRW = Provider.of<SettingsNotifier>(context, listen: false);
       final int maxLen =
           signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
@@ -265,12 +283,12 @@ class TimingChartState extends State<TimingChart>
           if (mounted) settingsRW.ensureStepDurationsLength(maxLen);
         });
       }
-      // グリチE��リセチE��要求が来てぁE��ら適用
+      // グリッドリセット要求が来ていれば適用
       if (_lastHandledGridResetNonce != _controller!.gridResetNonce) {
         _lastHandledGridResetNonce = _controller!.gridResetNonce;
         resetGridAdjustments();
       }
-      // ズーム墁E��・セル幁E�E計算を要求されたら�Eビルドで反映
+      // ズーム・セル計算を要求されたらビルドで反映
       if (_lastHandledGridRecomputeNonce != _controller!.gridRecomputeNonce) {
         _lastHandledGridRecomputeNonce = _controller!.gridRecomputeNonce;
         setState(() {});
@@ -279,7 +297,7 @@ class TimingChartState extends State<TimingChart>
     _controller!.addListener(_controllerListener);
   }
 
-  // 信号チE�Eタを更新するメソチE��
+  // 信号チャートタを更新するメソチー
   void updateSignals(List<List<int>> newSignals) {
     setState(() {
       signals = newSignals.map((list) => List<int>.from(list)).toList();
@@ -304,7 +322,7 @@ class TimingChartState extends State<TimingChart>
     _notifySignalsChanged();
   }
 
-  // アノテーションを更新するメソチE��
+  // アノテーションを更新するメソッド
   void updateAnnotations(List<TimingChartAnnotation> newAnnotations) {
     setState(() {
       annotations = List.from(newAnnotations);
@@ -313,7 +331,7 @@ class TimingChartState extends State<TimingChart>
     _controller?.setAnnotations(annotations);
   }
 
-  // 信号名を更新するメソチE��
+  // 信号名を更新するメソチー
   void updateSignalNames(List<String> newIdNames) {
     if (listEquals(_idSignalNames, newIdNames)) {
       return;
@@ -326,11 +344,11 @@ class TimingChartState extends State<TimingChart>
     _translateNames();
   }
 
-  // ID ↁE現在言語ラベルへ変換して UI へ反映
+  // ID 現在言語ラベルへ変換して UI へ反映
   void _translateNames() async {
     final translated = await Future.wait(
       _idSignalNames.map((id) async {
-        // 形弁E PREFIXn: ID なめEID 部刁E�Eみ翻訳し、PREFIXn: の後に半角スペ�Eスを保つ
+        //
         final int colonIdx = id.indexOf(':');
         if (colonIdx > 0) {
           final prefix = id.substring(0, colonIdx + 1); // 含む
@@ -348,19 +366,19 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  // 現在の信号チE�Eタを取得するメソチE��
+  // 現在の信号チE�Eタを取得するメソチE��
   List<List<int>> getChartData() {
-    debugPrint('===== チャートデータ取征E=====');
+    debugPrint('===== チャートデータ取得開始=====');
     debugPrint('信号数: ${signals.length}');
-    debugPrint('信号吁E $signalNames');
-    debugPrint('信号タイチE ${widget.signalTypes}');
+    debugPrint('信号名: $signalNames');
+    debugPrint('信号タイプ: ${widget.signalTypes}');
 
     List<List<int>> result = List.from(signals);
-    debugPrint('返却するチE�Eタ行数: ${result.length}');
+    debugPrint('取得したデータ数: ${result.length}');
     if (result.isNotEmpty) {
-      debugPrint('最初�E行�EチE�Eタ侁E ${result[0].take(10)}...');
+      debugPrint('最初のデータ: ${result[0].take(10)}...');
     }
-    debugPrint('===== チャートデータ取得終亁E=====');
+    debugPrint('===== チャートデータ取得終了=====');
     return result;
   }
 
@@ -436,7 +454,7 @@ class TimingChartState extends State<TimingChart>
   }
 
   int _getTimeIndexFromDx(double dx) {
-    // 画面座樁EↁEチャート�E部座標（左余白と横スクロールを補正�E�E
+    // 画面座標をチャート部座標（左余白と横スクロールを補正）に変換
     final double chartX =
         dx -
         chartMarginLeft +
@@ -445,9 +463,9 @@ class TimingChartState extends State<TimingChart>
     if (chartX < labelWidth) return -1;
     if (_cellWidth <= 0) return -1;
 
-    final double relX = chartX - labelWidth; // チャート本体�E原点からの X
+    final double relX = chartX - labelWidth; // チャート本体の原点からの X
 
-    // 非等間隔モード！Es�E�では累積墁E��に基づぁE��近いインチE��クスを返す
+    // 非等間隔モードでは累積ステップ位置に基づう近いインデックスを返す
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
     final int maxLen =
         signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
@@ -469,11 +487,11 @@ class TimingChartState extends State<TimingChart>
           return i;
         }
       }
-      // 右端は最後�EインチE��クス
+      // 右端は最後のインデックス
       return maxLen - 1;
     }
 
-    // 等間隔�E従来通り
+    // 等間隔従来通り
     return (relX / _cellWidth).floor();
   }
 
@@ -484,7 +502,7 @@ class TimingChartState extends State<TimingChart>
         (_vScrollController.hasClients ? _vScrollController.offset : 0);
     if (_cellHeight <= 0) return -1;
     final index = (adjustedY / _cellHeight).floor();
-    // 有効篁E��は 0..length-1。篁E��外�E -1 を返す想宁E
+    // 有効範囲は 0..length-1。範囲外は -1 を返す想定
     if (index < 0 || index >= _visibleIndexes.length) {
       return -1;
     }
@@ -541,7 +559,7 @@ class TimingChartState extends State<TimingChart>
       }
     }
 
-    // ラベル領域をクリチE��してぁE��か判宁E
+    // ラベル領域をクリチーしてうか判別
     final bool inLabelArea =
         chartLocalPos.dx >= chartMarginLeft &&
         chartLocalPos.dx <= chartMarginLeft + labelWidth;
@@ -554,7 +572,7 @@ class TimingChartState extends State<TimingChart>
             signals.isNotEmpty ? signals[originalRow].length - 1 : -1;
         if (maxTime >= 0) {
           setState(() {
-            // すでに同じ行�E体が選択されてぁE��場合�E選択解除
+            // すでに同じ行体が選択されている場合は選択解除
             if (_startSignalIndex == row &&
                 _endSignalIndex == row &&
                 _startTimeIndex == 0 &&
@@ -571,7 +589,7 @@ class TimingChartState extends State<TimingChart>
           });
         }
       }
-      return; // ラベルクリチE��でのビット反転は行わなぁE
+      return; // ラベルクリチーでのビット反転は行わない
     }
 
     final clickSig = _getSignalIndexFromDy(chartLocalPos.dy);
@@ -587,12 +605,12 @@ class TimingChartState extends State<TimingChart>
       final edSigAbs = math.max(_startSignalIndex!, _endSignalIndex!);
       final stTimeAbs = math.min(_startTimeIndex!, _endTimeIndex!);
       final edTimeAbs = math.max(_startTimeIndex!, _endTimeIndex!);
-      // 非等間隁Ems)に対応した選択矩形を計箁E
+      // 非等間隔(ms)に対応した選択矩形を計算
       final settings = Provider.of<SettingsNotifier>(context, listen: false);
       double xStartPx;
       double xEndPx;
       if (settings.timeUnitIsMs) {
-        // 累積スチE��プ位置→px
+        // 累積ステップ位置→px
         double pos = 0.0;
         for (int t = 0; t < stTimeAbs; t++) {
           final durSteps =
@@ -640,7 +658,7 @@ class TimingChartState extends State<TimingChart>
           signals[originalRow][time] =
               (signals[originalRow][time] == 0) ? 1 : 0;
           debugPrint(
-            '信号を反転: 衁E${originalRow}, 刁E${time}, 新しい値=${signals[originalRow][time]}',
+            '信号を反転: 行${originalRow}, 列${time}, 新しい値=${signals[originalRow][time]}',
           );
           _highlightTimeIndices = [..._highlightTimeIndices];
           _forceRepaint();
@@ -656,7 +674,7 @@ class TimingChartState extends State<TimingChart>
     final localPos = box.globalToLocal(details.globalPosition);
     final chartLocalPos = Offset(localPos.dx, localPos.dy - _fixedHeaderHeight);
 
-    // 先にコメント�EチE��スのヒットを判定（チャート領域外でもドラチE��可能にする�E�E
+    // 先にコメントチャートスのヒットを判定（チャート領域外でもドラチー可能にする
     final adjustedPosForAnn = Offset(
       chartLocalPos.dx -
           chartMarginLeft +
@@ -679,20 +697,20 @@ class TimingChartState extends State<TimingChart>
       }
     }
 
-    // --- ラベル領域でのドラチE��開始判宁E---
+    // --- ラベル領域でのドラチー開始判別---
     final bool inLabelArea =
         chartLocalPos.dx >= chartMarginLeft &&
         chartLocalPos.dx <= chartMarginLeft + labelWidth;
 
     final sigIndex = _getSignalIndexFromDy(chartLocalPos.dy);
     if (inLabelArea && sigIndex >= 0 && sigIndex < _visibleIndexes.length) {
-      // ラベルドラチE��開姁E
+      // ラベルドラチー開始
       setState(() {
         _isLabelDrag = true;
         _labelDragStartRow = sigIndex;
         _labelDragCurrentRow = sigIndex;
       });
-      return; // selection 処琁E��は入らなぁE
+      return; // selection 処琁ーは入らない
     }
 
     if (chartLocalPos.dy >
@@ -721,7 +739,6 @@ class TimingChartState extends State<TimingChart>
   }
 
   void _onPanUpdate(DragUpdateDetails details) {
-    // コメント�EチE��スのドラチE��更新
     if (_draggingAnnotationId != null &&
         _draggingStartLocal != null &&
         _draggingInitialBoxTopLeft != null) {
@@ -735,7 +752,7 @@ class TimingChartState extends State<TimingChart>
             (_vScrollController.hasClients ? _vScrollController.offset : 0),
       );
       final delta = adjustedPos - _draggingStartLocal!;
-      // 上方向にはみ出さなぁE��ぁE��YをクランチE
+      // 上方向にはみ出さないYをクランチ
       Offset deltaClamped = delta;
       final proposedTopLeft = _draggingInitialBoxTopLeft! + delta;
       if (proposedTopLeft.dy < 0) {
@@ -747,7 +764,7 @@ class TimingChartState extends State<TimingChart>
       );
       if (annIndex != -1) {
         final current = annotations[annIndex];
-        // offsetX/offsetY はコメント�E基準位置からの差刁E��して扱ぁE
+        // offsetX/offsetY はコメント基準位置からの相対位置
         final newOffsetX = (current.offsetX ?? 0) + deltaClamped.dx;
         final newOffsetY = (current.offsetY ?? 0) + deltaClamped.dy;
         setState(() {
@@ -758,13 +775,13 @@ class TimingChartState extends State<TimingChart>
           _highlightTimeIndices = [..._highlightTimeIndices];
           _forceRepaint();
         });
-        // 次回�E差刁E��リセチE��するため、基準を更新�E�クランプ後�E実移動量で更新�E�E
+        // 次回の差分計算のため、基準を更新クランプ後実移動量で更新
         _draggingStartLocal = _draggingStartLocal! + deltaClamped;
         _draggingInitialBoxTopLeft = _draggingInitialBoxTopLeft! + deltaClamped;
       }
       return;
     }
-    // ラベルドラチE��中は位置を追跡
+    // ラベル更新中は位置を追跡
     if (_isLabelDrag) {
       final chartLocalPos = details.localPosition;
       int sig = _getSignalIndexFromDy(chartLocalPos.dy);
@@ -774,7 +791,7 @@ class TimingChartState extends State<TimingChart>
           _labelDragCurrentRow = sig;
         });
       }
-      return; // 既存�E選択ドラチE��は無要E
+      return; // 既存選択更新は無視
     }
 
     if (_dragStartGlobal == null) return;
@@ -800,7 +817,7 @@ class TimingChartState extends State<TimingChart>
   }
 
   void _onPanEnd(DragEndDetails details) {
-    // コメントドラチE��終亁E
+    // コメント更新終了
     if (_draggingAnnotationId != null) {
       setState(() {
         _draggingAnnotationId = null;
@@ -820,7 +837,7 @@ class TimingChartState extends State<TimingChart>
         _isLabelDrag = false;
         _labelDragStartRow = null;
         _labelDragCurrentRow = null;
-        // ドラチE��後�E選択状態�EハイライトもリセチE��
+        // ドラチー後選択状態ハイライトも更新
         _startSignalIndex = null;
         _endSignalIndex = null;
         _startTimeIndex = null;
@@ -842,12 +859,12 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  // ===== メモリ編雁E��非等間隔）用ハンドラ =====
+  // ===== メモリ編集（非等間隔）用ハンドラ =====
   void _onPanStartEditSteps(DragStartDetails details) {
     if (!_isEditingSteps) return;
     final chartLocalPos = details.localPosition;
     final double dx = chartLocalPos.dx;
-    // チャート�E部X�E�Eanvas.translate(chartMarginLeft, ...) を打ち消す�E�E
+    // チャート部Xanvas.translate(chartMarginLeft, ...) を打ち消す
     final double chartX =
         dx -
         chartMarginLeft +
@@ -857,12 +874,12 @@ class TimingChartState extends State<TimingChart>
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
     final maxLen =
         signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
-    // 吁E��E��のXを累積しながら最も近い墁E��を探ぁE
+    // 行のXを累積しながら最も近い行を探う
     double cursorSteps = 0;
     int nearest = 0;
     double nearestDist = double.infinity;
     for (int i = 0; i <= maxLen; i++) {
-      // ラベル幁E��除ぁE��チャート本体原点からの墁E��px
+      // ラベル除くチャート本体原点からの行px
       final double boundaryPx = cursorSteps * _cellWidth;
       final double relX = (chartX - labelWidth).clamp(0, double.infinity);
       final double d = (boundaryPx - relX).abs();
@@ -881,14 +898,14 @@ class TimingChartState extends State<TimingChart>
       }
     }
     setState(() => _activeStepIndex = nearest);
-    // ドラチE��開始時点の墁E��の絶対X(px)を保存（ラベルを除ぁE��相対尺度�E�E
+    // 更新開始時点の行の絶対X(px)を保存（ラベルを除く相対尺度
     _dragStartX = (chartX - labelWidth).clamp(0, double.infinity);
   }
 
   void _onPanUpdateEditSteps(DragUpdateDetails details) {
     if (!_isEditingSteps || _activeStepIndex == null) return;
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
-    // 0番墁E���E�左端�E�や末端はドラチE��対象にしなぁE��めEidx は前スチE��チE
+    // 0番行左端や末端は更新対象にしないめidx は前ステップ位置
     final idx = _activeStepIndex! - 1;
     final maxLen =
         signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
@@ -903,14 +920,14 @@ class TimingChartState extends State<TimingChart>
     final double relX = (chartX - labelWidth).clamp(0, double.infinity);
     _dragStartX = relX;
 
-    // 目樁E 選択墁E�� i の画面位置 boundaryPx をカーソル relX に一致させめE
-    // 墁E�� i のスチE��プ位置 pos[i] = pos[i-1] + dur[idx]/msPerStep
+    // 目標 選択行 i の画面位置 bound aryPx をカーソル relX に一致させめ
+    // 行 i のステップ位置 pos[i] = pos[i-1] + dur[idx]/msPerStep
     // よって dur[idx] = (targetSteps - pos[i-1]) * msPerStep
     final List<double> list = List<double>.from(settings.stepDurationsMs);
     if (list.length < maxLen) {
       list.addAll(List.filled(maxLen - list.length, settings.msPerStep));
     }
-    // 累積スチE��プ位置�E�Eteps単位！E
+    // 累積ステップ位置teps単位！
     final List<double> pos = List<double>.filled(maxLen + 1, 0.0);
     for (int t = 0; t < maxLen; t++) {
       final durSteps =
@@ -923,21 +940,21 @@ class TimingChartState extends State<TimingChart>
     final double targetSteps = relX / _cellWidth;
     final double prevSteps = pos[boundaryIndex - 1];
     double newDurSteps = targetSteps - prevSteps;
-    if (newDurSteps < 0.005) newDurSteps = 0.005; // 最小幁E 紁E.5%スチE��チE
+    if (newDurSteps < 0.005) newDurSteps = 0.005; // 最小値 0.5%ステップ
     double newMs = newDurSteps * settings.msPerStep;
-    if (newMs < 0.1) newMs = 0.1; // 絶対最封E0.1ms
+    if (newMs < 0.1) newMs = 0.1; // 絶対最小値0.1ms
     list[idx] = newMs;
     settings.setStepDurationsMs(list);
   }
 
   void _onPanEndEditSteps(DragEndDetails details) {
-    // スナップや確定�E琁E��忁E��ならここに実裁E
+    // スナップやらないならここに実裁
   }
 
-  // 外部から呼び出してグリチE��調整を�E期化�E�Elean 対応！E
+  // 外部から呼び出してグリチー調整を初期化lean 対応！
   void resetGridAdjustments() {
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
-    // 個別調整をクリア�E�次回�E等間隔に復帰�E�E
+    // 個別調整をクリア次回等間隔に復帰
     settings.setStepDurationsMs([]);
     setState(() {
       _isEditingSteps = false;
@@ -945,7 +962,7 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  // クリチE���E�タチE�E�E�で墁E��を選択し、その後�EドラチE��で反映させめE
+  // 行を選択し、その後で反映させてタップアップでダイアログ表示
   void _onTapUpEditSteps(TapUpDetails details) {
     if (!_isEditingSteps) return;
     final chartLocalPos = details.localPosition;
@@ -960,7 +977,7 @@ class TimingChartState extends State<TimingChart>
         signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
     final double relX = (chartX - labelWidth).clamp(0, double.infinity);
 
-    // 累積墁E���E�Eteps単位）を配�Eで用愁E
+    // 累積ステップ位置（teps単位）を配列で用意
     final List<double> pos = List<double>.filled(maxLen + 1, 0.0);
     for (int i = 0; i < maxLen; i++) {
       final durSteps =
@@ -970,7 +987,7 @@ class TimingChartState extends State<TimingChart>
       pos[i + 1] = pos[i] + durSteps;
     }
 
-    // 近傍墁E��の探索�E�Ex距離�E�E
+    // 近傍行の探索Ex距離
     int nearest = 0;
     double best = double.infinity;
     for (int i = 0; i <= maxLen; i++) {
@@ -982,7 +999,7 @@ class TimingChartState extends State<TimingChart>
       }
     }
 
-    // 墁E��クリチE��のしきぁE��
+    // スナップやらないならここに実行
     const double snapPx = 6.0;
     if (best <= snapPx) {
       setState(() {
@@ -992,7 +1009,7 @@ class TimingChartState extends State<TimingChart>
       return;
     }
 
-    // 区閁E[idx, idx+1) を決宁E
+    // 区間[idx, idx+1) を決定
     int idx = 0;
     for (int i = 0; i < maxLen; i++) {
       final double leftPx = pos[i] * _cellWidth;
@@ -1004,7 +1021,7 @@ class TimingChartState extends State<TimingChart>
       idx = math.max(0, maxLen - 1);
     }
 
-    // 入力ダイアログを表示して [idx] の ms を設宁E
+    // 入力ダイアログを表示して [idx] の ms を設定
     final currentMs =
         (idx < settings.stepDurationsMs.length)
             ? settings.stepDurationsMs[idx]
@@ -1050,7 +1067,7 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  // ロングプレスでのドラチE���E�タチE��チE��イス向け�E�E
+  // ロングプレスでのコメント更新開始
   void _onLongPressStart(LongPressStartDetails details) {
     final chartLocalPos = details.localPosition;
     final adjustedPos = Offset(
@@ -1087,7 +1104,7 @@ class TimingChartState extends State<TimingChart>
           (_vScrollController.hasClients ? _vScrollController.offset : 0),
     );
     final delta = adjustedPos - _draggingStartLocal!;
-    // 上方向にはみ出さなぁE��ぁE��YをクランチE
+    // 上方向にはみ出さないYをクランチ
     Offset deltaClamped = delta;
     final proposedTopLeft = _draggingInitialBoxTopLeft ?? Offset.zero + delta;
     if (_draggingInitialBoxTopLeft != null && proposedTopLeft.dy < 0) {
@@ -1132,7 +1149,7 @@ class TimingChartState extends State<TimingChart>
 
     _lastRightClickPos = position; // グローバル保持
 
-    // グローバル座樁EↁEチャーチECustomPaint)のローカル座標へ
+    // グローバル座標からチャート(CustomPaint)のローカル座標へ
     final RenderBox? paintBox =
         _customPaintKey.currentContext?.findRenderObject() as RenderBox?;
     final Offset chartLocalPos =
@@ -1146,10 +1163,10 @@ class TimingChartState extends State<TimingChart>
           (_vScrollController.hasClients ? _vScrollController.offset : 0),
     );
 
-    // クリチE��されたタイムインチE��クスを�Eに計算しておく
+    // タップされたタイムインデックスを計算しておく
     final int clickedTime = _getTimeIndexFromDx(chartLocalPos.dx);
 
-    // 行インチE��クス�E�可視行）とラベル領域判定を事前に計箁E
+    // 行インデックス（可視行）とラベル領域判定を事前に計算
     final int clickedSig = _getSignalIndexFromDy(chartLocalPos.dy);
 
     String? hitAnnId;
@@ -1189,7 +1206,7 @@ class TimingChartState extends State<TimingChart>
     } else {
       setState(() {
         _highlightTimeIndices.clear();
-        // ms 非等間隔に対応したクリチE��位置の墁E��/区間判宁E
+        // ms 非等間隔に対応したクリチー位置の行/区間判別
         final settings = Provider.of<SettingsNotifier>(context, listen: false);
         int clickedTime;
         if (settings.timeUnitIsMs) {
@@ -1202,7 +1219,7 @@ class TimingChartState extends State<TimingChart>
               chartMarginLeft +
               (_hScrollController.hasClients ? _hScrollController.offset : 0);
           final double relX = (chartX - labelWidth).clamp(0, double.infinity);
-          // 累積墁E��
+          // 累積行
           final List<double> pos = List<double>.filled(maxLen + 1, 0.0);
           for (int i = 0; i < maxLen; i++) {
             final durSteps =
@@ -1211,7 +1228,7 @@ class TimingChartState extends State<TimingChart>
                     : 1.0;
             pos[i + 1] = pos[i] + durSteps;
           }
-          // 近傍墁E��
+          // 近傍行
           int nearest = 0;
           double best = double.infinity;
           for (int i = 0; i <= maxLen; i++) {
@@ -1222,12 +1239,12 @@ class TimingChartState extends State<TimingChart>
               nearest = i;
             }
           }
-          // 墁E��しきぁE��(px)
+          // スナップしきぁE��(px)
           const double snapPx = 6.0;
           if (best <= snapPx) {
             clickedTime = nearest.clamp(0, math.max(0, maxLen - 1));
           } else {
-            // 区間にマッチE
+            // 区間にマッチ
             int idx = 0;
             for (int i = 0; i < maxLen; i++) {
               final double leftPx = pos[i] * _cellWidth;
@@ -1258,7 +1275,6 @@ class TimingChartState extends State<TimingChart>
 
       menuItems = [
         PopupMenuItem(value: 'insert', child: Text(s.ctx_insert_zeros)),
-        // 追加: 選択篁E��を末尾に褁E��
         PopupMenuItem(value: 'duplicate', child: Text(s.ctx_duplicate_to_tail)),
         PopupMenuItem(
           value: 'selectAll',
@@ -1270,7 +1286,7 @@ class TimingChartState extends State<TimingChart>
       ];
     }
 
-    // マウス位置付近にメニューを�E置するため、オーバ�Eレイ全体を基準とした Rect を使用する
+    // マウス位置付近にメニューを置するため、オーバーレイ全体を基準とした Rect を使用する
     final selectedValue = await showMenu<String>(
       context: context,
       position: RelativeRect.fromRect(
@@ -1360,7 +1376,7 @@ class TimingChartState extends State<TimingChart>
 
     String newComment = "";
 
-    // ダイアログ入力時にチャート�Eキーボ�Eドフォーカスを外す
+    // ダイアログ入力時にチャートキーボードフォーカスを外す
     final bool prevCanRequest = _focusNode.canRequestFocus;
     _focusNode.canRequestFocus = false;
     FocusScope.of(context).unfocus();
@@ -1391,7 +1407,7 @@ class TimingChartState extends State<TimingChart>
       },
     );
 
-    // フォーカス設定を允E��戻ぁE
+    // フォーカス設定を戻す
     _focusNode.canRequestFocus = prevCanRequest;
     if (mounted) _focusNode.requestFocus();
 
@@ -1407,7 +1423,7 @@ class TimingChartState extends State<TimingChart>
       setState(() {
         debugPrint('コメント追加: ID=${annId}, text=${newComment}, index=${tIndex}');
         annotations.add(newAnnotation);
-        // 強制皁E��再描画をトリガーするためのダミ�E更新
+        // 強制再描画をトリガーするためのダミー更新
         _highlightTimeIndices = [..._highlightTimeIndices];
         _forceRepaint();
       });
@@ -1423,7 +1439,7 @@ class TimingChartState extends State<TimingChart>
 
     String newComment = "";
 
-    // ダイアログ入力時にチャート�Eキーボ�Eドフォーカスを外す
+    // ダイアログ入力時にチャートキーボードフォーカスを外す
     final bool prevCanRequest = _focusNode.canRequestFocus;
     _focusNode.canRequestFocus = false;
     FocusScope.of(context).unfocus();
@@ -1454,7 +1470,7 @@ class TimingChartState extends State<TimingChart>
       },
     );
 
-    // フォーカス設定を允E��戻ぁE
+    // フォーカス設定を戻す
     _focusNode.canRequestFocus = prevCanRequest;
     if (mounted) _focusNode.requestFocus();
 
@@ -1469,7 +1485,7 @@ class TimingChartState extends State<TimingChart>
 
       setState(() {
         debugPrint(
-          '篁E��コメント追加: ID=${annId}, text=${newComment}, start=${stTime}, end=${edTime}',
+          'コメント追加: ID=${annId}, text=${newComment}, start=${stTime}, end=${edTime}',
         );
         annotations.add(newAnnotation);
         _forceRepaint();
@@ -1485,7 +1501,7 @@ class TimingChartState extends State<TimingChart>
 
     String newText = ann.text;
 
-    // ダイアログ入力時にチャート�Eキーボ�Eドフォーカスを外す
+    // ダイアログ入力時にチャートキーボードフォーカスを外す
     final bool prevCanRequest = _focusNode.canRequestFocus;
     _focusNode.canRequestFocus = false;
     FocusScope.of(context).unfocus();
@@ -1519,7 +1535,7 @@ class TimingChartState extends State<TimingChart>
       },
     );
 
-    // フォーカス設定を允E��戻ぁE
+    // フォーカス設定を戻す
     _focusNode.canRequestFocus = prevCanRequest;
     if (mounted) _focusNode.requestFocus();
 
@@ -1620,16 +1636,16 @@ class TimingChartState extends State<TimingChart>
   void _duplicateRange() {
     if (!_hasValidSelection) return;
 
-    // 選択篁E��の信号インチE��クスと時刻インチE��クスを正規化
+    // 選択範囲の信号インデックスと時刻インデックスを正規化
     final stSig = math.min(_startSignalIndex!, _endSignalIndex!);
     final edSig = math.max(_startSignalIndex!, _endSignalIndex!);
     final stTime = math.min(_startTimeIndex!, _endTimeIndex!);
     final edTime = math.max(_startTimeIndex!, _endTimeIndex!);
 
-    // 選択された信号が可視篁E��外�E場合�E処琁E��なぁE
+    // 選択された信号が可視範囲外の場合は処理しない
     if (stSig < 0 || edSig >= _visibleIndexes.length) return;
 
-    // 追加: 末尾開始オフセチE��を計算しておく�E�コメンチE省略記号褁E��用�E�E
+    // 追加: 末尾開始オフセットを計算しておく
     final int oldMaxLen =
         signals.isEmpty ? 0 : signals.map((e) => e.length).reduce(math.max);
 
@@ -1641,7 +1657,7 @@ class TimingChartState extends State<TimingChart>
         final clampedEdTime = edTime.clamp(0, maxTimeForRow);
         if (clampedStTime > clampedEdTime) continue;
 
-        // 選択篁E��のスライスを取得して末尾に追加
+        // 選択範囲のスライスを取得して末尾に追加
         final slice = signals[originalRow].sublist(
           clampedStTime,
           clampedEdTime + 1,
@@ -1649,13 +1665,13 @@ class TimingChartState extends State<TimingChart>
         signals[originalRow].addAll(slice);
       }
 
-      // ---------- アノテーションを褁E�� ----------
+      // ---------- アノテーションを追加 ----------
       final List<TimingChartAnnotation> duplicatedAnnotations = [];
       for (final ann in annotations) {
         final annStart = ann.startTimeIndex;
         final int annEnd = ann.endTimeIndex ?? annStart;
 
-        // 選択篁E��とアノテーションが交差してぁE��か判宁E
+        // 選択範囲とアノテーションが交差しているか判断
         if (annEnd >= stTime && annStart <= edTime) {
           final int offset = oldMaxLen - stTime;
           final newAnn = ann.copyWith(
@@ -1670,7 +1686,7 @@ class TimingChartState extends State<TimingChart>
       }
       annotations.addAll(duplicatedAnnotations);
 
-      // ---------- 省略記号時刻インチE��クスを褁E�� ----------
+      // ---------- 省略記号時刻インデックスを追加 ----------
       final List<int> newOmissions = [];
       for (final t in _omissionTimeIndices) {
         if (t >= stTime && t <= edTime) {
@@ -1709,7 +1725,6 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  /// 持E��した時刻インチE��クスの省略信号をトグル�E�追加/削除�E�E
   void _toggleOmissionTime(int timeIndex) {
     if (timeIndex < 0) return;
     setState(() {
@@ -1748,7 +1763,7 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  // ===== アンカー付きズーム用ヘルパ�E =====
+  // ===== アンカー付きズーム用ヘルパー =====
   double _getViewportWaveWidth() {
     // build 中に context.size を参照すると例外になるため、MediaQuery を使用
     final double widgetWidth = MediaQuery.of(context).size.width;
@@ -1842,7 +1857,7 @@ class TimingChartState extends State<TimingChart>
             ? verticalDelta
             : horizontalDelta;
 
-    // アンカー位置�E�カーソルX�E�を取得（波形エリア座標！E
+    // アンカー位置を取得（波形エリア座標）
     double viewportWaveWidth = _getViewportWaveWidth();
     double anchorXInWave;
     final box = context.findRenderObject() as RenderBox?;
@@ -1879,7 +1894,7 @@ class TimingChartState extends State<TimingChart>
   Widget build(BuildContext context) {
     super.build(context);
 
-    // レイアウト�E岐用の設定取征E
+    // レイアウト用の設定取得
     final settingsTop = Provider.of<SettingsNotifier>(context);
 
     return (_isEditingSteps && settingsTop.timeUnitIsMs)
@@ -1892,7 +1907,7 @@ class TimingChartState extends State<TimingChart>
                   signals.isEmpty
                       ? 0
                       : signals.map((e) => e.length).fold(0, math.max);
-              // 表示対象インチE��クスを抽出
+              // 表示対象インデックスを抽出
               final visibleIndexes = <int>[];
               final int safeLen = math.min(
                 widget.signalTypes.length,
@@ -1908,7 +1923,7 @@ class TimingChartState extends State<TimingChart>
                 }
               }
 
-              // --- 横方吁E---
+              // --- 横方向 ---
               final availableWidth =
                   constraints.maxWidth.isFinite
                       ? constraints.maxWidth - chartMarginLeft - labelWidth
@@ -1916,7 +1931,7 @@ class TimingChartState extends State<TimingChart>
                           chartMarginLeft -
                           labelWidth;
 
-              // 合計スチE��プ幁E��Es モードでは吁E��チE��プ�E相対幁E�E総和�E�E
+              // 合計ステップ数はMs モードではチャート長の相対値
               final bool isMs = settings.timeUnitIsMs;
               final List<double> durationsForLayout =
                   (_controller?.stepDurationsMs.isNotEmpty ?? false)
@@ -1969,13 +1984,13 @@ class TimingChartState extends State<TimingChart>
                     baseCellWidth,
                   )).toDouble();
 
-              // 下限が上限を趁E��なぁE��ぁE��上限へキャチE�E
+              // 下限が上限を超えないように調整
               minCellWidthForFullView = math.min(
                 minCellWidthForFullView,
                 _maxZoomCellWidth,
               );
 
-              // 上限: チャート上に最佁EスチE��プが表示できるまで拡大を許可
+              // 上限: チャート上に最長ステップが表示できるまで拡大を許可
               final double viewportWaveWidth = _getViewportWaveWidth();
               final double maxCellWidthForTwoSteps =
                   (viewportWaveWidth.isFinite && viewportWaveWidth > 0)
@@ -2007,10 +2022,10 @@ class TimingChartState extends State<TimingChart>
               _minZoomFactorForView = minZoomFactorForView;
               _maxZoomFactorForView = maxZoomFactorForView;
               _effectiveZoomFactor = effectiveZoomFactor;
-              // ▼ コメントエリアの高さを動皁E��算�E
+              // コメントエリアの高さを動的に計算
               final double commentAreaHeight = _calculateCommentAreaHeight();
 
-              // --- 縦方吁E---
+              // --- 縦方向 ---
               double constraintHeight =
                   constraints.maxHeight.isFinite
                       ? constraints.maxHeight
@@ -2037,7 +2052,7 @@ class TimingChartState extends State<TimingChart>
                   visibleIndexes.length * _cellHeight +
                   commentAreaHeight;
 
-              // フィルタ済みリストを作�E
+              // フィルタ済みリストを作成
               final visibleSignalNames = [
                 for (final i in visibleIndexes) signalNames[i],
               ];
@@ -2060,8 +2075,16 @@ class TimingChartState extends State<TimingChart>
               ];
 
               _visibleIndexes = visibleIndexes;
+              _visibleSignalNamesCache = List<String>.from(visibleSignalNames);
+              _visibleSignalTypesCache = List<SignalType>.from(
+                visibleSignalTypes,
+              );
+              _visiblePortNumbersCache = List<int>.from(visiblePortNumbers);
+              _visibleIoSourcesCache = List<IoChannelSource>.from(
+                visibleIoSources,
+              );
 
-              // ビルド後に stepDurations 長を同朁E
+              // ビルド後に stepDurations 長を同じにする
               final settingsRW = Provider.of<SettingsNotifier>(
                 context,
                 listen: false,
@@ -2074,7 +2097,7 @@ class TimingChartState extends State<TimingChart>
 
               // 上部にトグル、下部にチャート本体を配置して重なりを回避
               const double _topControlsHeight = 48.0;
-              // fitToScreen 時�E高さ計算に上部コントロール刁E��控除
+              // fitToScreen 時の高さ計算に上部コントロールを控除
               if (widget.fitToScreen) {
                 final availableHeight =
                     (constraints.maxHeight.isFinite
@@ -2216,7 +2239,7 @@ class TimingChartState extends State<TimingChart>
                             ),
                           ),
                         ),
-                        // 左ラベルの固定オーバ�Eレイ
+                        // 左ラベルの固定オーバーレイ
                         Positioned(
                           left: chartMarginLeft,
                           top: 0,
@@ -2288,7 +2311,7 @@ class TimingChartState extends State<TimingChart>
                     signals.isEmpty
                         ? 0
                         : signals.map((e) => e.length).fold(0, math.max);
-                // 表示対象インチE��クスを抽出
+                // 表示対象インデックスを抽出
                 final visibleIndexes = <int>[];
                 final int safeLen = math.min(
                   widget.signalTypes.length,
@@ -2304,7 +2327,7 @@ class TimingChartState extends State<TimingChart>
                   }
                 }
 
-                // --- 横方吁E---
+                // --- 横方向 ---
                 final availableWidth =
                     constraints.maxWidth.isFinite
                         ? constraints.maxWidth - chartMarginLeft - labelWidth
@@ -2312,7 +2335,7 @@ class TimingChartState extends State<TimingChart>
                             chartMarginLeft -
                             labelWidth;
 
-                // 合計スチE��プ幁E��Es モードでは吁E��チE��プ�E相対幁E�E総和�E�E
+                // 合計ステップ数はMs モードではチャート長の相対値
                 final bool isMs = settings.timeUnitIsMs;
                 final List<double> durationsForLayout =
                     (_controller?.stepDurationsMs.isNotEmpty ?? false)
@@ -2364,13 +2387,13 @@ class TimingChartState extends State<TimingChart>
                         .clamp(_minZoomCellWidth, baseCellWidth)
                         .toDouble();
 
-                // 下限が上限を趁E��なぁE��ぁE��上限へキャチE�E
+                // 下限が上限を超えないように調整
                 minCellWidthForFullView = math.min(
                   minCellWidthForFullView,
                   _maxZoomCellWidth,
                 );
 
-                // 上限: チャート上に最佁EスチE��プが表示できるまで拡大を許可
+                // 上限: チャート上に最長ステップが表示できるまで拡大を許可
                 final double viewportWaveWidth = _getViewportWaveWidth();
                 final double maxCellWidthForTwoSteps =
                     (viewportWaveWidth.isFinite && viewportWaveWidth > 0)
@@ -2402,10 +2425,10 @@ class TimingChartState extends State<TimingChart>
                 _minZoomFactorForView = minZoomFactorForView;
                 _maxZoomFactorForView = maxZoomFactorForView;
                 _effectiveZoomFactor = effectiveZoomFactor;
-                // ▼ コメントエリアの高さを動皁E��算�E
+                // コメントエリアの高さを動的に計算
                 final double commentAreaHeight = _calculateCommentAreaHeight();
 
-                // --- 縦方吁E---
+                // --- 縦方向 ---
                 double constraintHeight =
                     constraints.maxHeight.isFinite
                         ? constraints.maxHeight
@@ -2432,7 +2455,7 @@ class TimingChartState extends State<TimingChart>
                     visibleIndexes.length * _cellHeight +
                     commentAreaHeight;
 
-                // フィルタ済みリストを作�E
+                // フィルタ済みリストを作成
                 final visibleSignalNames = [
                   for (final i in visibleIndexes) signalNames[i],
                 ];
@@ -2455,8 +2478,18 @@ class TimingChartState extends State<TimingChart>
                 ];
 
                 _visibleIndexes = visibleIndexes;
+                _visibleSignalNamesCache = List<String>.from(
+                  visibleSignalNames,
+                );
+                _visibleSignalTypesCache = List<SignalType>.from(
+                  visibleSignalTypes,
+                );
+                _visiblePortNumbersCache = List<int>.from(visiblePortNumbers);
+                _visibleIoSourcesCache = List<IoChannelSource>.from(
+                  visibleIoSources,
+                );
 
-                // 非等間隔用: Settings にチャート長を通知して長さを揁E��る（ビルド後に実行！E
+                // 非等間隔用: Settings にチャート長を通知して長さを揃える
                 final settingsRW = Provider.of<SettingsNotifier>(
                   context,
                   listen: false,
@@ -2502,7 +2535,7 @@ class TimingChartState extends State<TimingChart>
                           GestureDetector(
                             behavior: HitTestBehavior.opaque,
                             onPanDown: (details) {
-                              if (_isEditingSteps) return; // 編雁E��は他機�Eを無効匁E
+                              if (_isEditingSteps) return; // 編集中は無効
                               final box =
                                   context.findRenderObject() as RenderBox?;
                               if (box == null) return;
@@ -2672,7 +2705,7 @@ class TimingChartState extends State<TimingChart>
                               ),
                             ),
                           ),
-                          // 左ラベルの固定オーバ�Eレイ�E�非編雁E��ード！E
+                          // 左ラベルの固定オーバーレイ
                           Positioned(
                             left: 0,
                             top: 0,
@@ -2771,12 +2804,12 @@ class TimingChartState extends State<TimingChart>
     );
   }
 
-  // 選択篁E��の合計時間[ms]を計算！Es単位�E非等間隔に対応！E
+  // 選択範囲の合計時間[ms]を計算
   double _computeSelectionDurationMs(SettingsNotifier settings) {
     if (!_hasValidSelection) return 0.0;
     final int stTime = math.min(_startTimeIndex!, _endTimeIndex!);
     final int edTime = math.max(_startTimeIndex!, _endTimeIndex!);
-    // レイアウトと同じソース�E�Eontroller優先�Eなければsettings�E�を使用
+    // レイアウトと同じソースを使用
     final List<double> durations =
         (_controller?.stepDurationsMs.isNotEmpty ?? false)
             ? _controller!.stepDurationsMs
@@ -2792,7 +2825,7 @@ class TimingChartState extends State<TimingChart>
     return sumMs;
   }
 
-  // 選択篁E��のスチE��プ数を計算（等間隔単佁Estep用�E�E
+  // 選択範囲のステップ数を計算
   int _computeSelectionSteps() {
     if (!_hasValidSelection) return 0;
     final int stTime = math.min(_startTimeIndex!, _endTimeIndex!);
@@ -2800,7 +2833,7 @@ class TimingChartState extends State<TimingChart>
     return (edTime - stTime + 1).clamp(0, 1 << 30);
   }
 
-  // 現在の単位に合わせた選択篁E��ラベルを生戁E
+  // 現在の単位に合わせた選択ラベルを生成
   String _buildSelectionLabel(SettingsNotifier settings) {
     if (settings.timeUnitIsMs) {
       final double ms = _computeSelectionDurationMs(settings);
@@ -2854,7 +2887,7 @@ class TimingChartState extends State<TimingChart>
           ),
           Text(label),
           const SizedBox(width: 12),
-          // 下部の単位ラベル�E�時間ラベル�E�表示刁E��
+          // 下部の単位ラベル表示
           Text('Labels:'),
           const SizedBox(width: 6),
           Switch(
@@ -2892,7 +2925,7 @@ class TimingChartState extends State<TimingChart>
     );
   }
 
-  // 小さな数値入力！Es/step�E�E
+  // 小さな数値入力
   Widget _buildMsPerStepField() {
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
     final controller = TextEditingController(
@@ -2920,7 +2953,7 @@ class TimingChartState extends State<TimingChart>
     );
   }
 
-  // スチE��プ個別時間の編雁E��イアログ
+  // 個別時間のダイアログを表示
   Widget _buildEditStepDurationsButton() {
     return OutlinedButton.icon(
       icon: const Icon(Icons.tune, size: 16),
@@ -2935,7 +2968,7 @@ class TimingChartState extends State<TimingChart>
         final controller = TextEditingController(
           text: settings.stepDurationsMs.join(','),
         );
-        // 入力ダイアログ中はチャート�Eのキーボ�Eドフォーカスを外す
+        // 入力ダイアログ中はフォーカスを外す
         final bool prevCanRequest = _focusNode.canRequestFocus;
         _focusNode.canRequestFocus = false;
         FocusScope.of(context).unfocus();
@@ -2984,7 +3017,7 @@ class TimingChartState extends State<TimingChart>
     );
   }
 
-  // 強制皁E��再描画をトリガーするメソチE��
+  // 強制再描画をトリガーするメソッド
   void _forceRepaint() {
     final customPaint = _customPaintKey.currentContext?.findRenderObject();
     if (customPaint is RenderCustomPaint) {
@@ -3010,7 +3043,7 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  /// チャート領域全体をJPEGとしてキャプチャして返す�E�背景色・品質持E��！E
+  /// チャート領域全体をJPEGとしてキャプチャして返す
   Future<Uint8List?> captureChartJpeg({
     double? pixelRatio,
     Color? backgroundColor,
@@ -3024,25 +3057,59 @@ class TimingChartState extends State<TimingChart>
       final double pr =
           pixelRatio ?? MediaQuery.of(context).devicePixelRatio.clamp(1.0, 4.0);
 
-      // まずPNGとして取得！EGBA�E�E
-      final ui.Image image = await boundary.toImage(pixelRatio: pr);
-      final byteData = await image.toByteData(
+      _ensureVisibleCachesUpToDate();
+
+      final ui.Image baseImage = await boundary.toImage(pixelRatio: pr);
+
+      final ui.PictureRecorder recorder = ui.PictureRecorder();
+      final Canvas canvas = Canvas(recorder);
+      canvas.drawImage(baseImage, Offset.zero, Paint());
+
+      final theme = Theme.of(context);
+      final overlayPainter = _LabelsOverlayPainter(
+        signalNames: _visibleSignalNamesCache,
+        signalTypes: _visibleSignalTypesCache,
+        showAllSignalTypes: widget.showAllSignalTypes,
+        showIoNumbers: widget.showIoNumbers,
+        portNumbers: _visiblePortNumbersCache,
+        ioSources: _visibleIoSourcesCache,
+        plcEipMode: widget.plcEipMode,
+        labelColor:
+            theme.brightness == Brightness.dark ? Colors.white : Colors.black,
+        backgroundColor: theme.scaffoldBackgroundColor,
+        labelWidth: labelWidth,
+        chartMarginLeft: chartMarginLeft,
+        cellHeight: _cellHeight,
+        highlightStartRow: _startSignalIndex,
+        highlightEndRow: _endSignalIndex,
+      );
+
+      final double logicalWidth = baseImage.width / pr;
+      final double logicalHeight = baseImage.height / pr;
+
+      canvas.save();
+      canvas.scale(pr, pr);
+      overlayPainter.paint(canvas, Size(logicalWidth, logicalHeight));
+      canvas.restore();
+
+      final ui.Image composedImage = await recorder.endRecording().toImage(
+        baseImage.width,
+        baseImage.height,
+      );
+
+      final byteData = await composedImage.toByteData(
         format: ui.ImageByteFormat.rawRgba,
       );
       if (byteData == null) return null;
 
-      final width = image.width;
-      final height = image.height;
+      final width = composedImage.width;
+      final height = composedImage.height;
       final rgbaBytes = byteData.buffer.asUint8List();
 
-      // 背景色を決定（未持E��ならテーマから！E
-      final bg =
+      final Color bg =
           backgroundColor ??
-          (Theme.of(context).brightness == Brightness.dark
-              ? Colors.black
-              : Colors.white);
+          (theme.brightness == Brightness.dark ? Colors.black : Colors.white);
 
-      // RGBAを背景合�EしつつRGBへ変換
       final int rBg = (bg.r * 255).round();
       final int gBg = (bg.g * 255).round();
       final int bBg = (bg.b * 255).round();
@@ -3055,7 +3122,6 @@ class TimingChartState extends State<TimingChart>
         final int g = rgbaBytes[si + 1];
         final int b = rgbaBytes[si + 2];
         final int a = rgbaBytes[si + 3];
-        // aは0..255。アルファ合�E: out = src * a + bg * (1 - a)
         final int outR = ((r * a + rBg * (255 - a)) / 255).round();
         final int outG = ((g * a + gBg * (255 - a)) / 255).round();
         final int outB = ((b * a + bBg * (255 - a)) / 255).round();
@@ -3066,7 +3132,6 @@ class TimingChartState extends State<TimingChart>
         di += 3;
       }
 
-      // JPEGエンコード！Eackage:image�E�E
       final img.Image rgbImage = img.Image.fromBytes(
         width: width,
         height: height,
@@ -3081,13 +3146,13 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  /// 現在のアノテーション一覧を取征E
+  /// 現在のアノテーション一覧を取り出す
   List<TimingChartAnnotation> getAnnotations() => List.from(annotations);
 
-  /// 現在チャートで表示されてぁE��信号 ID 頁E��を返す
+  /// 現在チャートで表示されている信号 ID を返す
   List<String> getSignalIdNames() => List.from(_idSignalNames);
 
-  /// 省略信号(非表示区閁Eが描画されてぁE��時刻インチE��クス
+  /// 省略信号(非表示区間)が描画されている時刻インデックス
   List<int> getOmissionTimeIndices() => List.from(_omissionTimeIndices);
 
   void setOmission(List<int> indices) {
@@ -3098,7 +3163,7 @@ class TimingChartState extends State<TimingChart>
     _controller?.setOmissionTimeIndices(_omissionTimeIndices);
   }
 
-  // 持E��アノテーションの矢印先端を、可視衁Eindex の水平中央に設宁E
+  // 持つアノテーションの矢印先端を、可視行index の水平中央に設定
   void _setAnnotationArrowToSignal(String annId, int visibleRowIndex) {
     if (visibleRowIndex < 0 || visibleRowIndex >= _visibleIndexes.length)
       return;
@@ -3113,7 +3178,7 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  // ======== キーボ�EドショートカチE��関連 ========
+  // ======== キーボードショートカット関連 ========
   late final FocusNode _focusNode = FocusNode();
   int _lastHandledGridResetNonce = 0;
   int _lastHandledGridRecomputeNonce = 0;
@@ -3155,12 +3220,26 @@ class TimingChartState extends State<TimingChart>
     final bool isModifierPressed =
         HardwareKeyboard.instance.isControlPressed ||
         HardwareKeyboard.instance.isMetaPressed;
+
+    // Ctrl+A: 全選択
     if (isModifierPressed && event.logicalKey == LogicalKeyboardKey.keyA) {
       _selectAllSignals();
+      return;
+    }
+
+    // 範囲選択がある場合の1/0キー処理
+    if (_hasValidSelection) {
+      if (event.logicalKey == LogicalKeyboardKey.digit1) {
+        _setSignalsInSelection(1);
+        return;
+      } else if (event.logicalKey == LogicalKeyboardKey.digit0) {
+        _setSignalsInSelection(0);
+        return;
+      }
     }
   }
 
-  // すべての信号を選択すめE
+  // すべての信号を選択すめ
   void _selectAllSignals() {
     if (signals.isEmpty || _visibleIndexes.isEmpty) return;
     setState(() {
@@ -3172,7 +3251,33 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  // ================= 行�Eれ替ぁE=================
+  // 選択範囲内の波形を指定した値に設定
+  void _setSignalsInSelection(int value) {
+    if (!_hasValidSelection) return;
+    final stSig = math.min(_startSignalIndex!, _endSignalIndex!);
+    final edSig = math.max(_startSignalIndex!, _endSignalIndex!);
+    final stTime = math.min(_startTimeIndex!, _endTimeIndex!);
+    final edTime = math.max(_startTimeIndex!, _endTimeIndex!);
+    if (stSig < 0 || edSig >= _visibleIndexes.length) return;
+
+    setState(() {
+      for (int visibleRow = stSig; visibleRow <= edSig; visibleRow++) {
+        final originalRow = _visibleIndexes[visibleRow];
+        final maxTimeForRow = signals[originalRow].length - 1;
+        final clampedStTime = stTime.clamp(0, maxTimeForRow);
+        final clampedEdTime = edTime.clamp(0, maxTimeForRow);
+        if (clampedStTime > clampedEdTime) continue;
+        for (int t = clampedStTime; t <= clampedEdTime; t++) {
+          signals[originalRow][t] = value;
+        }
+      }
+      _highlightTimeIndices = [..._highlightTimeIndices];
+      _forceRepaint();
+    });
+    _commitSignalsFromChartEdit();
+  }
+
+  // ================= 行れ替え=================
   void _moveSignal(int visibleIndex, int direction) {
     // direction -1: 上へ, 1: 下へ
     final int targetVisible = visibleIndex + direction;
@@ -3182,7 +3287,7 @@ class TimingChartState extends State<TimingChart>
     final int dstIdx = _visibleIndexes[targetVisible];
 
     setState(() {
-      // --- 値をスワチE�E ---
+      // --- 値をスワップ ---
       final tmpSignal = signals[srcIdx];
       signals[srcIdx] = signals[dstIdx];
       signals[dstIdx] = tmpSignal;
@@ -3191,12 +3296,12 @@ class TimingChartState extends State<TimingChart>
       signalNames[srcIdx] = signalNames[dstIdx];
       signalNames[dstIdx] = tmpName;
 
-      // widget.signalTypes は final だぁEList 自体�E可変、E
+      // widget.signalTypes は final だけどList 自体は可変
       final tmpType = widget.signalTypes[srcIdx];
       widget.signalTypes[srcIdx] = widget.signalTypes[dstIdx];
       widget.signalTypes[dstIdx] = tmpType;
 
-      // ポ�Eト番号も同期して入れ替ぁE
+      // ポート番号も同期して入れ替え
       if (widget.portNumbers.length > srcIdx &&
           widget.portNumbers.length > dstIdx) {
         final tmpPort = widget.portNumbers[srcIdx];
@@ -3211,7 +3316,7 @@ class TimingChartState extends State<TimingChart>
         widget.ioSources[dstIdx] = tmpSource;
       }
 
-      // --- ID 頁E��も同期 ---
+      // --- ID も同期 ---
       final tmpId = _idSignalNames[srcIdx];
       _idSignalNames[srcIdx] = _idSignalNames[dstIdx];
       _idSignalNames[dstIdx] = tmpId;
@@ -3220,7 +3325,7 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  // -------- 行を任意位置へ移勁E--------
+  // -------- 行を任意位置へ移動--------
   void _reorderSignalRows(int fromVisible, int toVisible) {
     if (fromVisible == toVisible) return;
 
@@ -3238,9 +3343,9 @@ class TimingChartState extends State<TimingChart>
 
 /// タイミングチャートを描画するカスタムペインター
 ///
-/// 責務�E刁E��に基づぁE��以下�E3つのマネージャークラスを利用�E�E
-/// - ChartGridManager: グリチE��線と信号名ラベルの描画
-/// - ChartSignalsManager: チE��タル信号波形と選択篁E��の描画
+/// 責務に基づく以下3つのマネージャークラスを利用
+/// - ChartGridManager: グリッド線と信号名ラベルの描画
+/// - ChartSignalsManager: チャート信号波形と選択範囲の描画
 /// - ChartAnnotationsManager: コメント関連の描画
 class _StepTimingChartPainter extends CustomPainter {
   _StepTimingChartPainter({
@@ -3279,7 +3384,7 @@ class _StepTimingChartPainter extends CustomPainter {
     this.draggingStartRow,
     this.draggingCurrentRow,
   }) {
-    // 吁E�Eネ�Eジャークラスを�E期化
+    // マネージャークラスを初期化
     _annotationsManager = ChartAnnotationsManager(
       annotations: annotations,
       cellWidth: cellWidth,
@@ -3366,43 +3471,43 @@ class _StepTimingChartPainter extends CustomPainter {
   // 下部の単位ラベル表示制御
   final bool showBottomUnitLabels;
 
-  // --- ラベルドラチE��用ハイライチE---
+  // --- ラベルドラチー用ハイライチー---
   final int? draggingStartRow;
   final int? draggingCurrentRow;
 
-  // 吁E��マネージャーインスタンス
+  // マネージャーインスタンス
   late final ChartAnnotationsManager _annotationsManager;
   late final ChartGridManager _gridManager;
   late final ChartSignalsManager _signalsManager;
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 描画篁E��幁E���Eージン部刁E��除ぁE��エリア�E�E
+    // 描画領域の幅を計算
     final double drawAreaWidth = size.width - chartMarginLeft;
 
     debugPrint('\n=== TimingChart Paint Start ===');
     debugPrint('Canvas Size: $size');
     debugPrint('Chart Margin: Left=$chartMarginLeft, Top=$chartMarginTop');
 
-    // 描画の開始点をオフセチE��
+    // 描画の開始点をオフセット
     canvas.save();
     canvas.translate(chartMarginLeft, chartMarginTop);
     debugPrint('Canvas translated by: ($chartMarginLeft, $chartMarginTop)');
 
-    // signals, signalNames, signalTypesの長さ�Eすべて一致してぁE��前提
+    // signals, signalNames, signalTypesの長さすべて一致している前提
     final rowCount = signals.length;
 
-    // ラベル領域の背景を�Eに塗りつぶし（波形めE��リチE��のにじみ対策！E
+    // ラベル領域の背景を塗りつぶし
     final double maskHeight = rowCount * cellHeight + commentAreaHeight;
     final Paint labelMaskPaint =
         Paint()
           ..color = omissionFillColor
           ..style = PaintingStyle.fill;
-    // 右端めEpx空けて塗りつぶし！E刻みの線を要E��なぁE��E
+    // 右端めpx空けて塗りつぶし刻みの線を要らない
     final double maskWidth = (labelWidth - 1).clamp(0.0, double.infinity);
     canvas.drawRect(Rect.fromLTWH(0, 0, maskWidth, maskHeight), labelMaskPaint);
 
-    // 0. ドラチE��ハイライト（背景�E�E
+    // 0. ドラッグハイライト（背景）
     if (draggingStartRow != null) {
       final paintBg =
           Paint()
@@ -3434,23 +3539,23 @@ class _StepTimingChartPainter extends CustomPainter {
       );
     }
 
-    // 描画頁E���E背景から前景へ�E�E
+    // 描画領域の背景から前景へ
     // Labels are drawn by overlay painter to keep them pinned on the left.
 
     debugPrint('\n2. Drawing grid lines');
     final maxTimeSteps =
         signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
-    // ms単位�E非等間隔描画にも対応できるよう gridManager に stepDurations を渡済み
+    // ms単位非等間隔描画にも対応できるよう gridManager に stepDurations を渡済み
     _gridManager.drawGridLines(canvas, size, rowCount, maxTimeSteps);
 
     debugPrint('\n3. Drawing highlighted time indices');
     _gridManager.drawHighlightedLines(canvas, highlightTimeIndices, size);
 
     debugPrint('\n4. Drawing signal waveforms');
-    // ラベル領域に波形が�Eみ出さなぁE��ぁE��リチE�E
+    // ラベル領域に波形がみ出さないようにクリップ
     canvas.save();
     final double clipHeight = rowCount * cellHeight + commentAreaHeight;
-    // クリチE�E開始を1px右へ�E�E刻みの線を確実に残す�E�E
+    // クリップ開始を1px右へ刻みの線を確実に残す
     canvas.clipRect(
       Rect.fromLTWH(
         labelWidth + 1,
@@ -3459,8 +3564,8 @@ class _StepTimingChartPainter extends CustomPainter {
         clipHeight,
       ),
     );
-    // 現行�E描画は step 等間隔�Eため、x = labelWidth + t*cellWidth
-    // ms非等間隔対応�E今征Emapper ベ�Eスに差し替え予宁E
+    // 現行描画は step 等間隔ため、x = labelWidth + t*cellWidth
+    // ms非等間隔対応今回は mapper ベースに差し替え予定
     _signalsManager.drawSignalWaveforms(canvas, signals);
 
     debugPrint('\n4b. Drawing omission lines');
@@ -3499,7 +3604,7 @@ class _StepTimingChartPainter extends CustomPainter {
     _annotationsManager.drawAnnotations(canvas, size, rowCount);
     canvas.restore();
 
-    // 時間ラベル�E�下部�E�E
+    // 時間ラベル下部
     _gridManager.drawTimeLabels(canvas, size, rowCount, maxTimeSteps);
 
     // アノテーションの当たり判定用Rectマップを更新
@@ -3511,7 +3616,7 @@ class _StepTimingChartPainter extends CustomPainter {
     debugPrint('=== TimingChart Paint End ===\n');
   }
 
-  /// 省略信号�E�波線）�E描画
+  /// 省略信号波線）描画
   void _drawOmissionLines(Canvas canvas, int rowCount) {
     if (omissionTimeIndices.isEmpty) return;
 
@@ -3552,18 +3657,18 @@ class _StepTimingChartPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _StepTimingChartPainter oldDelegate) {
-    // 最初に信号値の比輁E
+    // 最初に信号値の比較
     bool signalsChanged = signals.length != oldDelegate.signals.length;
 
     if (!signalsChanged) {
-      // 吁E��号の長さと冁E��を比輁E
+      // 信号の長さと比較
       for (int i = 0; i < signals.length; i++) {
         if (signals[i].length != oldDelegate.signals[i].length) {
           signalsChanged = true;
           break;
         }
 
-        // ビット単位で比輁E��て変更を検�E
+        // ビット単位で比較て変更を検出
         for (int j = 0; j < signals[i].length; j++) {
           if (signals[i][j] != oldDelegate.signals[i][j]) {
             signalsChanged = true;
@@ -3593,7 +3698,7 @@ class _StepTimingChartPainter extends CustomPainter {
         endTimeIndex != oldDelegate.endTimeIndex ||
         showIoNumbers != oldDelegate.showIoNumbers ||
         portNumbers != oldDelegate.portNumbers ||
-        // ms/編雁E��E��の変化も�E描画トリガ
+        // ms/メモリ変化も描画トリガ
         timeUnitIsMs != oldDelegate.timeUnitIsMs ||
         msPerStep != oldDelegate.msPerStep ||
         !listEquals(stepDurationsMs, oldDelegate.stepDurationsMs) ||
@@ -3601,7 +3706,7 @@ class _StepTimingChartPainter extends CustomPainter {
   }
 }
 
-/// ラベルを独立して固定描画するオーバ�Eレイ用ペインター
+/// ラベルを独立して固定描画するオーバーレイ用ペインター
 class _LabelsOverlayPainter extends CustomPainter {
   _LabelsOverlayPainter({
     required this.signalNames,
@@ -3637,19 +3742,19 @@ class _LabelsOverlayPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 背景でラベル領域�E�左端〜ラベル右端�E�を塗りつぶし、下層の波形を完�Eに隠ぁE
+    // 背景でラベル領域左端〜ラベル右端を塗りつぶし、下層の波形を完全に隠さない
     final bgPaint =
         Paint()
           ..color = backgroundColor
           ..style = PaintingStyle.fill;
-    // 右端めEpx空けて塗る�E�E刻みの線を要E��なぁE��E
+    // 右端めpx空けて塗る刻みの線を要らない
     final double overlayWidth = (chartMarginLeft + labelWidth - 1).clamp(
       0.0,
       double.infinity,
     );
     canvas.drawRect(Rect.fromLTWH(0, 0, overlayWidth, size.height), bgPaint);
 
-    // 行区刁E��線を描画�E�ラベルごとの区刁E���E�E
+    // 行区刁線を描画ラベルごとの区刁
     final gridPaint =
         Paint()
           ..color = labelColor.withAlpha((0.2 * 255).round())
@@ -3662,7 +3767,7 @@ class _LabelsOverlayPainter extends CustomPainter {
       canvas.drawLine(Offset(0, y), Offset(overlayWidthForLines, y), gridPaint);
     }
 
-    // ラベルの右端に縦の区刁E��線！Epx�E�E
+    // ラベルの右端に縦の区刁線！px刻みの線を要らない
     final borderPaint =
         Paint()
           ..color = labelColor.withAlpha((0.35 * 255).round())
@@ -3742,7 +3847,7 @@ class _LabelsOverlayPainter extends CustomPainter {
       );
       textPainter.layout(maxWidth: labelWidth - 16);
       final yCenter = row * cellHeight + (cellHeight - textPainter.height) / 2;
-      // ラベル斁E���Eチャート左余白の後ろから描画
+      // ラベル左端からチャート左余白の後ろから描画
       textPainter.paint(canvas, Offset(chartMarginLeft + 6, yCenter));
     }
   }
