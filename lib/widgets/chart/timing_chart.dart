@@ -647,14 +647,20 @@ class TimingChartState extends State<TimingChart>
         xStartPx = chartMarginLeft + labelWidth + (stTimeAbs * _cellWidth);
         xEndPx = chartMarginLeft + labelWidth + ((edTimeAbs + 1) * _cellWidth);
       }
-      final selectionRectGlobal = Rect.fromLTWH(
+      final selectionRectContent = Rect.fromLTWH(
         xStartPx,
         chartMarginTop + (stSigAbs * _cellHeight).toDouble(),
         (xEndPx - xStartPx).clamp(0.0, double.infinity),
         (edSigAbs - stSigAbs + 1) * _cellHeight,
       );
+      final double scrollX =
+          _hScrollController.hasClients ? _hScrollController.offset : 0.0;
+      final double scrollY =
+          _vScrollController.hasClients ? _vScrollController.offset : 0.0;
+      final Rect selectionRectViewport =
+          selectionRectContent.translate(-scrollX, -scrollY);
 
-      if (selectionRectGlobal.contains(chartLocalPos)) {
+      if (selectionRectViewport.contains(chartLocalPos)) {
         _toggleSignalsInSelection();
       } else {
         _clearSelection();
