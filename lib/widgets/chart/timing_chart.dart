@@ -1787,7 +1787,11 @@ class TimingChartState extends State<TimingChart>
   }
 
   void _resetZoom() {
-    final double target = math.max(_minZoomFactorForView, _minZoom);
+    final double preferred = 1.0;
+    final double minAllowed = math.max(_minZoomFactorForView, _minZoom);
+    final bool preferredInRange = preferred >= minAllowed - 1e-6 &&
+        preferred <= _maxZoomFactorForView + 1e-6;
+    final double target = preferredInRange ? preferred : minAllowed;
     if ((_zoomFactor - target).abs() < 1e-6) return;
     setState(() {
       _zoomFactor = target;
