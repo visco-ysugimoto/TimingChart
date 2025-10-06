@@ -1677,6 +1677,36 @@ class TimingChartState extends State<TimingChart>
     // 追加: 末尾開始オフセットを計算しておく
     final int oldMaxLen =
         signals.isEmpty ? 0 : signals.map((e) => e.length).reduce(math.max);
+    final settings = Provider.of<SettingsNotifier>(context, listen: false);
+    final int selectionLength = (edTime - stTime + 1).clamp(0, 1 << 30);
+    List<double>? stepDurationsAfterDup;
+    if (settings.timeUnitIsMs && selectionLength > 0) {
+      final double defaultMs = settings.msPerStep;
+      List<double> baseDurations = List<double>.from(
+        (_controller?.stepDurationsMs.isNotEmpty ?? false)
+            ? _controller!.stepDurationsMs
+            : settings.stepDurationsMs,
+      );
+      if (baseDurations.length < oldMaxLen) {
+        baseDurations.addAll(
+          List<double>.filled(oldMaxLen - baseDurations.length, defaultMs),
+        );
+      } else if (baseDurations.length > oldMaxLen) {
+        baseDurations = baseDurations.sublist(0, oldMaxLen);
+      }
+      final int safeStart = stTime.clamp(0, baseDurations.length);
+      final int safeEnd =
+          math.min(baseDurations.length, safeStart + selectionLength);
+      List<double> slice = baseDurations.sublist(safeStart, safeEnd);
+      if (slice.length < selectionLength) {
+        slice = [
+          ...slice,
+          ...List<double>.filled(selectionLength - slice.length, defaultMs),
+        ];
+      }
+      stepDurationsAfterDup = List<double>.from(baseDurations)..addAll(slice);
+    }
+
 
     setState(() {
       for (int visibleRow = stSig; visibleRow <= edSig; visibleRow++) {
@@ -1732,9 +1762,27 @@ class TimingChartState extends State<TimingChart>
       // 再描画
       _forceRepaint();
     });
+
     _commitSignalsFromChartEdit();
     _controller?.setAnnotations(annotations);
     _controller?.setOmissionTimeIndices(_omissionTimeIndices);
+
+    if (stepDurationsAfterDup != null) {
+      final int newMaxLen =
+          signals.isEmpty ? 0 : signals.map((e) => e.length).reduce(math.max);
+      final double defaultMs = settings.msPerStep;
+      if (stepDurationsAfterDup.length < newMaxLen) {
+        stepDurationsAfterDup.addAll(
+          List<double>.filled(newMaxLen - stepDurationsAfterDup.length, defaultMs),
+        );
+      } else if (stepDurationsAfterDup.length > newMaxLen) {
+        stepDurationsAfterDup =
+            stepDurationsAfterDup.sublist(0, newMaxLen);
+      }
+      settings.setStepDurationsMs(stepDurationsAfterDup);
+      _controller?.setStepDurationsMs(stepDurationsAfterDup);
+    }
+
   }
 
   void _normalizeSignalLengths() {
