@@ -12,8 +12,8 @@ TimingChart - タイミングチャート描画
 - getChartData(), getAnnotations(), getSignalIdNames(), getOmissionTimeIndices() で親が取得可能
 - updateSignals()/updateSignalNames()/updateAnnotations() で親が描画要求可能
 
-設計�E要点
-- 画面サイズに合わせたセル幁Eセル高動的計算！EitToScreen
+設計要点
+- 画面サイズに合わせたセル幅・セル高動的計算！EitToScreen
 - SignalType で補助信号(control/group/task)を描画かなうか決定
 - ラベルは ID から現在言語ラベルへ翻訳suggestionLoader 経由
 - CustomPainter へ責務割り当てグリッド/波形/コメント）して見通し改善
@@ -389,10 +389,11 @@ class TimingChartState extends State<TimingChart>
         !listEquals(widget.initialSignalNames, oldWidget.initialSignalNames);
     final bool signalsChanged =
         !_areSignalsEqual(widget.initialSignals, oldWidget.initialSignals);
-    final bool annotationsChanged = !_areAnnotationsEqual(
-      widget.initialAnnotations,
-      oldWidget.initialAnnotations,
-    );
+    final bool annotationsChanged =
+        !_areAnnotationsEqual(
+          widget.initialAnnotations,
+          oldWidget.initialAnnotations,
+        );
     if (namesChanged || signalsChanged || annotationsChanged) {
       setState(() {
         if (namesChanged) {
@@ -401,9 +402,10 @@ class TimingChartState extends State<TimingChart>
           _translateNames();
         }
         if (signalsChanged) {
-          signals = widget.initialSignals
-              .map((list) => List<int>.from(list))
-              .toList();
+          signals =
+              widget.initialSignals
+                  .map((list) => List<int>.from(list))
+                  .toList();
         }
         if (annotationsChanged) {
           annotations = List.from(widget.initialAnnotations);
@@ -657,8 +659,10 @@ class TimingChartState extends State<TimingChart>
           _hScrollController.hasClients ? _hScrollController.offset : 0.0;
       final double scrollY =
           _vScrollController.hasClients ? _vScrollController.offset : 0.0;
-      final Rect selectionRectViewport =
-          selectionRectContent.translate(-scrollX, -scrollY);
+      final Rect selectionRectViewport = selectionRectContent.translate(
+        -scrollX,
+        -scrollY,
+      );
 
       if (selectionRectViewport.contains(chartLocalPos)) {
         _toggleSignalsInSelection();
@@ -1171,22 +1175,26 @@ class TimingChartState extends State<TimingChart>
 
     _lastRightClickPos = position; // グローバル保持
 
-    final RenderBox? rootBox =
-        context.findRenderObject() as RenderBox?;
+    final RenderBox? rootBox = context.findRenderObject() as RenderBox?;
     final Offset rootLocalPos =
         rootBox != null ? rootBox.globalToLocal(position) : position;
 
     // グローバル座標からチャート(CustomPaint)のローカル座標へ
     final RenderBox? paintBox =
         _customPaintKey.currentContext?.findRenderObject() as RenderBox?;
-    final Offset chartLocalPos = paintBox != null
-        ? paintBox.globalToLocal(position)
-        : Offset(
-            rootLocalPos.dx +
-                (_hScrollController.hasClients ? _hScrollController.offset : 0),
-            rootLocalPos.dy +
-                (_vScrollController.hasClients ? _vScrollController.offset : 0),
-          );
+    final Offset chartLocalPos =
+        paintBox != null
+            ? paintBox.globalToLocal(position)
+            : Offset(
+              rootLocalPos.dx +
+                  (_hScrollController.hasClients
+                      ? _hScrollController.offset
+                      : 0),
+              rootLocalPos.dy +
+                  (_vScrollController.hasClients
+                      ? _vScrollController.offset
+                      : 0),
+            );
     final adjustedPos = Offset(
       chartLocalPos.dx - chartMarginLeft,
       chartLocalPos.dy - chartMarginTop,
@@ -1243,10 +1251,8 @@ class TimingChartState extends State<TimingChart>
               signals.isEmpty
                   ? 0
                   : signals.map((e) => e.length).fold(0, math.max);
-          final double chartX =
-              chartLocalPos.dx - chartMarginLeft;
-          final double relX =
-              (chartX - labelWidth).clamp(0, double.infinity);
+          final double chartX = chartLocalPos.dx - chartMarginLeft;
+          final double relX = (chartX - labelWidth).clamp(0, double.infinity);
           // 累積行
           final List<double> pos = List<double>.filled(maxLen + 1, 0.0);
           for (int i = 0; i < maxLen; i++) {
@@ -1695,8 +1701,10 @@ class TimingChartState extends State<TimingChart>
         baseDurations = baseDurations.sublist(0, oldMaxLen);
       }
       final int safeStart = stTime.clamp(0, baseDurations.length);
-      final int safeEnd =
-          math.min(baseDurations.length, safeStart + selectionLength);
+      final int safeEnd = math.min(
+        baseDurations.length,
+        safeStart + selectionLength,
+      );
       List<double> slice = baseDurations.sublist(safeStart, safeEnd);
       if (slice.length < selectionLength) {
         slice = [
@@ -1706,7 +1714,6 @@ class TimingChartState extends State<TimingChart>
       }
       stepDurationsAfterDup = List<double>.from(baseDurations)..addAll(slice);
     }
-
 
     setState(() {
       for (int visibleRow = stSig; visibleRow <= edSig; visibleRow++) {
@@ -1773,16 +1780,17 @@ class TimingChartState extends State<TimingChart>
       final double defaultMs = settings.msPerStep;
       if (stepDurationsAfterDup.length < newMaxLen) {
         stepDurationsAfterDup.addAll(
-          List<double>.filled(newMaxLen - stepDurationsAfterDup.length, defaultMs),
+          List<double>.filled(
+            newMaxLen - stepDurationsAfterDup.length,
+            defaultMs,
+          ),
         );
       } else if (stepDurationsAfterDup.length > newMaxLen) {
-        stepDurationsAfterDup =
-            stepDurationsAfterDup.sublist(0, newMaxLen);
+        stepDurationsAfterDup = stepDurationsAfterDup.sublist(0, newMaxLen);
       }
       settings.setStepDurationsMs(stepDurationsAfterDup);
       _controller?.setStepDurationsMs(stepDurationsAfterDup);
     }
-
   }
 
   void _normalizeSignalLengths() {
@@ -1837,7 +1845,8 @@ class TimingChartState extends State<TimingChart>
   void _resetZoom() {
     final double preferred = 1.0;
     final double minAllowed = math.max(_minZoomFactorForView, _minZoom);
-    final bool preferredInRange = preferred >= minAllowed - 1e-6 &&
+    final bool preferredInRange =
+        preferred >= minAllowed - 1e-6 &&
         preferred <= _maxZoomFactorForView + 1e-6;
     final double target = preferredInRange ? preferred : minAllowed;
     if ((_zoomFactor - target).abs() < 1e-6) return;
