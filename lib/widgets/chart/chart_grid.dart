@@ -55,8 +55,10 @@ class ChartGridManager {
     Canvas canvas,
     Size size,
     int signalCount,
-    int maxTimeSteps,
-  ) {
+    int maxTimeSteps, {
+    double? visibleLeftPx,
+    double? visibleRightPx,
+  }) {
     final Paint guidePaint = Paint()
       ..color = Colors.grey.withAlpha((0.5 * 255).round())
       ..strokeWidth = 1;
@@ -66,6 +68,9 @@ class ChartGridManager {
       // 等間隔（step）: 強調線は描かない
       for (int i = 0; i <= maxTimeSteps; i++) {
         final x = labelWidth + i * cellWidth;
+        if (visibleLeftPx != null && visibleRightPx != null) {
+          if (x < visibleLeftPx - 2 || x > visibleRightPx + 2) continue;
+        }
         canvas.drawLine(
           Offset(x, 0),
           Offset(x, signalCount * cellHeight),
@@ -82,6 +87,11 @@ class ChartGridManager {
                   ? stepDurationsMs[i - 1]
                   : msPerStep;
           cursorX += (dur / msPerStep) * cellWidth;
+        }
+        if (visibleLeftPx != null && visibleRightPx != null) {
+          if (cursorX < visibleLeftPx - 2 || cursorX > visibleRightPx + 2) {
+            continue;
+          }
         }
         final isActive = (activeStepIndex != null && i == activeStepIndex);
         final p =

@@ -11,7 +11,6 @@ class InputSection extends StatelessWidget {
   final String triggerOption;
   // Inputポート数（総数）
   // これまでは ioPort で保持していたが、Input/Output 分割に伴い count を直接使用
-  // final int ioPort; // 削除
 
   const InputSection({
     super.key,

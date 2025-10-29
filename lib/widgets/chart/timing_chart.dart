@@ -130,7 +130,14 @@ class TimingChartState extends State<TimingChart>
   static const double _minZoom = 0.1;
   static const double _zoomStep = 0.25;
   static const double _minZoomCellWidth = 2.0;
-  static const double _maxZoomCellWidth = 500.0;
+  static const double _maxZoomCellWidth = 10000.0;
+  // Fit sel 後も選択変更で上限が縮まらないようにするオーバーライド
+  double? _maxCellWidthOverride;
+  // Fit sel で開始列を左端にピン留めするためのフラグと開始インデックス
+  bool _fitSelPinned = false;
+  int? _fitSelPinnedStartTime;
+  // 列削除直後に末尾の0埋め正規化を抑止するためのワンショットフラグ
+  bool _suppressNormalizeOnce = false;
 
   bool _isModifierPressed = false;
   final double labelWidth = 200.0;
@@ -295,6 +302,15 @@ class TimingChartState extends State<TimingChart>
       }
     };
     _controller!.addListener(_controllerListener);
+
+    // スクロール位置が変わったら再ビルドして可視範囲のグリッドを更新
+    _hScrollController.addListener(_onScrollChanged);
+    _vScrollController.addListener(_onScrollChanged);
+  }
+
+  void _onScrollChanged() {
+    if (!mounted) return;
+    setState(() {});
   }
 
   // 信号チャートタを更新するメソチー
@@ -1309,6 +1325,14 @@ class TimingChartState extends State<TimingChart>
           child: Text(s.ctx_select_all_signals),
         ),
         PopupMenuItem(value: 'delete', child: Text(s.ctx_delete_selection)),
+        PopupMenuItem(
+          value: 'deleteCols',
+          child: Text(
+            Localizations.localeOf(context).languageCode == 'ja'
+                ? '選択範囲の列を削除（全信号）'
+                : 'Delete columns (all signals)',
+          ),
+        ),
         PopupMenuItem(value: 'addComment', child: Text(s.ctx_add_comment)),
         PopupMenuItem(value: 'omit', child: Text(s.ctx_draw_omission)),
       ];
@@ -1374,6 +1398,10 @@ class TimingChartState extends State<TimingChart>
         case 'delete':
           debugPrint("selectedValue = $selectedValue");
           _deleteRange();
+          break;
+        case 'deleteCols':
+          debugPrint("selectedValue = $selectedValue");
+          _deleteColumnsInSelection();
           break;
         case 'addComment':
           debugPrint("selectedValue = $selectedValue");
@@ -1634,7 +1662,7 @@ class TimingChartState extends State<TimingChart>
           List.filled(lengthToInsert, 0),
         );
       }
-      _normalizeSignalLengths();
+      _padSignalLengthsToMax();
       _clearSelection();
     });
     _commitSignalsFromChartEdit();
@@ -1656,9 +1684,130 @@ class TimingChartState extends State<TimingChart>
         if (clampedStTime >= clampedEdTime) continue;
         signals[originalRow].removeRange(clampedStTime, clampedEdTime);
       }
-      _normalizeSignalLengths();
+      _padSignalLengthsToMax();
       _clearSelection();
     });
+    _commitSignalsFromChartEdit();
+  }
+
+  // 選択範囲の列（ステップ）を全信号から削除する
+  void _deleteColumnsInSelection() {
+    if (!_hasValidSelection) return;
+    final stTime = math.min(_startTimeIndex!, _endTimeIndex!);
+    final edTime = math.max(_startTimeIndex!, _endTimeIndex!);
+    final int deleteLen = (edTime - stTime + 1).clamp(0, 1 << 30);
+    if (deleteLen <= 0) return;
+
+    final settings = Provider.of<SettingsNotifier>(context, listen: false);
+
+    final int oldMaxLen =
+        signals.isEmpty ? 0 : signals.map((e) => e.length).reduce(math.max);
+    final int targetNewLen = (oldMaxLen - deleteLen).clamp(0, 1 << 30);
+
+    setState(() {
+      // 1) すべての行から同じステップ範囲を削除
+      for (int row = 0; row < signals.length; row++) {
+        final int maxTimeForRow = signals[row].length;
+        final int clampedSt = stTime.clamp(0, maxTimeForRow);
+        final int clampedEd = (edTime + 1).clamp(0, maxTimeForRow);
+        if (clampedSt < clampedEd) {
+          signals[row].removeRange(clampedSt, clampedEd);
+        }
+        // 末尾の自動埋めを避けるため、必要に応じて末尾を切り詰め
+        if (signals[row].length > targetNewLen) {
+          signals[row] = signals[row].sublist(0, targetNewLen);
+        }
+      }
+
+      // 2) アノテーションを調整（削除・切り詰め・シフト）
+      final List<TimingChartAnnotation> adjusted = [];
+      for (final ann in annotations) {
+        final int aStart = ann.startTimeIndex;
+        final int aEnd = (ann.endTimeIndex ?? ann.startTimeIndex);
+        if (aEnd < stTime) {
+          // 影響なし
+          adjusted.add(ann);
+        } else if (aStart > edTime) {
+          // 右側 → 左へシフト
+          adjusted.add(
+            ann.copyWith(
+              startTimeIndex: aStart - deleteLen,
+              endTimeIndex:
+                  ann.endTimeIndex != null ? ann.endTimeIndex! - deleteLen : null,
+            ),
+          );
+        } else if (aStart >= stTime && aEnd <= edTime) {
+          // 完全に削除区間内 → 破棄
+          continue;
+        } else if (aStart < stTime && aEnd > edTime) {
+          // 区間をまたぐ → ギャップ分だけ右側を縮める
+          final int newEnd = aEnd - deleteLen;
+          if (newEnd >= aStart) {
+            adjusted.add(
+              ann.copyWith(startTimeIndex: aStart, endTimeIndex: newEnd),
+            );
+          }
+        } else if (aStart < stTime && aEnd >= stTime && aEnd <= edTime) {
+          // 右端が削除区間に掛かる → 右を切り詰め
+          final int newEnd = stTime - 1;
+          if (newEnd >= aStart) {
+            adjusted.add(
+              ann.copyWith(startTimeIndex: aStart, endTimeIndex: newEnd),
+            );
+          }
+        } else if (aStart >= stTime && aStart <= edTime && aEnd > edTime) {
+          // 左端が削除区間に掛かる → 左端を削除後の境界へ、右側はシフト
+          final int newStart = stTime;
+          final int newEnd = aEnd - deleteLen;
+          if (ann.endTimeIndex == null) {
+            adjusted.add(ann.copyWith(startTimeIndex: newStart));
+          } else if (newEnd >= newStart) {
+            adjusted.add(
+              ann.copyWith(startTimeIndex: newStart, endTimeIndex: newEnd),
+            );
+          }
+        }
+      }
+      annotations = adjusted;
+
+      // 3) 省略記号インデックスを調整（区間内のものは削除、右側はシフト）
+      final List<int> newOmissions = [];
+      for (final t in _omissionTimeIndices) {
+        if (t < stTime) {
+          newOmissions.add(t);
+        } else if (t > edTime) {
+          newOmissions.add(t - deleteLen);
+        } // [stTime, edTime] は落とす
+      }
+      _omissionTimeIndices = newOmissions;
+
+      _clearSelection();
+      // 直後の他操作で正規化が走っても0埋めされないように一度だけ抑止
+      _suppressNormalizeOnce = true;
+      _forceRepaint();
+    });
+
+    // 4) 非等間隔(ms)の stepDurations を削除し長さを合わせる
+    if (settings.timeUnitIsMs && deleteLen > 0) {
+      List<double> durations = List<double>.from(settings.stepDurationsMs);
+      final int s = stTime.clamp(0, durations.length);
+      final int e = (edTime + 1).clamp(0, durations.length);
+      if (s < e) durations.removeRange(s, e);
+      final int newMaxLen =
+          signals.isEmpty ? 0 : signals.map((e) => e.length).reduce(math.max);
+      if (durations.length < newMaxLen) {
+        durations.addAll(
+          List<double>.filled(newMaxLen - durations.length, settings.msPerStep),
+        );
+      } else if (durations.length > newMaxLen) {
+        durations = durations.sublist(0, newMaxLen);
+      }
+      settings.setStepDurationsMs(durations);
+      _controller?.setStepDurationsMs(durations);
+    }
+
+    _controller?.setAnnotations(annotations);
+    _controller?.setOmissionTimeIndices(_omissionTimeIndices);
     _commitSignalsFromChartEdit();
   }
 
@@ -1755,17 +1904,13 @@ class TimingChartState extends State<TimingChart>
       _omissionTimeIndices.addAll(newOmissions);
 
       // 全信号長を揃える
-      _normalizeSignalLengths();
+      _padSignalLengthsToMax();
       // 選択状態をクリア
       _clearSelection();
 
       // 再描画
       _forceRepaint();
     });
-
-    _commitSignalsFromChartEdit();
-    _controller?.setAnnotations(annotations);
-    _controller?.setOmissionTimeIndices(_omissionTimeIndices);
 
     if (stepDurationsAfterDup != null) {
       final int newMaxLen =
@@ -1783,9 +1928,16 @@ class TimingChartState extends State<TimingChart>
       _controller?.setStepDurationsMs(stepDurationsAfterDup);
     }
 
+    _controller?.setAnnotations(annotations);
+    _controller?.setOmissionTimeIndices(_omissionTimeIndices);
+    _commitSignalsFromChartEdit();
   }
 
-  void _normalizeSignalLengths() {
+  void _padSignalLengthsToMax() {
+    if (_suppressNormalizeOnce) {
+      _suppressNormalizeOnce = false; // ワンショット
+      return;
+    }
     if (signals.isEmpty) return;
 
     int maxLen = 0;
@@ -1843,6 +1995,9 @@ class TimingChartState extends State<TimingChart>
     if ((_zoomFactor - target).abs() < 1e-6) return;
     setState(() {
       _zoomFactor = target;
+      _maxCellWidthOverride = null; // Fit sel の上限オーバーライドは解除
+      _fitSelPinned = false;
+      _fitSelPinnedStartTime = null;
     });
   }
 
@@ -1925,6 +2080,87 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
+  // 選択範囲をビューポート幅にフィットさせる
+  void _fitZoomToSelection() {
+    if (!_hasValidSelection) return;
+    final settings = Provider.of<SettingsNotifier>(context, listen: false);
+
+    final int stTime = math.min(_startTimeIndex!, _endTimeIndex!);
+    final int edTime = math.max(_startTimeIndex!, _endTimeIndex!);
+
+    // 選択範囲の幅（steps単位）と、選択開始までの累積（steps単位）
+    double selectionUnits = 0.0;
+    double stepsBefore = 0.0;
+
+    if (settings.timeUnitIsMs) {
+      // レイアウトと同じソース（settings）を使用
+      final List<double> durations = settings.stepDurationsMs;
+
+      double sumMsForSelection = 0.0;
+      double sumMsBefore = 0.0;
+      final int maxIndex = edTime;
+      for (int i = 0; i <= maxIndex; i++) {
+        final double ms =
+            (i < durations.length && settings.msPerStep > 0)
+                ? durations[i]
+                : settings.msPerStep;
+        if (i < stTime) {
+          sumMsBefore += ms.isFinite && ms > 0 ? ms : 0.0;
+        } else if (i >= stTime && i <= edTime) {
+          sumMsForSelection += ms.isFinite && ms > 0 ? ms : 0.0;
+        }
+      }
+      final double denom = settings.msPerStep > 0 ? settings.msPerStep : 1.0;
+      selectionUnits = sumMsForSelection / denom;
+      stepsBefore = sumMsBefore / denom;
+    } else {
+      selectionUnits = (edTime - stTime + 1).toDouble();
+      stepsBefore = stTime.toDouble();
+    }
+
+    if (selectionUnits <= 0) return;
+
+    // 現在のビューポート波形領域幅
+    final double viewportWaveWidth = _getViewportWaveWidth();
+    if (!viewportWaveWidth.isFinite || viewportWaveWidth <= 0) return;
+
+    // 目標cell幅と、それに基づくズーム係数を算出
+    // baseCellWidthは buildで計算された _cellWidth / _effectiveZoomFactor と等価
+    final double baseCellWidth = (_effectiveZoomFactor > 0)
+        ? (_cellWidth / _effectiveZoomFactor)
+        : _cellWidth;
+    final double targetCellWidth = viewportWaveWidth / selectionUnits;
+    double targetZoom = (baseCellWidth <= 0)
+        ? _zoomFactor
+        : (targetCellWidth / baseCellWidth);
+
+    // 現在ビューで許されるズーム範囲へクランプ
+    targetZoom = targetZoom.clamp(
+      _minZoomFactorForView,
+      _maxZoomFactorForView,
+    );
+
+    setState(() {
+      _zoomFactor = targetZoom;
+      // いまフィットに必要なcell幅を上限として固定
+      final double viewportWaveWidth = _getViewportWaveWidth();
+      if (viewportWaveWidth.isFinite && viewportWaveWidth > 0) {
+        _maxCellWidthOverride = viewportWaveWidth / selectionUnits;
+      }
+      // 選択開始列を左端ピン留め
+      _fitSelPinned = true;
+      _fitSelPinnedStartTime = stTime;
+    });
+
+    // ズーム反映後、選択開始が左端に来るようにスクロール補正
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _applyAnchorScrollCorrection(
+        anchorXInWave: 0.0,
+        stepsUnitsBefore: stepsBefore,
+      );
+    });
+  }
+
   void _handlePointerSignal(PointerSignalEvent event) {
     if (event is! PointerScrollEvent) return;
 
@@ -1969,6 +2205,36 @@ class TimingChartState extends State<TimingChart>
       _applyAnchorScrollCorrection(
         anchorXInWave: anchorXInWave,
         stepsUnitsBefore: stepsUnitsBefore,
+      );
+    });
+  }
+
+  // Fit sel ピン留めが有効なら、開始インデックスが左端に来るよう再補正
+  void _applyPinnedScrollIfNeeded() {
+    if (!_fitSelPinned || _fitSelPinnedStartTime == null) return;
+    final settings = Provider.of<SettingsNotifier>(context, listen: false);
+    final int stTime = _fitSelPinnedStartTime!.clamp(0, 1 << 30);
+    double stepsBefore = 0.0;
+    if (settings.timeUnitIsMs) {
+      // レイアウトと同じソース（settings）を使用
+      final List<double> durations = settings.stepDurationsMs;
+      double sum = 0.0;
+      for (int i = 0; i < stTime; i++) {
+        final double ms =
+            (i < durations.length && settings.msPerStep > 0)
+                ? durations[i]
+                : settings.msPerStep;
+        sum += ms.isFinite && ms > 0 ? ms : 0.0;
+      }
+      final double denom = settings.msPerStep > 0 ? settings.msPerStep : 1.0;
+      stepsBefore = sum / denom;
+    } else {
+      stepsBefore = stTime.toDouble();
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _applyAnchorScrollCorrection(
+        anchorXInWave: 0.0,
+        stepsUnitsBefore: stepsBefore,
       );
     });
   }
@@ -2073,13 +2339,47 @@ class TimingChartState extends State<TimingChart>
                 _maxZoomCellWidth,
               );
 
-              // 上限: チャート上に最長ステップが表示できるまで拡大を許可
+              // 上限: デフォルトは「2ステップが収まる拡大まで」。
+              // ただし選択範囲がある場合は、その範囲がちょうどフィットするまで上限を自動拡張。
               final double viewportWaveWidth = _getViewportWaveWidth();
-              final double maxCellWidthForTwoSteps =
-                  (viewportWaveWidth.isFinite && viewportWaveWidth > 0)
-                      ? (viewportWaveWidth / 2.0)
-                      : _maxZoomCellWidth;
-              final double maxCellWidthAllowed = maxCellWidthForTwoSteps;
+              double maxCellWidthAllowed;
+              if (viewportWaveWidth.isFinite && viewportWaveWidth > 0) {
+                maxCellWidthAllowed = viewportWaveWidth / 2.0;
+                double? selectionUnits;
+                if (_hasValidSelection) {
+                  final int st = math.min(_startTimeIndex!, _endTimeIndex!);
+                  final int ed = math.max(_startTimeIndex!, _endTimeIndex!);
+                  if (isMs && maxLen > 0) {
+                    double sumMs = 0.0;
+                    for (int i = st; i <= ed; i++) {
+                      final double ms =
+                          (i < durationsForLayout.length &&
+                                  settings.msPerStep > 0)
+                              ? durationsForLayout[i]
+                              : settings.msPerStep;
+                      sumMs += ms.isFinite && ms > 0 ? ms : 0.0;
+                    }
+                    final double denom =
+                        settings.msPerStep > 0 ? settings.msPerStep : 1.0;
+                    selectionUnits = sumMs / denom;
+                  } else {
+                    selectionUnits = (ed - st + 1).toDouble();
+                  }
+                }
+                if (selectionUnits != null && selectionUnits > 0) {
+                  final double required = viewportWaveWidth / selectionUnits;
+                  maxCellWidthAllowed = math.max(maxCellWidthAllowed, required);
+                }
+              } else {
+                maxCellWidthAllowed = _maxZoomCellWidth;
+              }
+              // Fit sel による恒久的な上限オーバーライドがあれば反映
+              if (_maxCellWidthOverride != null) {
+                maxCellWidthAllowed = math.max(
+                  maxCellWidthAllowed,
+                  _maxCellWidthOverride!,
+                );
+              }
 
               final double minZoomFactorForView =
                   baseCellWidth <= 0
@@ -2198,6 +2498,9 @@ class TimingChartState extends State<TimingChart>
                 }
               }
 
+              // Fit sel ピン留めが有効ならスクロール補正
+              _applyPinnedScrollIfNeeded();
+
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -2268,6 +2571,8 @@ class TimingChartState extends State<TimingChart>
                                         Provider.of<SettingsNotifier>(
                                           context,
                                         ).showBottomUnitLabels,
+                                  visibleLeftPx: null,
+                                  visibleRightPx: null,
                                     labelColor:
                                         Theme.of(context).brightness ==
                                                 Brightness.dark
@@ -2476,13 +2781,47 @@ class TimingChartState extends State<TimingChart>
                   _maxZoomCellWidth,
                 );
 
-                // 上限: チャート上に最長ステップが表示できるまで拡大を許可
+                // 上限: デフォルトは「2ステップが収まる拡大まで」。
+                // ただし選択範囲がある場合は、その範囲がちょうどフィットするまで上限を自動拡張。
                 final double viewportWaveWidth = _getViewportWaveWidth();
-                final double maxCellWidthForTwoSteps =
-                    (viewportWaveWidth.isFinite && viewportWaveWidth > 0)
-                        ? (viewportWaveWidth / 2.0)
-                        : _maxZoomCellWidth;
-                final double maxCellWidthAllowed = maxCellWidthForTwoSteps;
+                double maxCellWidthAllowed;
+                if (viewportWaveWidth.isFinite && viewportWaveWidth > 0) {
+                  maxCellWidthAllowed = viewportWaveWidth / 2.0;
+                  double? selectionUnits;
+                  if (_hasValidSelection) {
+                    final int st = math.min(_startTimeIndex!, _endTimeIndex!);
+                    final int ed = math.max(_startTimeIndex!, _endTimeIndex!);
+                    if (isMs && maxLen > 0) {
+                      double sumMs = 0.0;
+                      for (int i = st; i <= ed; i++) {
+                        final double ms =
+                            (i < durationsForLayout.length &&
+                                    settings.msPerStep > 0)
+                                ? durationsForLayout[i]
+                                : settings.msPerStep;
+                        sumMs += ms.isFinite && ms > 0 ? ms : 0.0;
+                      }
+                      final double denom =
+                          settings.msPerStep > 0 ? settings.msPerStep : 1.0;
+                      selectionUnits = sumMs / denom;
+                    } else {
+                      selectionUnits = (ed - st + 1).toDouble();
+                    }
+                  }
+                  if (selectionUnits != null && selectionUnits > 0) {
+                    final double required = viewportWaveWidth / selectionUnits;
+                    maxCellWidthAllowed = math.max(maxCellWidthAllowed, required);
+                  }
+                } else {
+                  maxCellWidthAllowed = _maxZoomCellWidth;
+                }
+                // Fit sel による恒久的な上限オーバーライドがあれば反映
+                if (_maxCellWidthOverride != null) {
+                  maxCellWidthAllowed = math.max(
+                    maxCellWidthAllowed,
+                    _maxCellWidthOverride!,
+                  );
+                }
 
                 final double minZoomFactorForView =
                     baseCellWidth <= 0
@@ -2601,6 +2940,9 @@ class TimingChartState extends State<TimingChart>
                     );
                   }
                 }
+
+                // Fit sel ピン留めが有効ならスクロール補正
+                _applyPinnedScrollIfNeeded();
 
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2734,6 +3076,8 @@ class TimingChartState extends State<TimingChart>
                                           Provider.of<SettingsNotifier>(
                                             context,
                                           ).showBottomUnitLabels,
+                                      visibleLeftPx: null,
+                                      visibleRightPx: null,
                                       labelColor:
                                           Theme.of(context).brightness ==
                                                   Brightness.dark
@@ -2882,6 +3226,12 @@ class TimingChartState extends State<TimingChart>
           icon: const Icon(Icons.fit_screen, size: 16),
           label: const Text('Fit'),
           onPressed: canReset ? _resetZoom : null,
+        ),
+        const SizedBox(width: 6),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.center_focus_strong, size: 16),
+          label: const Text('Fit sel'),
+          onPressed: _hasValidSelection ? _fitZoomToSelection : null,
         ),
       ],
     );
@@ -3271,6 +3621,8 @@ class TimingChartState extends State<TimingChart>
   void dispose() {
     suggestionLanguageVersion.removeListener(_langListener);
     HardwareKeyboard.instance.removeHandler(_handleModifierKeyEvent);
+    _hScrollController.removeListener(_onScrollChanged);
+    _vScrollController.removeListener(_onScrollChanged);
     _focusNode.dispose();
     super.dispose();
   }
@@ -3465,6 +3817,8 @@ class _StepTimingChartPainter extends CustomPainter {
     required this.arrowColor,
     required this.signalColors,
     required this.showBottomUnitLabels,
+    this.visibleLeftPx,
+    this.visibleRightPx,
     this.draggingStartRow,
     this.draggingCurrentRow,
   }) {
@@ -3554,6 +3908,9 @@ class _StepTimingChartPainter extends CustomPainter {
   final Color arrowColor;
   // 下部の単位ラベル表示制御
   final bool showBottomUnitLabels;
+  // 可視範囲（スクロールを考慮した水平ピクセル範囲）
+  final double? visibleLeftPx;
+  final double? visibleRightPx;
 
   // --- ラベルドラチー用ハイライチー---
   final int? draggingStartRow;
@@ -3630,7 +3987,14 @@ class _StepTimingChartPainter extends CustomPainter {
     final maxTimeSteps =
         signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
     // ms単位非等間隔描画にも対応できるよう gridManager に stepDurations を渡済み
-    _gridManager.drawGridLines(canvas, size, rowCount, maxTimeSteps);
+    _gridManager.drawGridLines(
+      canvas,
+      size,
+      rowCount,
+      maxTimeSteps,
+      visibleLeftPx: visibleLeftPx,
+      visibleRightPx: visibleRightPx,
+    );
 
     debugPrint('\n3. Drawing highlighted time indices');
     _gridManager.drawHighlightedLines(canvas, highlightTimeIndices, size);
