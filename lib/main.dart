@@ -28,6 +28,7 @@ import 'providers/settings_notifier.dart';
 import 'suggestion_loader.dart';
 import 'providers/timing_chart_controller.dart';
 import 'dart:math' as math;
+import 'widgets/common/version_info_dialog.dart';
 
 const bool kZiqImportTest = bool.fromEnvironment(
   'ZIQ_IMPORT_TEST',
@@ -2408,7 +2409,17 @@ class _MyHomePageState extends State<MyHomePage>
               title: Text(s.menu_item_about),
               onTap: () {
                 Navigator.pop(context);
-                debugPrint('About');
+                showDialog(
+                  context: context,
+                  builder:
+                      (ctx) => const VersionInfoDialog(
+                        // 後で実値に置き換えてください
+                        title: 'バージョン情報',
+                        version: 'v1.3',
+                        changelog:
+                            '#入力フォーム画面\n・\n\n#チャート画面\n・選択した範囲に倍率をフィットする機能を追加\n   (右上の「Fit sel」ボタン)\n\n#エクスポート機能\n・JPEG画像の解像度を向上\n\n#インポート機能\n・',
+                      ),
+                );
               },
             ),
           ],
