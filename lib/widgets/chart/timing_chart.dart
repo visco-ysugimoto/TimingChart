@@ -1,24 +1,4 @@
-/*
-TimingChart - タイミングチャート描画
-
-このウィジェットでできること
-- チタル信号の波形/1をグリチー上に描画
-- ラベルのドラチーで行並び替え、範選択で一括反転/挿入/削除/褁ー
-- 右クリチーメニューからコメント追加・編雁ー削除、波線（省略区間）描画
-- 画像力！ENG/JPEG用のキャプチャ
-
-入力と出力（親からの受け取り / 親へ提供する情報
-- initialSignalNames/initialSignals/initialAnnotations/signalTypes/portNumbers を受け取り表示
-- getChartData(), getAnnotations(), getSignalIdNames(), getOmissionTimeIndices() で親が取得可能
-- updateSignals()/updateSignalNames()/updateAnnotations() で親が描画要求可能
-
-設計要点
-- 画面サイズに合わせたセル幅・セル高動的計算！EitToScreen
-- SignalType で補助信号(control/group/task)を描画かなうか決定
-- ラベルは ID から現在言語ラベルへ翻訳suggestionLoader 経由
-- CustomPainter へ責務割り当てグリッド/波形/コメント）して見通し改善
-*/
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -51,14 +31,8 @@ class TimingChart extends StatefulWidget {
   final TimingChartController? controller;
   final bool fitToScreen;
 
-  /// Control / Group / Task 種別を含むすべての信号を描画対象にするかどうか
-  /// 省略時従来互換で falseこれらの補助信号は描画しない
   final bool showAllSignalTypes;
-
-  /// 入出力信号ラベルに番号 (Input1 などの末尾数孁ー を表示するかどうか
-  /// 省略時従来互換で true (番号を表示)、
   final bool showIoNumbers;
-
   final List<int> portNumbers;
   final List<IoChannelSource> ioSources;
   final String plcEipMode;
@@ -93,10 +67,7 @@ class TimingChartState extends State<TimingChart>
     with AutomaticKeepAliveClientMixin {
   TimingChartController? _controller;
   late final VoidCallback _controllerListener;
-  // 保持用: ID 名リスチー
   late List<String> _idSignalNames;
-
-  // 言語変更監視用
   late final VoidCallback _langListener;
 
   @override
@@ -106,7 +77,6 @@ class TimingChartState extends State<TimingChart>
   late List<String> signalNames;
   late List<TimingChartAnnotation> annotations;
   List<int> _highlightTimeIndices = [];
-  // 省略信号を描画する対象の時刻インデックス
   List<int> _omissionTimeIndices = [];
   List<int> _visibleIndexes = [];
   List<String> _visibleSignalNamesCache = [];
@@ -114,46 +84,130 @@ class TimingChartState extends State<TimingChart>
   List<int> _visiblePortNumbersCache = [];
   List<IoChannelSource> _visibleIoSourcesCache = [];
 
-  // ===== ラベルドラチー用 =====
   bool _isLabelDrag = false;
   int? _labelDragStartRow;
   int? _labelDragCurrentRow;
 
   double _cellWidth = 40;
-  // セル高さは `fitToScreen`の場合は動的に変化する
-  // チャートォルト値は従来互換用に 40 としておく
   double _cellHeight = 40;
   double _zoomFactor = 1.0; // Horizontal scaling multiplier.
   double _effectiveZoomFactor = 1.0;
   double _minZoomFactorForView = 1.0;
-  double _maxZoomFactorForView = 10.0; // レイアウト時に動的に設定（上限撤廁ため
+  double _maxZoomFactorForView = 10.0;
   static const double _minZoom = 0.1;
   static const double _zoomStep = 0.25;
   static const double _minZoomCellWidth = 2.0;
-  static const double _maxZoomCellWidth = 500.0;
+  static const double _maxZoomCellWidth = 20000.0;
 
   bool _isModifierPressed = false;
   final double labelWidth = 200.0;
-  // コメントエリアの高さ動的に計算時の下限値
   static const double _minCommentAreaHeight = 100.0;
 
-  // コメントが無い場合に確保する最小下余白
   static const double _noCommentBottomMargin = 40.0;
+
+  bool get _showAdvancedTimingControls => false;
 
   double _calculateCommentAreaHeight() {
     if (annotations.isEmpty) return _noCommentBottomMargin;
 
-    const double baseHeight = 40.0; // 1 段目の想定高さ
-    const double stepHeight = 20.0; // 衝突回避で 1 段深くする
-
+    const double baseHeight = 40.0;
+    const double stepHeight = 20.0;
     final int layers = annotations.length - 1;
     final double estimated = baseHeight + stepHeight * layers;
 
-    // コメントチャートス高さの1.5倍程度の余白を確俁ー
     final double expanded = estimated * 1.5;
 
-    // 最低でも下限値は確保しつつ、ゆとりを持たせた値を返す
     return math.max(_minCommentAreaHeight, expanded);
+  }
+
+  void _zoomToSelectionFit() {
+    if (!_hasValidSelection) return;
+    final settings = Provider.of<SettingsNotifier>(context, listen: false);
+    final bool isMs = settings.timeUnitIsMs;
+
+    final int stTime = math.min(_startTimeIndex!, _endTimeIndex!);
+    final int edTime = math.max(_startTimeIndex!, _endTimeIndex!);
+    if (stTime < 0 || edTime < stTime) return;
+
+    final double viewportWaveWidth = _getViewportWaveWidth();
+    if (!(viewportWaveWidth.isFinite) || viewportWaveWidth <= 0) return;
+
+    final int maxLen =
+        signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
+    if (maxLen <= 0) return;
+
+    final List<double> durationsForLayout =
+        (_controller?.stepDurationsMs.isNotEmpty ?? false)
+            ? _controller!.stepDurationsMs
+            : settings.stepDurationsMs;
+
+    double totalStepsUnits = 0.0;
+    if (isMs) {
+      for (int i = 0; i < maxLen; i++) {
+        final dur =
+            (i < durationsForLayout.length)
+                ? durationsForLayout[i]
+                : settings.msPerStep;
+        totalStepsUnits +=
+            (settings.msPerStep > 0) ? (dur / settings.msPerStep) : 1.0;
+      }
+    } else {
+      totalStepsUnits = maxLen.toDouble();
+    }
+    if (totalStepsUnits <= 0) return;
+
+    double baseCellWidth;
+    if (widget.fitToScreen) {
+      baseCellWidth = math.max(viewportWaveWidth / totalStepsUnits, 5.0);
+    } else {
+      baseCellWidth = math.max(viewportWaveWidth / totalStepsUnits, 20.0);
+    }
+
+    double selectedUnits = 0.0;
+    if (isMs) {
+      for (int i = stTime; i <= edTime; i++) {
+        if (i < 0 || i >= maxLen) continue;
+        final dur =
+            (i < durationsForLayout.length)
+                ? durationsForLayout[i]
+                : settings.msPerStep;
+        final u = (settings.msPerStep > 0) ? (dur / settings.msPerStep) : 1.0;
+        if (u.isFinite && u > 0) selectedUnits += u;
+      }
+    } else {
+      selectedUnits = (edTime - stTime + 1).toDouble();
+    }
+    if (!(selectedUnits.isFinite) || selectedUnits <= 0) return;
+
+    final double targetCellWidth = viewportWaveWidth / selectedUnits;
+    final double targetZoom =
+        (baseCellWidth > 0) ? (targetCellWidth / baseCellWidth) : 1.0;
+
+    setState(() {
+      _zoomFactor = targetZoom;
+    });
+
+    double stepsUnitsBefore = 0.0;
+    if (isMs) {
+      for (int i = 0; i < stTime; i++) {
+        if (i < 0 || i >= maxLen) continue;
+        final dur =
+            (i < durationsForLayout.length)
+                ? durationsForLayout[i]
+                : settings.msPerStep;
+        stepsUnitsBefore +=
+            (settings.msPerStep > 0) ? (dur / settings.msPerStep) : 1.0;
+      }
+    } else {
+      stepsUnitsBefore = stTime.toDouble();
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _applyAnchorScrollCorrection(
+        anchorXInWave: 0.0,
+        stepsUnitsBefore: stepsUnitsBefore,
+      );
+    });
   }
 
   void _ensureVisibleCachesUpToDate() {
@@ -185,7 +239,6 @@ class TimingChartState extends State<TimingChart>
 
   final double chartMarginLeft = 16.0;
   final double chartMarginTop = 16.0;
-  // ヘッダー(トグル)の固定高さ。ヒチーチャートト補正に使用
   final double _fixedHeaderHeight = 48.0;
 
   int? _startSignalIndex;
@@ -198,36 +251,29 @@ class TimingChartState extends State<TimingChart>
   String? _selectedAnnotationId;
 
   Map<String, Rect> _annotationHitRects = {};
-  // コメントチャートスドラチー用
   String? _draggingAnnotationId;
-  Offset? _draggingStartLocal; // ドラチー開始時のローカル座標
-  Offset? _draggingInitialBoxTopLeft; // ドラチー開始時のボックス位置
+  Offset? _draggingStartLocal;
+  Offset? _draggingInitialBoxTopLeft;
 
   Offset? _dragStartGlobal;
 
-  // 描画用のキー
   final GlobalKey _customPaintKey = GlobalKey();
   final GlobalKey _repaintBoundaryKey = GlobalKey();
-  // スクロール制御
   final ScrollController _hScrollController = ScrollController();
   final ScrollController _vScrollController = ScrollController();
 
-  // ===== メモリ編集！非等間隔寸法編集！=====
   bool _isEditingSteps = false;
-  int? _activeStepIndex; // 強調するインデックスは 0..maxTimeSteps
+  int? _activeStepIndex;
   double? _dragStartX;
 
   @override
   void initState() {
     super.initState();
     _idSignalNames = List.from(widget.initialSignalNames);
-    signalNames = List.from(_idSignalNames); // 仮で ID 表示
+    signalNames = List.from(_idSignalNames);
 
-    // 初期化時にID 現在言語ラベルへ変換してから描画する
-    // 初期翻訳
     _translateNames();
 
-    // 言語変更リスナー
     _langListener = () {
       _translateNames();
     };
@@ -274,7 +320,6 @@ class TimingChartState extends State<TimingChart>
       if (namesChanged) {
         _translateNames();
       }
-      // インポート等で signals 長が変わった際、ms モードのために stepDurations 長を同じにする
       final settingsRW = Provider.of<SettingsNotifier>(context, listen: false);
       final int maxLen =
           signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
@@ -283,12 +328,10 @@ class TimingChartState extends State<TimingChart>
           if (mounted) settingsRW.ensureStepDurationsLength(maxLen);
         });
       }
-      // グリッドリセット要求が来ていれば適用
       if (_lastHandledGridResetNonce != _controller!.gridResetNonce) {
         _lastHandledGridResetNonce = _controller!.gridResetNonce;
         resetGridAdjustments();
       }
-      // ズーム・セル計算を要求されたらビルドで反映
       if (_lastHandledGridRecomputeNonce != _controller!.gridRecomputeNonce) {
         _lastHandledGridRecomputeNonce = _controller!.gridRecomputeNonce;
         setState(() {});
@@ -297,7 +340,29 @@ class TimingChartState extends State<TimingChart>
     _controller!.addListener(_controllerListener);
   }
 
-  // 信号チャートタを更新するメソチー
+  void resetGridAdjustments() {
+    setState(() {
+      _zoomFactor = 1.0;
+      _effectiveZoomFactor = 1.0;
+      _highlightTimeIndices.clear();
+      _startSignalIndex = null;
+      _endSignalIndex = null;
+      _startTimeIndex = null;
+      _endTimeIndex = null;
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_hScrollController.hasClients) {
+        _hScrollController.jumpTo(0);
+      }
+      if (_vScrollController.hasClients) {
+        _vScrollController.jumpTo(0);
+      }
+    });
+
+    _forceRepaint();
+  }
+
   void updateSignals(List<List<int>> newSignals) {
     setState(() {
       signals = newSignals.map((list) => List<int>.from(list)).toList();
@@ -322,7 +387,6 @@ class TimingChartState extends State<TimingChart>
     _notifySignalsChanged();
   }
 
-  // アノテーションを更新するメソッド
   void updateAnnotations(List<TimingChartAnnotation> newAnnotations) {
     setState(() {
       annotations = List.from(newAnnotations);
@@ -331,7 +395,6 @@ class TimingChartState extends State<TimingChart>
     _controller?.setAnnotations(annotations);
   }
 
-  // 信号名を更新するメソチー
   void updateSignalNames(List<String> newIdNames) {
     if (listEquals(_idSignalNames, newIdNames)) {
       return;
@@ -344,14 +407,13 @@ class TimingChartState extends State<TimingChart>
     _translateNames();
   }
 
-  // ID 現在言語ラベルへ変換して UI へ反映
   void _translateNames() async {
     final translated = await Future.wait(
       _idSignalNames.map((id) async {
         //
         final int colonIdx = id.indexOf(':');
         if (colonIdx > 0) {
-          final prefix = id.substring(0, colonIdx + 1); // 含む
+          final prefix = id.substring(0, colonIdx + 1); // 蜷ｫ繧
           final raw = id.substring(colonIdx + 1).trim();
           final label = await labelOfId(raw);
           return '$prefix $label';
@@ -366,19 +428,18 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  // 現在の信号チE�Eタを取得するメソチE��
   List<List<int>> getChartData() {
-    debugPrint('===== チャートデータ取得開始=====');
-    debugPrint('信号数: ${signals.length}');
-    debugPrint('信号名: $signalNames');
-    debugPrint('信号タイプ: ${widget.signalTypes}');
+    debugPrint('==== getChartData ====');
+    debugPrint('signals length: ${signals.length}');
+    debugPrint('signalNames: $signalNames');
+    debugPrint('signalTypes: ${widget.signalTypes}');
 
     List<List<int>> result = List.from(signals);
-    debugPrint('取得したデータ数: ${result.length}');
+    debugPrint('result length: ${result.length}');
     if (result.isNotEmpty) {
-      debugPrint('最初のデータ: ${result[0].take(10)}...');
+      debugPrint('result[0].take(10): ${result[0].take(10)}...');
     }
-    debugPrint('===== チャートデータ取得終了=====');
+    debugPrint('==== getChartData ====');
     return result;
   }
 
@@ -398,7 +459,7 @@ class TimingChartState extends State<TimingChart>
       setState(() {
         if (namesChanged) {
           _idSignalNames = List.from(widget.initialSignalNames);
-          signalNames = List.from(_idSignalNames); // 仮で ID 表示
+          signalNames = List.from(_idSignalNames);
           _translateNames();
         }
         if (signalsChanged) {
@@ -471,18 +532,15 @@ class TimingChartState extends State<TimingChart>
   }
 
   int _getTimeIndexFromDx(double dx) {
-    // 画面座標をチャート部座標（左余白と横スクロールを補正）に変換
     final double chartX =
         dx -
         chartMarginLeft +
         (_hScrollController.hasClients ? _hScrollController.offset : 0);
-    // ラベル領域より左は無効
     if (chartX < labelWidth) return -1;
     if (_cellWidth <= 0) return -1;
 
-    final double relX = chartX - labelWidth; // チャート本体の原点からの X
+    final double relX = chartX - labelWidth;
 
-    // 非等間隔モードでは累積ステップ位置に基づう近いインデックスを返す
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
     final int maxLen =
         signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
@@ -495,7 +553,6 @@ class TimingChartState extends State<TimingChart>
                 : 1.0;
         pos[i + 1] = pos[i] + durSteps;
       }
-      // relX が属する区閁E[pos[i], pos[i+1]) を探索し、その i を返す
       final double targetPx = relX;
       for (int i = 0; i < maxLen; i++) {
         final double leftPx = pos[i] * _cellWidth;
@@ -504,11 +561,9 @@ class TimingChartState extends State<TimingChart>
           return i;
         }
       }
-      // 右端は最後のインデックス
       return maxLen - 1;
     }
 
-    // 等間隔従来通り
     return (relX / _cellWidth).floor();
   }
 
@@ -519,7 +574,6 @@ class TimingChartState extends State<TimingChart>
         (_vScrollController.hasClients ? _vScrollController.offset : 0);
     if (_cellHeight <= 0) return -1;
     final index = (adjustedY / _cellHeight).floor();
-    // 有効範囲は 0..length-1。範囲外は -1 を返す想定
     if (index < 0 || index >= _visibleIndexes.length) {
       return -1;
     }
@@ -576,7 +630,6 @@ class TimingChartState extends State<TimingChart>
       }
     }
 
-    // ラベル領域をクリチーしてうか判別
     final bool inLabelArea =
         chartLocalPos.dx >= chartMarginLeft &&
         chartLocalPos.dx <= chartMarginLeft + labelWidth;
@@ -589,7 +642,6 @@ class TimingChartState extends State<TimingChart>
             signals.isNotEmpty ? signals[originalRow].length - 1 : -1;
         if (maxTime >= 0) {
           setState(() {
-            // すでに同じ行体が選択されている場合は選択解除
             if (_startSignalIndex == row &&
                 _endSignalIndex == row &&
                 _startTimeIndex == 0 &&
@@ -606,7 +658,7 @@ class TimingChartState extends State<TimingChart>
           });
         }
       }
-      return; // ラベルクリチーでのビット反転は行わない
+      return;
     }
 
     final clickSig = _getSignalIndexFromDy(chartLocalPos.dy);
@@ -622,12 +674,10 @@ class TimingChartState extends State<TimingChart>
       final edSigAbs = math.max(_startSignalIndex!, _endSignalIndex!);
       final stTimeAbs = math.min(_startTimeIndex!, _endTimeIndex!);
       final edTimeAbs = math.max(_startTimeIndex!, _endTimeIndex!);
-      // 非等間隔(ms)に対応した選択矩形を計算
       final settings = Provider.of<SettingsNotifier>(context, listen: false);
       double xStartPx;
       double xEndPx;
       if (settings.timeUnitIsMs) {
-        // 累積ステップ位置→px
         double pos = 0.0;
         for (int t = 0; t < stTimeAbs; t++) {
           final durSteps =
@@ -683,7 +733,7 @@ class TimingChartState extends State<TimingChart>
           signals[originalRow][time] =
               (signals[originalRow][time] == 0) ? 1 : 0;
           debugPrint(
-            '信号を反転: 行${originalRow}, 列${time}, 新しい値=${signals[originalRow][time]}',
+            'signal changed: row=$originalRow, time=$time, value=${signals[originalRow][time]}',
           );
           _highlightTimeIndices = [..._highlightTimeIndices];
           _forceRepaint();
@@ -699,7 +749,6 @@ class TimingChartState extends State<TimingChart>
     final localPos = box.globalToLocal(details.globalPosition);
     final chartLocalPos = Offset(localPos.dx, localPos.dy - _fixedHeaderHeight);
 
-    // 先にコメントチャートスのヒットを判定（チャート領域外でもドラチー可能にする
     final adjustedPosForAnn = Offset(
       chartLocalPos.dx -
           chartMarginLeft +
@@ -722,20 +771,18 @@ class TimingChartState extends State<TimingChart>
       }
     }
 
-    // --- ラベル領域でのドラチー開始判別---
     final bool inLabelArea =
         chartLocalPos.dx >= chartMarginLeft &&
         chartLocalPos.dx <= chartMarginLeft + labelWidth;
 
     final sigIndex = _getSignalIndexFromDy(chartLocalPos.dy);
     if (inLabelArea && sigIndex >= 0 && sigIndex < _visibleIndexes.length) {
-      // ラベルドラチー開始
       setState(() {
         _isLabelDrag = true;
         _labelDragStartRow = sigIndex;
         _labelDragCurrentRow = sigIndex;
       });
-      return; // selection 処琁ーは入らない
+      return;
     }
 
     if (chartLocalPos.dy >
@@ -777,7 +824,6 @@ class TimingChartState extends State<TimingChart>
             (_vScrollController.hasClients ? _vScrollController.offset : 0),
       );
       final delta = adjustedPos - _draggingStartLocal!;
-      // 上方向にはみ出さないYをクランチ
       Offset deltaClamped = delta;
       final proposedTopLeft = _draggingInitialBoxTopLeft! + delta;
       if (proposedTopLeft.dy < 0) {
@@ -789,7 +835,6 @@ class TimingChartState extends State<TimingChart>
       );
       if (annIndex != -1) {
         final current = annotations[annIndex];
-        // offsetX/offsetY はコメント基準位置からの相対位置
         final newOffsetX = (current.offsetX ?? 0) + deltaClamped.dx;
         final newOffsetY = (current.offsetY ?? 0) + deltaClamped.dy;
         setState(() {
@@ -801,13 +846,11 @@ class TimingChartState extends State<TimingChart>
           _forceRepaint();
         });
         _controller?.setAnnotations(annotations);
-        // 次回の差分計算のため、基準を更新クランプ後実移動量で更新
         _draggingStartLocal = _draggingStartLocal! + deltaClamped;
         _draggingInitialBoxTopLeft = _draggingInitialBoxTopLeft! + deltaClamped;
       }
       return;
     }
-    // ラベル更新中は位置を追跡
     if (_isLabelDrag) {
       final chartLocalPos = details.localPosition;
       int sig = _getSignalIndexFromDy(chartLocalPos.dy);
@@ -817,7 +860,7 @@ class TimingChartState extends State<TimingChart>
           _labelDragCurrentRow = sig;
         });
       }
-      return; // 既存選択更新は無視
+      return;
     }
 
     if (_dragStartGlobal == null) return;
@@ -843,7 +886,6 @@ class TimingChartState extends State<TimingChart>
   }
 
   void _onPanEnd(DragEndDetails details) {
-    // コメント更新終了
     if (_draggingAnnotationId != null) {
       setState(() {
         _draggingAnnotationId = null;
@@ -863,7 +905,6 @@ class TimingChartState extends State<TimingChart>
         _isLabelDrag = false;
         _labelDragStartRow = null;
         _labelDragCurrentRow = null;
-        // ドラチー後選択状態ハイライトも更新
         _startSignalIndex = null;
         _endSignalIndex = null;
         _startTimeIndex = null;
@@ -885,12 +926,11 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  // ===== メモリ編集（非等間隔）用ハンドラ =====
+  // =====step duration editing =====
   void _onPanStartEditSteps(DragStartDetails details) {
     if (!_isEditingSteps) return;
     final chartLocalPos = details.localPosition;
     final double dx = chartLocalPos.dx;
-    // チャート部Xanvas.translate(chartMarginLeft, ...) を打ち消す
     final double chartX =
         dx -
         chartMarginLeft +
@@ -900,12 +940,10 @@ class TimingChartState extends State<TimingChart>
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
     final maxLen =
         signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
-    // 行のXを累積しながら最も近い行を探う
     double cursorSteps = 0;
     int nearest = 0;
     double nearestDist = double.infinity;
     for (int i = 0; i <= maxLen; i++) {
-      // ラベル除くチャート本体原点からの行px
       final double boundaryPx = cursorSteps * _cellWidth;
       final double relX = (chartX - labelWidth).clamp(0, double.infinity);
       final double d = (boundaryPx - relX).abs();
@@ -924,14 +962,12 @@ class TimingChartState extends State<TimingChart>
       }
     }
     setState(() => _activeStepIndex = nearest);
-    // 更新開始時点の行の絶対X(px)を保存（ラベルを除く相対尺度
     _dragStartX = (chartX - labelWidth).clamp(0, double.infinity);
   }
 
   void _onPanUpdateEditSteps(DragUpdateDetails details) {
     if (!_isEditingSteps || _activeStepIndex == null) return;
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
-    // 0番行左端や末端は更新対象にしないめidx は前ステップ位置
     final idx = _activeStepIndex! - 1;
     final maxLen =
         signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
@@ -946,14 +982,10 @@ class TimingChartState extends State<TimingChart>
     final double relX = (chartX - labelWidth).clamp(0, double.infinity);
     _dragStartX = relX;
 
-    // 目標 選択行 i の画面位置 bound aryPx をカーソル relX に一致させめ
-    // 行 i のステップ位置 pos[i] = pos[i-1] + dur[idx]/msPerStep
-    // よって dur[idx] = (targetSteps - pos[i-1]) * msPerStep
     final List<double> list = List<double>.from(settings.stepDurationsMs);
     if (list.length < maxLen) {
       list.addAll(List.filled(maxLen - list.length, settings.msPerStep));
     }
-    // 累積ステップ位置teps単位！
     final List<double> pos = List<double>.filled(maxLen + 1, 0.0);
     for (int t = 0; t < maxLen; t++) {
       final durSteps =
@@ -966,21 +998,15 @@ class TimingChartState extends State<TimingChart>
     final double targetSteps = relX / _cellWidth;
     final double prevSteps = pos[boundaryIndex - 1];
     double newDurSteps = targetSteps - prevSteps;
-    if (newDurSteps < 0.005) newDurSteps = 0.005; // 最小値 0.5%ステップ
+    if (newDurSteps < 0.005) newDurSteps = 0.005;
     double newMs = newDurSteps * settings.msPerStep;
-    if (newMs < 0.1) newMs = 0.1; // 絶対最小値0.1ms
+    if (newMs < 0.1) newMs = 0.1;
     list[idx] = newMs;
     settings.setStepDurationsMs(list);
   }
 
   void _onPanEndEditSteps(DragEndDetails details) {
-    // スナップやらないならここに実裁
-  }
-
-  // 外部から呼び出してグリチー調整を初期化lean 対応！
-  void resetGridAdjustments() {
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
-    // 個別調整をクリア次回等間隔に復帰
     settings.setStepDurationsMs([]);
     setState(() {
       _isEditingSteps = false;
@@ -988,7 +1014,6 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  // 行を選択し、その後で反映させてタップアップでダイアログ表示
   void _onTapUpEditSteps(TapUpDetails details) {
     if (!_isEditingSteps) return;
     final chartLocalPos = details.localPosition;
@@ -1003,7 +1028,6 @@ class TimingChartState extends State<TimingChart>
         signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
     final double relX = (chartX - labelWidth).clamp(0, double.infinity);
 
-    // 累積ステップ位置（teps単位）を配列で用意
     final List<double> pos = List<double>.filled(maxLen + 1, 0.0);
     for (int i = 0; i < maxLen; i++) {
       final durSteps =
@@ -1013,7 +1037,6 @@ class TimingChartState extends State<TimingChart>
       pos[i + 1] = pos[i] + durSteps;
     }
 
-    // 近傍行の探索Ex距離
     int nearest = 0;
     double best = double.infinity;
     for (int i = 0; i <= maxLen; i++) {
@@ -1025,7 +1048,6 @@ class TimingChartState extends State<TimingChart>
       }
     }
 
-    // スナップやらないならここに実行
     const double snapPx = 6.0;
     if (best <= snapPx) {
       setState(() {
@@ -1035,7 +1057,6 @@ class TimingChartState extends State<TimingChart>
       return;
     }
 
-    // 区間[idx, idx+1) を決定
     int idx = 0;
     for (int i = 0; i < maxLen; i++) {
       final double leftPx = pos[i] * _cellWidth;
@@ -1047,7 +1068,6 @@ class TimingChartState extends State<TimingChart>
       idx = math.max(0, maxLen - 1);
     }
 
-    // 入力ダイアログを表示して [idx] の ms を設定
     final currentMs =
         (idx < settings.stepDurationsMs.length)
             ? settings.stepDurationsMs[idx]
@@ -1093,7 +1113,6 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  // ロングプレスでのコメント更新開始
   void _onLongPressStart(LongPressStartDetails details) {
     final chartLocalPos = details.localPosition;
     final adjustedPos = Offset(
@@ -1130,7 +1149,6 @@ class TimingChartState extends State<TimingChart>
           (_vScrollController.hasClients ? _vScrollController.offset : 0),
     );
     final delta = adjustedPos - _draggingStartLocal!;
-    // 上方向にはみ出さないYをクランチ
     Offset deltaClamped = delta;
     final proposedTopLeft = _draggingInitialBoxTopLeft ?? Offset.zero + delta;
     if (_draggingInitialBoxTopLeft != null && proposedTopLeft.dy < 0) {
@@ -1173,13 +1191,12 @@ class TimingChartState extends State<TimingChart>
     final RenderBox overlay =
         Overlay.of(context).context.findRenderObject() as RenderBox;
 
-    _lastRightClickPos = position; // グローバル保持
+    _lastRightClickPos = position;
 
     final RenderBox? rootBox = context.findRenderObject() as RenderBox?;
     final Offset rootLocalPos =
         rootBox != null ? rootBox.globalToLocal(position) : position;
 
-    // グローバル座標からチャート(CustomPaint)のローカル座標へ
     final RenderBox? paintBox =
         _customPaintKey.currentContext?.findRenderObject() as RenderBox?;
     final Offset chartLocalPos =
@@ -1200,10 +1217,8 @@ class TimingChartState extends State<TimingChart>
       chartLocalPos.dy - chartMarginTop,
     );
 
-    // タップされたタイムインデックスを計算しておく
     final int clickedTime = _getTimeIndexFromDx(rootLocalPos.dx);
 
-    // 行インデックス（可視行）とラベル領域判定を事前に計算
     final int clickedSig = _getSignalIndexFromDy(rootLocalPos.dy);
 
     String? hitAnnId;
@@ -1219,7 +1234,7 @@ class TimingChartState extends State<TimingChart>
 
     if (hitAnnId != null) {
       final ann = annotations.firstWhereOrNull((a) => a.id == hitAnnId);
-      final bool horizontalOn = ann?.arrowHorizontal != false; // null含めON
+      final bool horizontalOn = ann?.arrowHorizontal != false;
       menuItems = [
         PopupMenuItem(value: 'editComment', child: Text(s.ctx_edit_comment)),
         PopupMenuItem(
@@ -1243,7 +1258,6 @@ class TimingChartState extends State<TimingChart>
     } else {
       setState(() {
         _highlightTimeIndices.clear();
-        // ms 非等間隔に対応したクリチー位置の行/区間判別
         final settings = Provider.of<SettingsNotifier>(context, listen: false);
         int clickedTime;
         if (settings.timeUnitIsMs) {
@@ -1253,7 +1267,6 @@ class TimingChartState extends State<TimingChart>
                   : signals.map((e) => e.length).fold(0, math.max);
           final double chartX = chartLocalPos.dx - chartMarginLeft;
           final double relX = (chartX - labelWidth).clamp(0, double.infinity);
-          // 累積行
           final List<double> pos = List<double>.filled(maxLen + 1, 0.0);
           for (int i = 0; i < maxLen; i++) {
             final durSteps =
@@ -1262,7 +1275,6 @@ class TimingChartState extends State<TimingChart>
                     : 1.0;
             pos[i + 1] = pos[i] + durSteps;
           }
-          // 近傍行
           int nearest = 0;
           double best = double.infinity;
           for (int i = 0; i <= maxLen; i++) {
@@ -1273,12 +1285,10 @@ class TimingChartState extends State<TimingChart>
               nearest = i;
             }
           }
-          // スナップしきぁE��(px)
           const double snapPx = 6.0;
           if (best <= snapPx) {
             clickedTime = nearest.clamp(0, math.max(0, maxLen - 1));
           } else {
-            // 区間にマッチ
             int idx = 0;
             for (int i = 0; i < maxLen; i++) {
               final double leftPx = pos[i] * _cellWidth;
@@ -1308,6 +1318,8 @@ class TimingChartState extends State<TimingChart>
       });
 
       menuItems = [
+        if (_hasValidSelection)
+          PopupMenuItem(value: 'zoomSelection', child: Text('zoom selection')),
         PopupMenuItem(value: 'insert', child: Text(s.ctx_insert_zeros)),
         PopupMenuItem(value: 'duplicate', child: Text(s.ctx_duplicate_to_tail)),
         PopupMenuItem(
@@ -1315,12 +1327,15 @@ class TimingChartState extends State<TimingChart>
           child: Text(s.ctx_select_all_signals),
         ),
         PopupMenuItem(value: 'delete', child: Text(s.ctx_delete_selection)),
+        PopupMenuItem(
+          value: 'deleteColumns',
+          child: Text(s.ctx_delete_columns),
+        ),
         PopupMenuItem(value: 'addComment', child: Text(s.ctx_add_comment)),
         PopupMenuItem(value: 'omit', child: Text(s.ctx_draw_omission)),
       ];
     }
 
-    // マウス位置付近にメニューを置するため、オーバーレイ全体を基準とした Rect を使用する
     final selectedValue = await showMenu<String>(
       context: context,
       position: RelativeRect.fromRect(
@@ -1381,6 +1396,14 @@ class TimingChartState extends State<TimingChart>
           debugPrint("selectedValue = $selectedValue");
           _deleteRange();
           break;
+        case 'deleteColumns':
+          debugPrint("selectedValue = $selectedValue");
+          _deleteColumns();
+          break;
+        case 'zoomSelection':
+          debugPrint("selectedValue = $selectedValue");
+          _zoomToSelectionFit();
+          break;
         case 'addComment':
           debugPrint("selectedValue = $selectedValue");
           if (_hasValidSelection) {
@@ -1411,7 +1434,6 @@ class TimingChartState extends State<TimingChart>
 
     String newComment = "";
 
-    // ダイアログ入力時にチャートキーボードフォーカスを外す
     final bool prevCanRequest = _focusNode.canRequestFocus;
     _focusNode.canRequestFocus = false;
     FocusScope.of(context).unfocus();
@@ -1442,7 +1464,6 @@ class TimingChartState extends State<TimingChart>
       },
     );
 
-    // フォーカス設定を戻す
     _focusNode.canRequestFocus = prevCanRequest;
     if (mounted) _focusNode.requestFocus();
 
@@ -1456,9 +1477,10 @@ class TimingChartState extends State<TimingChart>
       );
 
       setState(() {
-        debugPrint('コメント追加: ID=${annId}, text=${newComment}, index=${tIndex}');
+        debugPrint(
+          'comment added: ID=${annId}, text=${newComment}, index=${tIndex}',
+        );
         annotations.add(newAnnotation);
-        // 強制再描画をトリガーするためのダミー更新
         _highlightTimeIndices = [..._highlightTimeIndices];
         _forceRepaint();
       });
@@ -1474,7 +1496,6 @@ class TimingChartState extends State<TimingChart>
 
     String newComment = "";
 
-    // ダイアログ入力時にチャートキーボードフォーカスを外す
     final bool prevCanRequest = _focusNode.canRequestFocus;
     _focusNode.canRequestFocus = false;
     FocusScope.of(context).unfocus();
@@ -1505,7 +1526,6 @@ class TimingChartState extends State<TimingChart>
       },
     );
 
-    // フォーカス設定を戻す
     _focusNode.canRequestFocus = prevCanRequest;
     if (mounted) _focusNode.requestFocus();
 
@@ -1520,7 +1540,7 @@ class TimingChartState extends State<TimingChart>
 
       setState(() {
         debugPrint(
-          'コメント追加: ID=${annId}, text=${newComment}, start=${stTime}, end=${edTime}',
+          'comment added: ID=${annId}, text=${newComment}, start=${stTime}, end=${edTime}',
         );
         annotations.add(newAnnotation);
         _forceRepaint();
@@ -1536,7 +1556,6 @@ class TimingChartState extends State<TimingChart>
 
     String newText = ann.text;
 
-    // ダイアログ入力時にチャートキーボードフォーカスを外す
     final bool prevCanRequest = _focusNode.canRequestFocus;
     _focusNode.canRequestFocus = false;
     FocusScope.of(context).unfocus();
@@ -1570,7 +1589,6 @@ class TimingChartState extends State<TimingChart>
       },
     );
 
-    // フォーカス設定を戻す
     _focusNode.canRequestFocus = prevCanRequest;
     if (mounted) _focusNode.requestFocus();
 
@@ -1646,6 +1664,95 @@ class TimingChartState extends State<TimingChart>
     _commitSignalsFromChartEdit();
   }
 
+  void _deleteColumnsAtRange(int stTime, int edTime) {
+    final int oldMaxLen =
+        signals.isEmpty ? 0 : signals.map((e) => e.length).reduce(math.max);
+    final int clampedSt = stTime.clamp(0, oldMaxLen);
+    final int clampedEd = (edTime + 1).clamp(0, oldMaxLen);
+    if (clampedSt >= clampedEd) return;
+    final int deleteLen = clampedEd - clampedSt;
+
+    setState(() {
+      for (int i = 0; i < signals.length; i++) {
+        final maxTimeForRow = signals[i].length;
+        final st = clampedSt.clamp(0, maxTimeForRow);
+        final ed = clampedEd.clamp(0, maxTimeForRow);
+        if (st < ed) {
+          signals[i].removeRange(st, ed);
+        }
+      }
+      _normalizeSignalLengths();
+      _clearSelection();
+    });
+
+    final settings = Provider.of<SettingsNotifier>(context, listen: false);
+    if (settings.timeUnitIsMs && deleteLen > 0) {
+      List<double> durations = List<double>.from(
+        (_controller?.stepDurationsMs.isNotEmpty ?? false)
+            ? _controller!.stepDurationsMs
+            : settings.stepDurationsMs,
+      );
+      if (durations.length < oldMaxLen) {
+        durations.addAll(
+          List<double>.filled(oldMaxLen - durations.length, settings.msPerStep),
+        );
+      }
+      durations.removeRange(clampedSt, clampedEd);
+      settings.setStepDurationsMs(durations);
+      _controller?.setStepDurationsMs(durations);
+    }
+
+    if (deleteLen > 0) {
+      final List<int> newOmission = [];
+      for (final t in _omissionTimeIndices) {
+        if (t < clampedSt) {
+          newOmission.add(t);
+        } else if (t >= clampedEd) {
+          newOmission.add(t - deleteLen);
+        }
+      }
+      _omissionTimeIndices = newOmission;
+      _controller?.setOmissionTimeIndices(_omissionTimeIndices);
+    }
+
+    if (deleteLen > 0) {
+      final List<TimingChartAnnotation> updated = [];
+      for (final ann in annotations) {
+        final int aStart = ann.startTimeIndex;
+        final int aEnd = ann.endTimeIndex ?? ann.startTimeIndex;
+
+        if (aEnd < clampedSt) {
+          updated.add(ann);
+        } else if (aStart >= clampedEd) {
+          updated.add(
+            ann.copyWith(
+              startTimeIndex: aStart - deleteLen,
+              endTimeIndex: ann.endTimeIndex != null ? aEnd - deleteLen : null,
+            ),
+          );
+        } else {
+          final int newEnd = clampedSt - 1;
+          final int newStart = math.min(aStart, newEnd);
+          if (newEnd >= 0 && newStart <= newEnd) {
+            updated.add(
+              ann.copyWith(
+                startTimeIndex: newStart,
+                endTimeIndex: ann.endTimeIndex != null ? newEnd : null,
+              ),
+            );
+          }
+        }
+      }
+      setState(() {
+        annotations = updated;
+        _forceRepaint();
+      });
+      _controller?.setAnnotations(annotations);
+    }
+
+    _commitSignalsFromChartEdit();
+  }
+
   void _deleteRange() {
     if (!_hasValidSelection) return;
     final stSig = math.min(_startSignalIndex!, _endSignalIndex!);
@@ -1653,6 +1760,14 @@ class TimingChartState extends State<TimingChart>
     final stTime = math.min(_startTimeIndex!, _endTimeIndex!);
     final edTime = math.max(_startTimeIndex!, _endTimeIndex!);
     if (stSig < 0 || edSig >= _visibleIndexes.length) return;
+
+    final bool allVisibleSelected =
+        stSig == 0 && edSig == _visibleIndexes.length - 1;
+    if (allVisibleSelected) {
+      _deleteColumnsAtRange(stTime, edTime);
+      return;
+    }
+
     setState(() {
       for (int visibleRow = stSig; visibleRow <= edSig; visibleRow++) {
         final originalRow = _visibleIndexes[visibleRow];
@@ -1668,19 +1783,26 @@ class TimingChartState extends State<TimingChart>
     _commitSignalsFromChartEdit();
   }
 
+  void _deleteColumns() {
+    if (!_hasValidSelection) return;
+    final stTime = math.min(_startTimeIndex!, _endTimeIndex!);
+    final edTime = math.max(_startTimeIndex!, _endTimeIndex!);
+    _deleteColumnsAtRange(stTime, edTime);
+  }
+
   void _duplicateRange() {
     if (!_hasValidSelection) return;
 
-    // 選択範囲の信号インデックスと時刻インデックスを正規化
+    // 驕ｸ謚樒ｯ・峇縺ｮ菫｡蜿ｷ繧､繝ｳ繝・ャ繧ｯ繧ｹ縺ｨ譎ょ綾繧､繝ｳ繝・ャ繧ｯ繧ｹ繧呈ｭ｣隕丞喧
     final stSig = math.min(_startSignalIndex!, _endSignalIndex!);
     final edSig = math.max(_startSignalIndex!, _endSignalIndex!);
     final stTime = math.min(_startTimeIndex!, _endTimeIndex!);
     final edTime = math.max(_startTimeIndex!, _endTimeIndex!);
 
-    // 選択された信号が可視範囲外の場合は処理しない
+    // 驕ｸ謚槭＆繧後◆菫｡蜿ｷ縺悟庄隕也ｯ・峇螟悶・蝣ｴ蜷医・蜃ｦ逅・＠縺ｪ縺・
     if (stSig < 0 || edSig >= _visibleIndexes.length) return;
 
-    // 追加: 末尾開始オフセットを計算しておく
+    // 霑ｽ蜉: 譛ｫ蟆ｾ髢句ｧ九が繝輔そ繝・ヨ繧定ｨ育ｮ励＠縺ｦ縺翫￥
     final int oldMaxLen =
         signals.isEmpty ? 0 : signals.map((e) => e.length).reduce(math.max);
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
@@ -1723,7 +1845,6 @@ class TimingChartState extends State<TimingChart>
         final clampedEdTime = edTime.clamp(0, maxTimeForRow);
         if (clampedStTime > clampedEdTime) continue;
 
-        // 選択範囲のスライスを取得して末尾に追加
         final slice = signals[originalRow].sublist(
           clampedStTime,
           clampedEdTime + 1,
@@ -1731,13 +1852,11 @@ class TimingChartState extends State<TimingChart>
         signals[originalRow].addAll(slice);
       }
 
-      // ---------- アノテーションを追加 ----------
       final List<TimingChartAnnotation> duplicatedAnnotations = [];
       for (final ann in annotations) {
         final annStart = ann.startTimeIndex;
         final int annEnd = ann.endTimeIndex ?? annStart;
 
-        // 選択範囲とアノテーションが交差しているか判断
         if (annEnd >= stTime && annStart <= edTime) {
           final int offset = oldMaxLen - stTime;
           final newAnn = ann.copyWith(
@@ -1752,7 +1871,6 @@ class TimingChartState extends State<TimingChart>
       }
       annotations.addAll(duplicatedAnnotations);
 
-      // ---------- 省略記号時刻インデックスを追加 ----------
       final List<int> newOmissions = [];
       for (final t in _omissionTimeIndices) {
         if (t >= stTime && t <= edTime) {
@@ -1761,12 +1879,9 @@ class TimingChartState extends State<TimingChart>
       }
       _omissionTimeIndices.addAll(newOmissions);
 
-      // 全信号長を揃える
       _normalizeSignalLengths();
-      // 選択状態をクリア
       _clearSelection();
 
-      // 再描画
       _forceRepaint();
     });
 
@@ -1855,9 +1970,7 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  // ===== アンカー付きズーム用ヘルパー =====
   double _getViewportWaveWidth() {
-    // build 中に context.size を参照すると例外になるため、MediaQuery を使用
     final double widgetWidth = MediaQuery.of(context).size.width;
     final double viewportWaveWidth = widgetWidth - chartMarginLeft - labelWidth;
     return viewportWaveWidth.isFinite ? math.max(0.0, viewportWaveWidth) : 0.0;
@@ -1949,7 +2062,6 @@ class TimingChartState extends State<TimingChart>
             ? verticalDelta
             : horizontalDelta;
 
-    // アンカー位置を取得（波形エリア座標）
     double viewportWaveWidth = _getViewportWaveWidth();
     double anchorXInWave;
     final box = context.findRenderObject() as RenderBox?;
@@ -1973,7 +2085,6 @@ class TimingChartState extends State<TimingChart>
       _zoomOut();
     }
 
-    // ズーム反映後にスクロール位置を補正
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _applyAnchorScrollCorrection(
         anchorXInWave: anchorXInWave,
@@ -1986,7 +2097,6 @@ class TimingChartState extends State<TimingChart>
   Widget build(BuildContext context) {
     super.build(context);
 
-    // レイアウト用の設定取得
     final settingsTop = Provider.of<SettingsNotifier>(context);
 
     return (_isEditingSteps && settingsTop.timeUnitIsMs)
@@ -1999,7 +2109,6 @@ class TimingChartState extends State<TimingChart>
                   signals.isEmpty
                       ? 0
                       : signals.map((e) => e.length).fold(0, math.max);
-              // 表示対象インデックスを抽出
               final visibleIndexes = <int>[];
               final int safeLen = math.min(
                 widget.signalTypes.length,
@@ -2015,7 +2124,6 @@ class TimingChartState extends State<TimingChart>
                 }
               }
 
-              // --- 横方向 ---
               final availableWidth =
                   constraints.maxWidth.isFinite
                       ? constraints.maxWidth - chartMarginLeft - labelWidth
@@ -2023,7 +2131,6 @@ class TimingChartState extends State<TimingChart>
                           chartMarginLeft -
                           labelWidth;
 
-              // 合計ステップ数はMs モードではチャート長の相対値
               final bool isMs = settings.timeUnitIsMs;
               final List<double> durationsForLayout =
                   (_controller?.stepDurationsMs.isNotEmpty ?? false)
@@ -2076,19 +2183,44 @@ class TimingChartState extends State<TimingChart>
                     baseCellWidth,
                   )).toDouble();
 
-              // 下限が上限を超えないように調整
               minCellWidthForFullView = math.min(
                 minCellWidthForFullView,
                 _maxZoomCellWidth,
               );
 
-              // 上限: チャート上に最長ステップが表示できるまで拡大を許可
-              final double viewportWaveWidth = _getViewportWaveWidth();
-              final double maxCellWidthForTwoSteps =
-                  (viewportWaveWidth.isFinite && viewportWaveWidth > 0)
-                      ? (viewportWaveWidth / 2.0)
-                      : _maxZoomCellWidth;
-              final double maxCellWidthAllowed = maxCellWidthForTwoSteps;
+              final double viewportWaveWidth = availableWidth;
+
+              double zoomByRatio;
+              if (isMs && maxLen > 0) {
+                double totalMs = 0.0;
+                double minMs = double.maxFinite;
+                for (int i = 0; i < maxLen; i++) {
+                  final dur =
+                      (i < durationsForLayout.length)
+                          ? durationsForLayout[i]
+                          : settings.msPerStep;
+                  if (dur.isFinite && dur > 0) {
+                    totalMs += dur;
+                    if (dur < minMs) minMs = dur;
+                  }
+                }
+                if (!minMs.isFinite || minMs <= 0) {
+                  minMs = (settings.msPerStep > 0) ? settings.msPerStep : 1.0;
+                }
+                zoomByRatio = totalMs / (minMs * 2.0);
+              } else {
+                zoomByRatio = (totalSteps > 0) ? (totalSteps / 2.0) : 1.0;
+              }
+
+              double maxCellWidthAllowed =
+                  (baseCellWidth * zoomByRatio)
+                      .clamp(_minZoomCellWidth, _maxZoomCellWidth)
+                      .toDouble();
+
+              minCellWidthForFullView = math.min(
+                minCellWidthForFullView,
+                maxCellWidthAllowed,
+              );
 
               final double minZoomFactorForView =
                   baseCellWidth <= 0
@@ -2097,10 +2229,32 @@ class TimingChartState extends State<TimingChart>
                         _minZoom,
                         double.maxFinite,
                       );
-              final double maxZoomFactorForView =
-                  baseCellWidth <= 0
-                      ? 1.0
-                      : (maxCellWidthAllowed / baseCellWidth);
+              double maxZoomFactorForView;
+              if (isMs && maxLen > 0) {
+                double totalMs = 0.0;
+                double minMs = double.maxFinite;
+                for (int i = 0; i < maxLen; i++) {
+                  final dur =
+                      (i < durationsForLayout.length)
+                          ? durationsForLayout[i]
+                          : settings.msPerStep;
+                  totalMs += dur;
+                  if (dur > 0 && dur < minMs) minMs = dur;
+                }
+                if (!minMs.isFinite || minMs <= 0) {
+                  minMs = (settings.msPerStep > 0) ? settings.msPerStep : 1.0;
+                }
+                maxZoomFactorForView = totalMs / (minMs * 2.0);
+              } else {
+                maxZoomFactorForView =
+                    (totalSteps > 0) ? (totalSteps / 2.0) : 1.0;
+              }
+
+              maxZoomFactorForView = math.min(
+                maxZoomFactorForView,
+                (baseCellWidth > 0) ? (_maxZoomCellWidth / baseCellWidth) : 1.0,
+              );
+
               final double effectiveZoomFactor = _zoomFactor.clamp(
                 minZoomFactorForView,
                 maxZoomFactorForView,
@@ -2114,10 +2268,8 @@ class TimingChartState extends State<TimingChart>
               _minZoomFactorForView = minZoomFactorForView;
               _maxZoomFactorForView = maxZoomFactorForView;
               _effectiveZoomFactor = effectiveZoomFactor;
-              // コメントエリアの高さを動的に計算
               final double commentAreaHeight = _calculateCommentAreaHeight();
 
-              // --- 縦方向 ---
               double constraintHeight =
                   constraints.maxHeight.isFinite
                       ? constraints.maxHeight
@@ -2144,7 +2296,6 @@ class TimingChartState extends State<TimingChart>
                   visibleIndexes.length * _cellHeight +
                   commentAreaHeight;
 
-              // フィルタ済みリストを作成
               final visibleSignalNames = [
                 for (final i in visibleIndexes) signalNames[i],
               ];
@@ -2176,7 +2327,6 @@ class TimingChartState extends State<TimingChart>
                 visibleIoSources,
               );
 
-              // ビルド後に stepDurations 長を同じにする
               final settingsRW = Provider.of<SettingsNotifier>(
                 context,
                 listen: false,
@@ -2187,9 +2337,7 @@ class TimingChartState extends State<TimingChart>
                 });
               }
 
-              // 上部にトグル、下部にチャート本体を配置して重なりを回避
               const double _topControlsHeight = 48.0;
-              // fitToScreen 時の高さ計算に上部コントロールを控除
               if (widget.fitToScreen) {
                 final availableHeight =
                     (constraints.maxHeight.isFinite
@@ -2331,7 +2479,6 @@ class TimingChartState extends State<TimingChart>
                             ),
                           ),
                         ),
-                        // 左ラベルの固定オーバーレイ
                         Positioned(
                           left: chartMarginLeft,
                           top: 0,
@@ -2403,7 +2550,7 @@ class TimingChartState extends State<TimingChart>
                     signals.isEmpty
                         ? 0
                         : signals.map((e) => e.length).fold(0, math.max);
-                // 表示対象インデックスを抽出
+                // 陦ｨ遉ｺ蟇ｾ雎｡繧､繝ｳ繝・ャ繧ｯ繧ｹ繧呈歓蜃ｺ
                 final visibleIndexes = <int>[];
                 final int safeLen = math.min(
                   widget.signalTypes.length,
@@ -2419,7 +2566,6 @@ class TimingChartState extends State<TimingChart>
                   }
                 }
 
-                // --- 横方向 ---
                 final availableWidth =
                     constraints.maxWidth.isFinite
                         ? constraints.maxWidth - chartMarginLeft - labelWidth
@@ -2427,7 +2573,6 @@ class TimingChartState extends State<TimingChart>
                             chartMarginLeft -
                             labelWidth;
 
-                // 合計ステップ数はMs モードではチャート長の相対値
                 final bool isMs = settings.timeUnitIsMs;
                 final List<double> durationsForLayout =
                     (_controller?.stepDurationsMs.isNotEmpty ?? false)
@@ -2479,19 +2624,43 @@ class TimingChartState extends State<TimingChart>
                         .clamp(_minZoomCellWidth, baseCellWidth)
                         .toDouble();
 
-                // 下限が上限を超えないように調整
                 minCellWidthForFullView = math.min(
                   minCellWidthForFullView,
                   _maxZoomCellWidth,
                 );
 
-                // 上限: チャート上に最長ステップが表示できるまで拡大を許可
-                final double viewportWaveWidth = _getViewportWaveWidth();
-                final double maxCellWidthForTwoSteps =
-                    (viewportWaveWidth.isFinite && viewportWaveWidth > 0)
-                        ? (viewportWaveWidth / 2.0)
-                        : _maxZoomCellWidth;
-                final double maxCellWidthAllowed = maxCellWidthForTwoSteps;
+                final double viewportWaveWidth = availableWidth;
+                double zoomByRatio;
+                if (isMs && maxLen > 0) {
+                  double totalMs = 0.0;
+                  double minMs = double.maxFinite;
+                  for (int i = 0; i < maxLen; i++) {
+                    final dur =
+                        (i < durationsForLayout.length)
+                            ? durationsForLayout[i]
+                            : settings.msPerStep;
+                    if (dur.isFinite && dur > 0) {
+                      totalMs += dur;
+                      if (dur < minMs) minMs = dur;
+                    }
+                  }
+                  if (!minMs.isFinite || minMs <= 0) {
+                    minMs = (settings.msPerStep > 0) ? settings.msPerStep : 1.0;
+                  }
+                  zoomByRatio = totalMs / (minMs * 2.0);
+                } else {
+                  zoomByRatio = (totalSteps > 0) ? (totalSteps / 2.0) : 1.0;
+                }
+
+                double maxCellWidthAllowed =
+                    (baseCellWidth * zoomByRatio)
+                        .clamp(_minZoomCellWidth, _maxZoomCellWidth)
+                        .toDouble();
+
+                minCellWidthForFullView = math.min(
+                  minCellWidthForFullView,
+                  maxCellWidthAllowed,
+                );
 
                 final double minZoomFactorForView =
                     baseCellWidth <= 0
@@ -2500,10 +2669,34 @@ class TimingChartState extends State<TimingChart>
                           _minZoom,
                           double.maxFinite,
                         );
-                final double maxZoomFactorForView =
-                    baseCellWidth <= 0
-                        ? 1.0
-                        : (maxCellWidthAllowed / baseCellWidth);
+                double maxZoomFactorForView;
+                if (isMs && maxLen > 0) {
+                  double totalMs = 0.0;
+                  double minMs = double.maxFinite;
+                  for (int i = 0; i < maxLen; i++) {
+                    final dur =
+                        (i < durationsForLayout.length)
+                            ? durationsForLayout[i]
+                            : settings.msPerStep;
+                    totalMs += dur;
+                    if (dur > 0 && dur < minMs) minMs = dur;
+                  }
+                  if (!minMs.isFinite || minMs <= 0) {
+                    minMs = (settings.msPerStep > 0) ? settings.msPerStep : 1.0;
+                  }
+                  maxZoomFactorForView = totalMs / (minMs * 2.0);
+                } else {
+                  maxZoomFactorForView =
+                      (totalSteps > 0) ? (totalSteps / 2.0) : 1.0;
+                }
+
+                maxZoomFactorForView = math.min(
+                  maxZoomFactorForView,
+                  (baseCellWidth > 0)
+                      ? (_maxZoomCellWidth / baseCellWidth)
+                      : 1.0,
+                );
+
                 final double effectiveZoomFactor = _zoomFactor.clamp(
                   minZoomFactorForView,
                   maxZoomFactorForView,
@@ -2517,10 +2710,8 @@ class TimingChartState extends State<TimingChart>
                 _minZoomFactorForView = minZoomFactorForView;
                 _maxZoomFactorForView = maxZoomFactorForView;
                 _effectiveZoomFactor = effectiveZoomFactor;
-                // コメントエリアの高さを動的に計算
                 final double commentAreaHeight = _calculateCommentAreaHeight();
 
-                // --- 縦方向 ---
                 double constraintHeight =
                     constraints.maxHeight.isFinite
                         ? constraints.maxHeight
@@ -2547,7 +2738,6 @@ class TimingChartState extends State<TimingChart>
                     visibleIndexes.length * _cellHeight +
                     commentAreaHeight;
 
-                // フィルタ済みリストを作成
                 final visibleSignalNames = [
                   for (final i in visibleIndexes) signalNames[i],
                 ];
@@ -2581,7 +2771,6 @@ class TimingChartState extends State<TimingChart>
                   visibleIoSources,
                 );
 
-                // 非等間隔用: Settings にチャート長を通知して長さを揃える
                 final settingsRW = Provider.of<SettingsNotifier>(
                   context,
                   listen: false,
@@ -2592,7 +2781,6 @@ class TimingChartState extends State<TimingChart>
                   });
                 }
 
-                // 上部にトグル、下部にチャート本体を配置して重なりを回避
                 const double _topControlsHeight = 48.0;
                 if (widget.fitToScreen) {
                   final availableHeight =
@@ -2627,7 +2815,7 @@ class TimingChartState extends State<TimingChart>
                           GestureDetector(
                             behavior: HitTestBehavior.opaque,
                             onPanDown: (details) {
-                              if (_isEditingSteps) return; // 編集中は無効
+                              if (_isEditingSteps) return; // 邱ｨ髮・ｸｭ縺ｯ辟｡蜉ｹ
                               final box =
                                   context.findRenderObject() as RenderBox?;
                               if (box == null) return;
@@ -2797,7 +2985,6 @@ class TimingChartState extends State<TimingChart>
                               ),
                             ),
                           ),
-                          // 左ラベルの固定オーバーレイ
                           Positioned(
                             left: 0,
                             top: 0,
@@ -2869,17 +3056,18 @@ class TimingChartState extends State<TimingChart>
         _effectiveZoomFactor > _minZoomFactorForView + 0.001;
     final bool canReset =
         (_effectiveZoomFactor - _minZoomFactorForView).abs() > 0.001;
+    final bool canFitSelection = _hasValidSelection;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text('$zoomPercent%'),
-        const SizedBox(width: 6),
         OutlinedButton.icon(
           icon: const Icon(Icons.zoom_out, size: 16),
           label: const Text('Zoom out'),
           onPressed: canZoomOut ? _zoomOutWithAnchorAtCenter : null,
         ),
+        const SizedBox(width: 6),
+        Text('$zoomPercent%'),
         const SizedBox(width: 6),
         OutlinedButton.icon(
           icon: const Icon(Icons.zoom_in, size: 16),
@@ -2892,16 +3080,20 @@ class TimingChartState extends State<TimingChart>
           label: const Text('Fit'),
           onPressed: canReset ? _resetZoom : null,
         ),
+        const SizedBox(width: 6),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.fit_screen_outlined, size: 16),
+          label: const Text('Fit sel'),
+          onPressed: canFitSelection ? _zoomToSelectionFit : null,
+        ),
       ],
     );
   }
 
-  // 選択範囲の合計時間[ms]を計算
   double _computeSelectionDurationMs(SettingsNotifier settings) {
     if (!_hasValidSelection) return 0.0;
     final int stTime = math.min(_startTimeIndex!, _endTimeIndex!);
     final int edTime = math.max(_startTimeIndex!, _endTimeIndex!);
-    // レイアウトと同じソースを使用
     final List<double> durations =
         (_controller?.stepDurationsMs.isNotEmpty ?? false)
             ? _controller!.stepDurationsMs
@@ -2917,7 +3109,6 @@ class TimingChartState extends State<TimingChart>
     return sumMs;
   }
 
-  // 選択範囲のステップ数を計算
   int _computeSelectionSteps() {
     if (!_hasValidSelection) return 0;
     final int stTime = math.min(_startTimeIndex!, _endTimeIndex!);
@@ -2925,7 +3116,6 @@ class TimingChartState extends State<TimingChart>
     return (edTime - stTime + 1).clamp(0, 1 << 30);
   }
 
-  // 現在の単位に合わせた選択ラベルを生成
   String _buildSelectionLabel(SettingsNotifier settings) {
     if (settings.timeUnitIsMs) {
       final double ms = _computeSelectionDurationMs(settings);
@@ -2979,7 +3169,6 @@ class TimingChartState extends State<TimingChart>
           ),
           Text(label),
           const SizedBox(width: 12),
-          // 下部の単位ラベル表示
           Text('Labels:'),
           const SizedBox(width: 6),
           Switch(
@@ -2987,7 +3176,7 @@ class TimingChartState extends State<TimingChart>
             onChanged: (v) => settings.showBottomUnitLabels = v,
           ),
           const SizedBox(width: 12),
-          if (isMs) ...[
+          if (_showAdvancedTimingControls && isMs) ...[
             Text('ms/step'),
             const SizedBox(width: 6),
             _buildMsPerStepField(),
@@ -3017,7 +3206,6 @@ class TimingChartState extends State<TimingChart>
     );
   }
 
-  // 小さな数値入力
   Widget _buildMsPerStepField() {
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
     final controller = TextEditingController(
@@ -3045,7 +3233,6 @@ class TimingChartState extends State<TimingChart>
     );
   }
 
-  // 個別時間のダイアログを表示
   Widget _buildEditStepDurationsButton() {
     return OutlinedButton.icon(
       icon: const Icon(Icons.tune, size: 16),
@@ -3060,7 +3247,6 @@ class TimingChartState extends State<TimingChart>
         final controller = TextEditingController(
           text: settings.stepDurationsMs.join(','),
         );
-        // 入力ダイアログ中はフォーカスを外す
         final bool prevCanRequest = _focusNode.canRequestFocus;
         _focusNode.canRequestFocus = false;
         FocusScope.of(context).unfocus();
@@ -3092,7 +3278,6 @@ class TimingChartState extends State<TimingChart>
                   ),
             ) ??
             false;
-        // フォーカス設定を復帰
         _focusNode.canRequestFocus = prevCanRequest;
         if (mounted) _focusNode.requestFocus();
         if (!ok) return;
@@ -3109,7 +3294,6 @@ class TimingChartState extends State<TimingChart>
     );
   }
 
-  // 強制再描画をトリガーするメソッド
   void _forceRepaint() {
     final customPaint = _customPaintKey.currentContext?.findRenderObject();
     if (customPaint is RenderCustomPaint) {
@@ -3117,7 +3301,6 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  /// チャート領域全体をPNGとしてキャプチャして返す
   Future<Uint8List?> captureChartPng({double? pixelRatio}) async {
     try {
       final boundary =
@@ -3135,7 +3318,6 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  /// チャート領域全体をJPEGとしてキャプチャして返す
   Future<Uint8List?> captureChartJpeg({
     double? pixelRatio,
     Color? backgroundColor,
@@ -3238,13 +3420,10 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  /// 現在のアノテーション一覧を取り出す
   List<TimingChartAnnotation> getAnnotations() => List.from(annotations);
 
-  /// 現在チャートで表示されている信号 ID を返す
   List<String> getSignalIdNames() => List.from(_idSignalNames);
 
-  /// 省略信号(非表示区間)が描画されている時刻インデックス
   List<int> getOmissionTimeIndices() => List.from(_omissionTimeIndices);
 
   void setOmission(List<int> indices) {
@@ -3255,7 +3434,6 @@ class TimingChartState extends State<TimingChart>
     _controller?.setOmissionTimeIndices(_omissionTimeIndices);
   }
 
-  // 持つアノテーションの矢印先端を、可視行index の水平中央に設定
   void _setAnnotationArrowToSignal(String annId, int visibleRowIndex) {
     if (visibleRowIndex < 0 || visibleRowIndex >= _visibleIndexes.length)
       return;
@@ -3271,7 +3449,6 @@ class TimingChartState extends State<TimingChart>
     _controller?.setAnnotations(annotations);
   }
 
-  // ======== キーボードショートカット関連 ========
   late final FocusNode _focusNode = FocusNode();
   int _lastHandledGridResetNonce = 0;
   int _lastHandledGridRecomputeNonce = 0;
@@ -3314,13 +3491,12 @@ class TimingChartState extends State<TimingChart>
         HardwareKeyboard.instance.isControlPressed ||
         HardwareKeyboard.instance.isMetaPressed;
 
-    // Ctrl+A: 全選択
     if (isModifierPressed && event.logicalKey == LogicalKeyboardKey.keyA) {
       _selectAllSignals();
       return;
     }
 
-    // 範囲選択がある場合の1/0キー処理
+    // 遽・峇驕ｸ謚槭′縺ゅｋ蝣ｴ蜷医・1/0繧ｭ繝ｼ蜃ｦ逅・
     if (_hasValidSelection) {
       if (event.logicalKey == LogicalKeyboardKey.digit1) {
         _setSignalsInSelection(1);
@@ -3332,7 +3508,6 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  // すべての信号を選択すめ
   void _selectAllSignals() {
     if (signals.isEmpty || _visibleIndexes.isEmpty) return;
     setState(() {
@@ -3344,7 +3519,6 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  // 選択範囲内の波形を指定した値に設定
   void _setSignalsInSelection(int value) {
     if (!_hasValidSelection) return;
     final stSig = math.min(_startSignalIndex!, _endSignalIndex!);
@@ -3370,9 +3544,7 @@ class TimingChartState extends State<TimingChart>
     _commitSignalsFromChartEdit();
   }
 
-  // ================= 行れ替え=================
   void _moveSignal(int visibleIndex, int direction) {
-    // direction -1: 上へ, 1: 下へ
     final int targetVisible = visibleIndex + direction;
     if (targetVisible < 0 || targetVisible >= _visibleIndexes.length) return;
 
@@ -3380,7 +3552,6 @@ class TimingChartState extends State<TimingChart>
     final int dstIdx = _visibleIndexes[targetVisible];
 
     setState(() {
-      // --- 値をスワップ ---
       final tmpSignal = signals[srcIdx];
       signals[srcIdx] = signals[dstIdx];
       signals[dstIdx] = tmpSignal;
@@ -3389,12 +3560,10 @@ class TimingChartState extends State<TimingChart>
       signalNames[srcIdx] = signalNames[dstIdx];
       signalNames[dstIdx] = tmpName;
 
-      // widget.signalTypes は final だけどList 自体は可変
       final tmpType = widget.signalTypes[srcIdx];
       widget.signalTypes[srcIdx] = widget.signalTypes[dstIdx];
       widget.signalTypes[dstIdx] = tmpType;
 
-      // ポート番号も同期して入れ替え
       if (widget.portNumbers.length > srcIdx &&
           widget.portNumbers.length > dstIdx) {
         final tmpPort = widget.portNumbers[srcIdx];
@@ -3409,7 +3578,6 @@ class TimingChartState extends State<TimingChart>
         widget.ioSources[dstIdx] = tmpSource;
       }
 
-      // --- ID も同期 ---
       final tmpId = _idSignalNames[srcIdx];
       _idSignalNames[srcIdx] = _idSignalNames[dstIdx];
       _idSignalNames[dstIdx] = tmpId;
@@ -3418,7 +3586,6 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  // -------- 行を任意位置へ移動--------
   void _reorderSignalRows(int fromVisible, int toVisible) {
     if (fromVisible == toVisible) return;
 
@@ -3434,12 +3601,6 @@ class TimingChartState extends State<TimingChart>
   }
 }
 
-/// タイミングチャートを描画するカスタムペインター
-///
-/// 責務に基づく以下3つのマネージャークラスを利用
-/// - ChartGridManager: グリッド線と信号名ラベルの描画
-/// - ChartSignalsManager: チャート信号波形と選択範囲の描画
-/// - ChartAnnotationsManager: コメント関連の描画
 class _StepTimingChartPainter extends CustomPainter {
   _StepTimingChartPainter({
     required this.signals,
@@ -3477,7 +3638,6 @@ class _StepTimingChartPainter extends CustomPainter {
     this.draggingStartRow,
     this.draggingCurrentRow,
   }) {
-    // マネージャークラスを初期化
     _annotationsManager = ChartAnnotationsManager(
       annotations: annotations,
       cellWidth: cellWidth,
@@ -3504,7 +3664,7 @@ class _StepTimingChartPainter extends CustomPainter {
       labelColor: labelColor,
       highlightStartRow: startSignalIndex,
       highlightEndRow: endSignalIndex,
-      highlightTextColor: arrowColor, // 矢印色と統一
+      highlightTextColor: arrowColor,
       timeUnitIsMs: timeUnitIsMs,
       msPerStep: msPerStep,
       stepDurationsMs: stepDurationsMs,
@@ -3561,46 +3721,37 @@ class _StepTimingChartPainter extends CustomPainter {
   final Color omissionColor;
   final Color omissionFillColor;
   final Color arrowColor;
-  // 下部の単位ラベル表示制御
   final bool showBottomUnitLabels;
 
-  // --- ラベルドラチー用ハイライチー---
   final int? draggingStartRow;
   final int? draggingCurrentRow;
 
-  // マネージャーインスタンス
   late final ChartAnnotationsManager _annotationsManager;
   late final ChartGridManager _gridManager;
   late final ChartSignalsManager _signalsManager;
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 描画領域の幅を計算
     final double drawAreaWidth = size.width - chartMarginLeft;
 
     debugPrint('\n=== TimingChart Paint Start ===');
     debugPrint('Canvas Size: $size');
     debugPrint('Chart Margin: Left=$chartMarginLeft, Top=$chartMarginTop');
 
-    // 描画の開始点をオフセット
     canvas.save();
     canvas.translate(chartMarginLeft, chartMarginTop);
     debugPrint('Canvas translated by: ($chartMarginLeft, $chartMarginTop)');
 
-    // signals, signalNames, signalTypesの長さすべて一致している前提
     final rowCount = signals.length;
 
-    // ラベル領域の背景を塗りつぶし
     final double maskHeight = rowCount * cellHeight + commentAreaHeight;
     final Paint labelMaskPaint =
         Paint()
           ..color = omissionFillColor
           ..style = PaintingStyle.fill;
-    // 右端めpx空けて塗りつぶし刻みの線を要らない
     final double maskWidth = (labelWidth - 1).clamp(0.0, double.infinity);
     canvas.drawRect(Rect.fromLTWH(0, 0, maskWidth, maskHeight), labelMaskPaint);
 
-    // 0. ドラッグハイライト（背景）
     if (draggingStartRow != null) {
       final paintBg =
           Paint()
@@ -3632,23 +3783,18 @@ class _StepTimingChartPainter extends CustomPainter {
       );
     }
 
-    // 描画領域の背景から前景へ
-    // Labels are drawn by overlay painter to keep them pinned on the left.
-
     debugPrint('\n2. Drawing grid lines');
     final maxTimeSteps =
         signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
-    // ms単位非等間隔描画にも対応できるよう gridManager に stepDurations を渡済み
     _gridManager.drawGridLines(canvas, size, rowCount, maxTimeSteps);
 
     debugPrint('\n3. Drawing highlighted time indices');
     _gridManager.drawHighlightedLines(canvas, highlightTimeIndices, size);
 
     debugPrint('\n4. Drawing signal waveforms');
-    // ラベル領域に波形がみ出さないようにクリップ
+
     canvas.save();
     final double clipHeight = rowCount * cellHeight + commentAreaHeight;
-    // クリップ開始を1px右へ刻みの線を確実に残す
     canvas.clipRect(
       Rect.fromLTWH(
         labelWidth + 1,
@@ -3657,8 +3803,6 @@ class _StepTimingChartPainter extends CustomPainter {
         clipHeight,
       ),
     );
-    // 現行描画は step 等間隔ため、x = labelWidth + t*cellWidth
-    // ms非等間隔対応今回は mapper ベースに差し替え予定
     _signalsManager.drawSignalWaveforms(canvas, signals);
 
     debugPrint('\n4b. Drawing omission lines');
@@ -3697,10 +3841,8 @@ class _StepTimingChartPainter extends CustomPainter {
     _annotationsManager.drawAnnotations(canvas, size, rowCount);
     canvas.restore();
 
-    // 時間ラベル下部
     _gridManager.drawTimeLabels(canvas, size, rowCount, maxTimeSteps);
 
-    // アノテーションの当たり判定用Rectマップを更新
     annotationRects.clear();
     annotationRects.addAll(_annotationsManager.getAnnotationRects());
 
@@ -3709,7 +3851,6 @@ class _StepTimingChartPainter extends CustomPainter {
     debugPrint('=== TimingChart Paint End ===\n');
   }
 
-  /// 省略信号波線）描画
   void _drawOmissionLines(Canvas canvas, int rowCount) {
     if (omissionTimeIndices.isEmpty) return;
 
@@ -3750,18 +3891,15 @@ class _StepTimingChartPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _StepTimingChartPainter oldDelegate) {
-    // 最初に信号値の比較
     bool signalsChanged = signals.length != oldDelegate.signals.length;
 
     if (!signalsChanged) {
-      // 信号の長さと比較
       for (int i = 0; i < signals.length; i++) {
         if (signals[i].length != oldDelegate.signals[i].length) {
           signalsChanged = true;
           break;
         }
 
-        // ビット単位で比較て変更を検出
         for (int j = 0; j < signals[i].length; j++) {
           if (signals[i][j] != oldDelegate.signals[i][j]) {
             signalsChanged = true;
@@ -3791,7 +3929,6 @@ class _StepTimingChartPainter extends CustomPainter {
         endTimeIndex != oldDelegate.endTimeIndex ||
         showIoNumbers != oldDelegate.showIoNumbers ||
         portNumbers != oldDelegate.portNumbers ||
-        // ms/メモリ変化も描画トリガ
         timeUnitIsMs != oldDelegate.timeUnitIsMs ||
         msPerStep != oldDelegate.msPerStep ||
         !listEquals(stepDurationsMs, oldDelegate.stepDurationsMs) ||
@@ -3799,7 +3936,6 @@ class _StepTimingChartPainter extends CustomPainter {
   }
 }
 
-/// ラベルを独立して固定描画するオーバーレイ用ペインター
 class _LabelsOverlayPainter extends CustomPainter {
   _LabelsOverlayPainter({
     required this.signalNames,
@@ -3835,19 +3971,16 @@ class _LabelsOverlayPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 背景でラベル領域左端〜ラベル右端を塗りつぶし、下層の波形を完全に隠さない
     final bgPaint =
         Paint()
           ..color = backgroundColor
           ..style = PaintingStyle.fill;
-    // 右端めpx空けて塗る刻みの線を要らない
     final double overlayWidth = (chartMarginLeft + labelWidth - 1).clamp(
       0.0,
       double.infinity,
     );
     canvas.drawRect(Rect.fromLTWH(0, 0, overlayWidth, size.height), bgPaint);
 
-    // 行区刁線を描画ラベルごとの区刁
     final gridPaint =
         Paint()
           ..color = labelColor.withAlpha((0.2 * 255).round())
@@ -3860,7 +3993,6 @@ class _LabelsOverlayPainter extends CustomPainter {
       canvas.drawLine(Offset(0, y), Offset(overlayWidthForLines, y), gridPaint);
     }
 
-    // ラベルの右端に縦の区刁線！px刻みの線を要らない
     final borderPaint =
         Paint()
           ..color = labelColor.withAlpha((0.35 * 255).round())
@@ -3940,7 +4072,6 @@ class _LabelsOverlayPainter extends CustomPainter {
       );
       textPainter.layout(maxWidth: labelWidth - 16);
       final yCenter = row * cellHeight + (cellHeight - textPainter.height) / 2;
-      // ラベル左端からチャート左余白の後ろから描画
       textPainter.paint(canvas, Offset(chartMarginLeft + 6, yCenter));
     }
   }

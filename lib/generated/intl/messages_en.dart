@@ -1,4 +1,4 @@
-// DO NOT EDIT. This is code generated via package:intl/generate_localized.dart
+﻿// DO NOT EDIT. This is code generated via package:intl/generate_localized.dart
 // This is a library that provides messages for a en locale. All the
 // messages from the main program should be duplicated here with the same
 // function name.
@@ -29,7 +29,7 @@ class MessageLookup extends MessageLookupByLibrary {
     "chartTabTitle": MessageLookupByLibrary.simpleMessage("Timing Chart"),
     "color_picker_title": MessageLookupByLibrary.simpleMessage("Select Color"),
     "comment_add_range_title": MessageLookupByLibrary.simpleMessage(
-      "Add comment to selection",
+      "Add range comment",
     ),
     "comment_add_title": MessageLookupByLibrary.simpleMessage("Add comment"),
     "comment_arrow_color": MessageLookupByLibrary.simpleMessage(
@@ -47,10 +47,13 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "ctx_add_comment": MessageLookupByLibrary.simpleMessage("Add comment"),
     "ctx_arrow_horizontal_off_to_on": MessageLookupByLibrary.simpleMessage(
-      "Draw arrow horizontally: OFF → ON",
+      "Turn horizontal arrow ON",
     ),
     "ctx_arrow_horizontal_on_to_off": MessageLookupByLibrary.simpleMessage(
-      "Draw arrow horizontally: ON → OFF",
+      "Turn horizontal arrow OFF",
+    ),
+    "ctx_delete_columns": MessageLookupByLibrary.simpleMessage(
+      "Delete selected columns",
     ),
     "ctx_delete_comment": MessageLookupByLibrary.simpleMessage(
       "Delete comment",
@@ -59,20 +62,18 @@ class MessageLookup extends MessageLookupByLibrary {
       "Delete selection",
     ),
     "ctx_draw_omission": MessageLookupByLibrary.simpleMessage(
-      "Draw omission signal",
+      "Draw omission mark",
     ),
     "ctx_duplicate_to_tail": MessageLookupByLibrary.simpleMessage(
-      "Duplicate selection to tail",
+      "Duplicate to tail",
     ),
     "ctx_edit_comment": MessageLookupByLibrary.simpleMessage("Edit comment"),
-    "ctx_insert_zeros": MessageLookupByLibrary.simpleMessage(
-      "Insert 0 into selection",
-    ),
+    "ctx_insert_zeros": MessageLookupByLibrary.simpleMessage("Insert zeros"),
     "ctx_select_all_signals": MessageLookupByLibrary.simpleMessage(
       "Select all signals",
     ),
     "ctx_set_arrow_tip_to_row": MessageLookupByLibrary.simpleMessage(
-      "Set arrow tip to this signal",
+      "Set arrow tip to this row",
     ),
     "dark_mode": MessageLookupByLibrary.simpleMessage("Dark mode"),
     "default_camera_count": MessageLookupByLibrary.simpleMessage(

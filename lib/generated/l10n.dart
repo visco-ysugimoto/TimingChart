@@ -687,12 +687,22 @@ class S {
     );
   }
 
+  /// `Delete selected columns`
+  String get ctx_delete_columns {
+    return Intl.message(
+      'Delete selected columns',
+      name: 'ctx_delete_columns',
+      desc: 'Context menu: Delete selected columns',
+      args: [],
+    );
+  }
+
   /// `Edit comment`
   String get ctx_edit_comment {
     return Intl.message(
       'Edit comment',
       name: 'ctx_edit_comment',
-      desc: 'Context menu: edit comment',
+      desc: 'Context menu: Edit comment',
       args: [],
     );
   }
@@ -702,57 +712,57 @@ class S {
     return Intl.message(
       'Delete comment',
       name: 'ctx_delete_comment',
-      desc: 'Context menu: delete comment',
+      desc: 'Context menu: Delete comment',
       args: [],
     );
   }
 
-  /// `Draw arrow horizontally: ON → OFF`
+  /// `Turn horizontal arrow OFF`
   String get ctx_arrow_horizontal_on_to_off {
     return Intl.message(
-      'Draw arrow horizontally: ON → OFF',
+      'Turn horizontal arrow OFF',
       name: 'ctx_arrow_horizontal_on_to_off',
-      desc: 'Toggle arrow horizontal on->off',
+      desc: 'Context menu: Turn arrow horizontal ON->OFF',
       args: [],
     );
   }
 
-  /// `Draw arrow horizontally: OFF → ON`
+  /// `Turn horizontal arrow ON`
   String get ctx_arrow_horizontal_off_to_on {
     return Intl.message(
-      'Draw arrow horizontally: OFF → ON',
+      'Turn horizontal arrow ON',
       name: 'ctx_arrow_horizontal_off_to_on',
-      desc: 'Toggle arrow horizontal off->on',
+      desc: 'Context menu: Turn arrow horizontal OFF->ON',
       args: [],
     );
   }
 
-  /// `Set arrow tip to this signal`
+  /// `Set arrow tip to this row`
   String get ctx_set_arrow_tip_to_row {
     return Intl.message(
-      'Set arrow tip to this signal',
+      'Set arrow tip to this row',
       name: 'ctx_set_arrow_tip_to_row',
-      desc: 'Set arrow tip to clicked row',
+      desc: 'Context menu: Set arrow tip target row',
       args: [],
     );
   }
 
-  /// `Insert 0 into selection`
+  /// `Insert zeros`
   String get ctx_insert_zeros {
     return Intl.message(
-      'Insert 0 into selection',
+      'Insert zeros',
       name: 'ctx_insert_zeros',
-      desc: 'Insert zeros into selected range',
+      desc: 'Context menu: Insert zeros into selection',
       args: [],
     );
   }
 
-  /// `Duplicate selection to tail`
+  /// `Duplicate to tail`
   String get ctx_duplicate_to_tail {
     return Intl.message(
-      'Duplicate selection to tail',
+      'Duplicate to tail',
       name: 'ctx_duplicate_to_tail',
-      desc: 'Duplicate selection to the end',
+      desc: 'Context menu: Duplicate selection to tail',
       args: [],
     );
   }
@@ -762,7 +772,7 @@ class S {
     return Intl.message(
       'Select all signals',
       name: 'ctx_select_all_signals',
-      desc: 'Select all signals',
+      desc: 'Context menu: Select all signals',
       args: [],
     );
   }
@@ -772,7 +782,7 @@ class S {
     return Intl.message(
       'Delete selection',
       name: 'ctx_delete_selection',
-      desc: 'Delete selected range',
+      desc: 'Context menu: Delete selection',
       args: [],
     );
   }
@@ -782,17 +792,17 @@ class S {
     return Intl.message(
       'Add comment',
       name: 'ctx_add_comment',
-      desc: 'Add comment on selection or position',
+      desc: 'Context menu: Add comment',
       args: [],
     );
   }
 
-  /// `Draw omission signal`
+  /// `Draw omission mark`
   String get ctx_draw_omission {
     return Intl.message(
-      'Draw omission signal',
+      'Draw omission mark',
       name: 'ctx_draw_omission',
-      desc: 'Draw omission for the range',
+      desc: 'Context menu: Draw omission mark',
       args: [],
     );
   }
@@ -802,17 +812,7 @@ class S {
     return Intl.message(
       'Add comment',
       name: 'comment_add_title',
-      desc: 'Dialog title: add single comment',
-      args: [],
-    );
-  }
-
-  /// `Add comment to selection`
-  String get comment_add_range_title {
-    return Intl.message(
-      'Add comment to selection',
-      name: 'comment_add_range_title',
-      desc: 'Dialog title: add comment to selected range',
+      desc: 'Dialog title: add comment',
       args: [],
     );
   }
@@ -822,7 +822,17 @@ class S {
     return Intl.message(
       'Enter comment',
       name: 'comment_input_hint',
-      desc: 'Hint text for comment input',
+      desc: 'Dialog hint: comment input',
+      args: [],
+    );
+  }
+
+  /// `Add range comment`
+  String get comment_add_range_title {
+    return Intl.message(
+      'Add range comment',
+      name: 'comment_add_range_title',
+      desc: 'Dialog title: add range comment',
       args: [],
     );
   }
@@ -833,6 +843,16 @@ class S {
       'Edit comment',
       name: 'comment_edit_title',
       desc: 'Dialog title: edit comment',
+      args: [],
+    );
+  }
+
+  /// `Zoom to selection`
+  String get ctx_zoom_selection {
+    return Intl.message(
+      'Zoom to selection',
+      name: 'ctx_zoom_selection',
+      desc: 'Context menu: Zoom to selection',
       args: [],
     );
   }

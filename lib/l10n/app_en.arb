@@ -197,5 +197,9 @@
   "importing_wait": "Importing... Please wait",
   "@importing_wait": {
       "description": "Overlay text while importing"
+  },
+  "ctx_delete_columns": "Delete selected columns",
+  "@ctx_delete_columns": {
+      "description": "Context menu: Delete selected columns"
   }
 }

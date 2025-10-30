@@ -63,5 +63,6 @@
   "hint_filename_prefix": "prefix_",
   "dark_mode": "ダークモード",
   "accent_color": "アクセントカラー",
-  "importing_wait": "インポート中... しばらくお待ちください"
+  "importing_wait": "インポート中... しばらくお待ちください",
+  "ctx_delete_columns": "選択範囲の削除(列)"
 }

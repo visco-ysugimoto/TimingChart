@@ -124,4 +124,5 @@ flutter_intl:
   class_name: S
   main_locale: en
   arb_dir: lib/l10n
+  template-arb-file: app_en.arb
   output_dir: lib/generated
