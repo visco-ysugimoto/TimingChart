@@ -42,7 +42,76 @@ import 'dart:math' as math;
 import '../../providers/locale_notifier.dart';
 import '../../providers/form_controllers_notifier.dart';
 
-// セルのモードを表す列挙型
+// 定数クラス
+class FormTabConstants {
+  // 波形長
+  static const int defaultWaveLength = 32;
+
+  // ポート数
+  static const int minInputPorts = 6;
+  static const int standardInputPorts = 16;
+  static const int maxInputPorts = 32;
+  static const int extendedInputPorts = 64;
+  static const int standardOutputPorts = 32;
+
+  // 出力ポートの予約範囲
+  static const int reservedOutputStart = 3; // Output4から
+
+  // UI定数
+  static const double alphaBlendValue = 0.3;
+  static const int defaultRowCount = 6;
+
+  // Code Trigger設定（32ポート）
+  static const int codeTrigger32ControlStart = 1;
+  static const int codeTrigger32ControlEnd = 8;
+  static const int codeTrigger32GroupStart = 9;
+  static const int codeTrigger32GroupEnd = 14;
+  static const int codeTrigger32TaskStart = 15;
+  static const int codeTrigger32TaskEnd = 20;
+
+  // Code Trigger設定（16ポート）
+  static const int codeTrigger16ControlStart = 1;
+  static const int codeTrigger16ControlEnd = 4;
+  static const int codeTrigger16GroupStart = 5;
+  static const int codeTrigger16GroupEnd = 7;
+  static const int codeTrigger16TaskStart = 8;
+  static const int codeTrigger16TaskEnd = 13;
+
+  // CONTACT_INPUT_WAITINGの配置（32ポート時）
+  static const int contactInputWaitingIndex32 = 29; // Input30 (0-based)
+}
+
+// 信号名定数
+class SignalNames {
+  static const String codeOption = 'CODE_OPTION';
+  static const String commandOption = 'Command Option';
+  static const String autoMode = 'AUTO_MODE';
+  static const String busy = 'BUSY';
+  static const String trigger = 'TRIGGER';
+  static const String contactInputWaiting = 'CONTACT_INPUT_WAITING';
+  static const String acqTriggerWaiting = 'ACQ_TRIGGER_WAITING';
+  static const String enableResultSignal = 'ENABLE_RESULT_SIGNAL';
+  static const String totalResultOk = 'TOTAL_RESULT_OK';
+  static const String totalResultNg = 'TOTAL_RESULT_NG';
+  static const String batchExposure = 'BATCH_EXPOSURE';
+  static const String batchExposureComplete = 'BATCH_EXPOSURE_COMPLETE';
+  static const String recovery = 'RECOVERY';
+  static const String pcControl = 'PC_CONTROL';
+}
+
+// トリガーオプション定数
+class TriggerOptions {
+  static const String single = 'Single Trigger';
+  static const String code = 'Code Trigger';
+  static const String command = 'Command Trigger';
+}
+
+// PLC/EIPオプション定数
+class PlcEipOptions {
+  static const String none = 'None';
+  static const String plc = 'PLC';
+  static const String eip = 'EIP';
+}
 
 // セルのモードを表す列挙型
 enum CellMode { none, mode1, mode2, mode3, mode4, mode5 }
@@ -182,7 +251,7 @@ class FormTabState extends State<FormTab>
   // 初期行数
 
   // テーブルの行数（初期値6）
-  int _rowCount = 6;
+  int _rowCount = FormTabConstants.defaultRowCount;
 
   // テーブルデータを保持する2次元配列
   List<List<CellMode>> _tableData = [];
@@ -222,7 +291,7 @@ class FormTabState extends State<FormTab>
   int _prevCamera = -1;
 
   // PLC / EIP オプション
-  String _plcEipOption = 'None';
+  String _plcEipOption = PlcEipOptions.none;
   Map<String, List<int>> _externalSignalValues = {};
 
   // 出力用のサブタブ（IO / PLC-EIP）
@@ -234,7 +303,10 @@ class FormTabState extends State<FormTab>
 
   // 外部から PLC/EIP オプションを制御するためのセッター
   void setPlcEipOption(String value) {
-    if (value != 'None' && value != 'PLC' && value != 'EIP') return;
+    if (value != PlcEipOptions.none &&
+        value != PlcEipOptions.plc &&
+        value != PlcEipOptions.eip)
+      return;
     setState(() {
       _plcEipOption = value;
     });
@@ -244,7 +316,7 @@ class FormTabState extends State<FormTab>
 
   // 出力タブコントローラーを初期化または破棄する
   void _ensureOutputTabController() {
-    if (_plcEipOption == 'None') {
+    if (_plcEipOption == PlcEipOptions.none) {
       _outputTabController?.dispose();
       _outputTabController = null;
       _outputTabIndex = 0;
@@ -267,7 +339,7 @@ class FormTabState extends State<FormTab>
 
   // 入力タブコントローラーを初期化または破棄する
   void _ensureInputTabController() {
-    if (_plcEipOption == 'None') {
+    if (_plcEipOption == PlcEipOptions.none) {
       _inputTabController?.dispose();
       _inputTabController = null;
       _inputTabIndex = 0;
@@ -333,14 +405,14 @@ class FormTabState extends State<FormTab>
   // トリガーオプションに応じて入力名を自動設定する
   void applyInputNamesForTriggerOption() {
     final fs = formState;
-    if (fs.triggerOption == 'Single Trigger') {
+    if (fs.triggerOption == TriggerOptions.single) {
       if (widget.inputControllers.isNotEmpty) {
-        widget.controllersNotifier.setInputText(0, 'TRIGGER');
+        widget.controllersNotifier.setInputText(0, SignalNames.trigger);
       }
       return;
     }
 
-    if (fs.triggerOption == 'Code Trigger') {
+    if (fs.triggerOption == TriggerOptions.code) {
       _assignCodeTriggerInputNames(fs);
     }
   }
@@ -349,24 +421,30 @@ class FormTabState extends State<FormTab>
   void _assignCodeTriggerInputNames(TimingFormState fs) {
     final controllers = widget.inputControllers;
     String? nameForIndex(int index) {
-      if (fs.inputCount >= 32) {
-        if (index >= 1 && index <= 8) {
+      if (fs.inputCount >= FormTabConstants.maxInputPorts) {
+        if (index >= FormTabConstants.codeTrigger32ControlStart &&
+            index <= FormTabConstants.codeTrigger32ControlEnd) {
           return 'Control Code${index}(bit)';
         }
-        if (index >= 9 && index <= 14) {
+        if (index >= FormTabConstants.codeTrigger32GroupStart &&
+            index <= FormTabConstants.codeTrigger32GroupEnd) {
           return 'Group Code${index}(bit)';
         }
-        if (index >= 15 && index <= 20) {
+        if (index >= FormTabConstants.codeTrigger32TaskStart &&
+            index <= FormTabConstants.codeTrigger32TaskEnd) {
           return 'Task Code${index}(bit)';
         }
-      } else if (fs.inputCount == 16) {
-        if (index >= 1 && index <= 4) {
+      } else if (fs.inputCount == FormTabConstants.standardInputPorts) {
+        if (index >= FormTabConstants.codeTrigger16ControlStart &&
+            index <= FormTabConstants.codeTrigger16ControlEnd) {
           return 'Control Code${index}(bit)';
         }
-        if (index >= 5 && index <= 7) {
+        if (index >= FormTabConstants.codeTrigger16GroupStart &&
+            index <= FormTabConstants.codeTrigger16GroupEnd) {
           return 'Group Code${index}(bit)';
         }
-        if (index >= 8 && index <= 13) {
+        if (index >= FormTabConstants.codeTrigger16TaskStart &&
+            index <= FormTabConstants.codeTrigger16TaskEnd) {
           return 'Task Code${index}(bit)';
         }
       }
@@ -492,9 +570,10 @@ class FormTabState extends State<FormTab>
     }
 
     // IO ポート数 = 6 のときは Code Trigger を強制的に Single Trigger へ変更
-    if (fs.inputCount == 6 && fs.triggerOption == 'Code Trigger') {
+    if (fs.inputCount == FormTabConstants.minInputPorts &&
+        fs.triggerOption == TriggerOptions.code) {
       SchedulerBinding.instance.addPostFrameCallback((_) {
-        widget.onTriggerOptionChanged('Single Trigger');
+        widget.onTriggerOptionChanged(TriggerOptions.single);
       });
     }
 
@@ -526,7 +605,7 @@ class FormTabState extends State<FormTab>
         SignalData(
           name: name,
           signalType: signalType,
-          values: List.filled(32, 0),
+          values: List.filled(FormTabConstants.defaultWaveLength, 0),
           isVisible: isVisible,
         ),
       );
@@ -538,7 +617,7 @@ class FormTabState extends State<FormTab>
           SignalData(
             name: widget.hwTriggerControllers[i].text,
             signalType: SignalType.hwTrigger,
-            values: List.filled(32, 0),
+            values: List.filled(FormTabConstants.defaultWaveLength, 0),
             isVisible:
                 i < _hwTriggerVisibility.length
                     ? _hwTriggerVisibility[i]
@@ -555,7 +634,7 @@ class FormTabState extends State<FormTab>
           SignalData(
             name: widget.outputControllers[i].text,
             signalType: SignalType.output,
-            values: List.filled(32, 0),
+            values: List.filled(FormTabConstants.defaultWaveLength, 0),
             isVisible:
                 i < _outputVisibility.length ? _outputVisibility[i] : true,
           ),
@@ -563,18 +642,21 @@ class FormTabState extends State<FormTab>
       }
     }
 
-    if (_plcEipOption != 'None') {
+    if (_plcEipOption != PlcEipOptions.none) {
       for (int i = 0; i < formState.outputCount; i++) {
         if (i < widget.plcEipOutputControllers.length &&
             widget.plcEipOutputControllers[i].text.isNotEmpty) {
-          final base = _plcEipOption == 'PLC' ? 'PLO${i + 1}' : 'ESO${i + 1}';
+          final base =
+              _plcEipOption == PlcEipOptions.plc
+                  ? 'PLO${i + 1}'
+                  : 'ESO${i + 1}';
           final user = widget.plcEipOutputControllers[i].text;
           final label = '$base: $user';
           _signalDataList.add(
             SignalData(
               name: label,
               signalType: SignalType.output,
-              values: List.filled(32, 0),
+              values: List.filled(FormTabConstants.defaultWaveLength, 0),
               isVisible:
                   i < _outputVisibility.length ? _outputVisibility[i] : true,
             ),
@@ -583,30 +665,34 @@ class FormTabState extends State<FormTab>
       }
     }
 
-    if (formState.triggerOption == 'Code Trigger') {
-      final exists = _signalDataList.any((s) => s.name == 'CODE_OPTION');
+    if (formState.triggerOption == TriggerOptions.code) {
+      final exists = _signalDataList.any(
+        (s) => s.name == SignalNames.codeOption,
+      );
       if (!exists) {
         _signalDataList.insert(
           0,
           SignalData(
-            name: 'CODE_OPTION',
+            name: SignalNames.codeOption,
             signalType: SignalType.input,
-            values: List.filled(32, 0),
+            values: List.filled(FormTabConstants.defaultWaveLength, 0),
             isVisible: true,
           ),
         );
       }
     }
 
-    if (formState.triggerOption == 'Command Trigger') {
-      final exists = _signalDataList.any((s) => s.name == 'Command Option');
+    if (formState.triggerOption == TriggerOptions.command) {
+      final exists = _signalDataList.any(
+        (s) => s.name == SignalNames.commandOption,
+      );
       if (!exists) {
         _signalDataList.insert(
           0,
           SignalData(
-            name: 'Command Option',
+            name: SignalNames.commandOption,
             signalType: SignalType.input,
-            values: List.filled(32, 0),
+            values: List.filled(FormTabConstants.defaultWaveLength, 0),
             isVisible: true,
           ),
         );
@@ -788,6 +874,442 @@ class FormTabState extends State<FormTab>
     widget.onClearFields();
   }
 
+  // 信号値を解決する（前のデータから値を取得）
+  List<int> _resolveSignalValues({
+    required Map<String, List<int>> prevPortValues,
+    required Map<String, List<int>> prevValueMap,
+    required String primaryKey,
+    String? alternateKey,
+    required String name,
+    List<String> additionalNames = const [],
+    required int defaultWaveLength,
+  }) {
+    final List<int>? fromPort =
+        prevPortValues[primaryKey] ??
+        (alternateKey != null ? prevPortValues[alternateKey] : null);
+    if (fromPort != null) {
+      return List<int>.from(fromPort);
+    }
+
+    final List<int>? direct = prevValueMap[name];
+    if (direct != null) {
+      return List<int>.from(direct);
+    }
+
+    for (final fallbackName in additionalNames) {
+      if (fallbackName.isEmpty) continue;
+      final List<int>? fallback = prevValueMap[fallbackName];
+      if (fallback != null) {
+        return List<int>.from(fallback);
+      }
+    }
+
+    final String normalized = _normalizeSignalName(name);
+    final MapEntry<String, List<int>>? normalizedEntry = prevValueMap.entries
+        .firstWhereOrNull(
+          (entry) => _normalizeSignalName(entry.key) == normalized,
+        );
+    if (normalizedEntry != null) {
+      return List<int>.from(normalizedEntry.value);
+    }
+
+    for (final fallbackName in additionalNames) {
+      if (fallbackName.isEmpty) continue;
+      final String fallbackNormalized = _normalizeSignalName(fallbackName);
+      final MapEntry<String, List<int>>? fallbackEntry = prevValueMap.entries
+          .firstWhereOrNull(
+            (entry) => _normalizeSignalName(entry.key) == fallbackNormalized,
+          );
+      if (fallbackEntry != null) {
+        return List<int>.from(fallbackEntry.value);
+      }
+    }
+
+    return List.filled(defaultWaveLength, 0);
+  }
+
+  // ポートキーを生成するヘルパーメソッド
+  String _dioInputKey(int index) => 'dio-input:$index';
+  String _plcInputKey(int index) => 'plc-input:$index';
+  String _hwKey(int index) => 'hw:$index';
+  String _dioOutputKey(int index) => 'dio-output:$index';
+  String _plcOutputKey(int index) => 'plc-output:$index';
+
+  // 入力信号のフォールバック名を生成
+  List<String> _inputFallbackNames(int index) => <String>[
+    'Input${index + 1}',
+    'Input ${index + 1}',
+    'PLI${index + 1}',
+    'ESI${index + 1}',
+  ];
+
+  // 出力信号のフォールバック名を生成
+  List<String> _outputFallbackNames(int index) => <String>[
+    'Output${index + 1}',
+    'Output ${index + 1}',
+    'PLO${index + 1}',
+    'ESO${index + 1}',
+  ];
+
+  // Code Trigger用の信号タイプと可視性を決定
+  void _determineCodeTriggerSignalType(
+    TimingFormState fs,
+    int index,
+    Function(int, String) setInputText,
+  ) {
+    if (fs.inputCount >= FormTabConstants.maxInputPorts) {
+      if (index >= FormTabConstants.codeTrigger32ControlStart &&
+          index <= FormTabConstants.codeTrigger32ControlEnd) {
+        setInputText(index, 'Control Code${index}(bit)');
+      }
+    } else if (fs.inputCount == FormTabConstants.standardInputPorts) {
+      if (index >= FormTabConstants.codeTrigger16ControlStart &&
+          index <= FormTabConstants.codeTrigger16ControlEnd) {
+        setInputText(index, 'Control Code${index}(bit)');
+      }
+    }
+  }
+
+  // Code Trigger用の信号タイプを取得
+  SignalType _getCodeTriggerSignalType(TimingFormState fs, int index) {
+    if (fs.inputCount >= FormTabConstants.maxInputPorts) {
+      if (index >= FormTabConstants.codeTrigger32ControlStart &&
+          index <= FormTabConstants.codeTrigger32ControlEnd) {
+        return SignalType.control;
+      } else if (index >= FormTabConstants.codeTrigger32GroupStart &&
+          index <= FormTabConstants.codeTrigger32GroupEnd) {
+        return SignalType.group;
+      } else if (index >= FormTabConstants.codeTrigger32TaskStart &&
+          index <= FormTabConstants.codeTrigger32TaskEnd) {
+        return SignalType.task;
+      }
+    } else if (fs.inputCount == FormTabConstants.standardInputPorts) {
+      if (index >= FormTabConstants.codeTrigger16ControlStart &&
+          index <= FormTabConstants.codeTrigger16ControlEnd) {
+        return SignalType.control;
+      } else if (index >= FormTabConstants.codeTrigger16GroupStart &&
+          index <= FormTabConstants.codeTrigger16GroupEnd) {
+        return SignalType.group;
+      } else if (index >= FormTabConstants.codeTrigger16TaskStart &&
+          index <= FormTabConstants.codeTrigger16TaskEnd) {
+        return SignalType.task;
+      }
+    }
+    return SignalType.input;
+  }
+
+  // Code Trigger用の可視性を取得
+  bool _getCodeTriggerVisibility(TimingFormState fs, int index) {
+    if (fs.inputCount >= FormTabConstants.maxInputPorts) {
+      return index == 0 || index > FormTabConstants.codeTrigger32TaskEnd;
+    } else if (fs.inputCount == FormTabConstants.standardInputPorts) {
+      return index == 0 || index > FormTabConstants.codeTrigger16TaskEnd;
+    }
+    return true;
+  }
+
+  // 入力信号マップを構築
+  Map<int, SignalData> _buildInputSignalMap({
+    required Map<String, List<int>> prevPortValues,
+    required Map<String, List<int>> prevValueMap,
+    required int defaultWaveLength,
+  }) {
+    final Map<int, SignalData> inputSignalMap = {};
+    final fs = formState;
+
+    for (int i = 0; i < fs.inputCount; i++) {
+      if (i < widget.inputControllers.length &&
+          widget.inputControllers[i].text.isNotEmpty) {
+        SignalType signalType = SignalType.input;
+        bool isVisible =
+            i < _inputVisibility.length ? _inputVisibility[i] : true;
+
+        if (fs.triggerOption == TriggerOptions.code) {
+          signalType = _getCodeTriggerSignalType(fs, i);
+          isVisible = _getCodeTriggerVisibility(fs, i);
+          _determineCodeTriggerSignalType(
+            fs,
+            i,
+            (idx, text) => widget.controllersNotifier.setInputText(idx, text),
+          );
+        }
+
+        final String name = widget.inputControllers[i].text;
+        final List<int> values = _resolveSignalValues(
+          prevPortValues: prevPortValues,
+          prevValueMap: prevValueMap,
+          primaryKey: _dioInputKey(i),
+          alternateKey: _plcInputKey(i),
+          name: name,
+          additionalNames: _inputFallbackNames(i),
+          defaultWaveLength: defaultWaveLength,
+        );
+
+        inputSignalMap[i] = SignalData(
+          name: name,
+          signalType: signalType,
+          values: values,
+          isVisible: isVisible,
+        );
+      }
+    }
+
+    // PLC/EIP入力信号を追加
+    if (_plcEipOption != PlcEipOptions.none) {
+      for (int i = 0; i < fs.inputCount; i++) {
+        if (i < widget.plcEipInputControllers.length &&
+            widget.plcEipInputControllers[i].text.isNotEmpty) {
+          final String name = widget.plcEipInputControllers[i].text;
+          final int key = fs.inputCount + i;
+          final List<int> values = _resolveSignalValues(
+            prevPortValues: prevPortValues,
+            prevValueMap: prevValueMap,
+            primaryKey: _plcInputKey(i),
+            alternateKey: _dioInputKey(i),
+            name: name,
+            additionalNames: _inputFallbackNames(i),
+            defaultWaveLength: defaultWaveLength,
+          );
+          inputSignalMap[key] = SignalData(
+            name: name,
+            signalType: SignalType.input,
+            values: values,
+            isVisible: i < _inputVisibility.length ? _inputVisibility[i] : true,
+          );
+        }
+      }
+    }
+
+    return inputSignalMap;
+  }
+
+  // HWトリガー信号マップを構築
+  Map<int, SignalData> _buildHwTriggerSignalMap({
+    required Map<String, List<int>> prevPortValues,
+    required Map<String, List<int>> prevValueMap,
+    required int defaultWaveLength,
+  }) {
+    final Map<int, SignalData> hwTriggerSignalMap = {};
+    final fs = formState;
+
+    for (int i = 0; i < fs.hwPort; i++) {
+      if (widget.hwTriggerControllers[i].text.isNotEmpty) {
+        final String name = widget.hwTriggerControllers[i].text;
+        final List<int> values = _resolveSignalValues(
+          prevPortValues: prevPortValues,
+          prevValueMap: prevValueMap,
+          primaryKey: _hwKey(i),
+          name: name,
+          defaultWaveLength: defaultWaveLength,
+        );
+        hwTriggerSignalMap[i] = SignalData(
+          name: name,
+          signalType: SignalType.hwTrigger,
+          values: values,
+          isVisible:
+              i < _hwTriggerVisibility.length ? _hwTriggerVisibility[i] : true,
+        );
+      }
+    }
+
+    return hwTriggerSignalMap;
+  }
+
+  // 出力信号マップを構築
+  Map<int, SignalData> _buildOutputSignalMap({
+    required Map<String, List<int>> prevPortValues,
+    required Map<String, List<int>> prevValueMap,
+    required int defaultWaveLength,
+  }) {
+    final Map<int, SignalData> outputSignalMap = {};
+    final fs = formState;
+
+    // DIO出力信号
+    for (int i = 0; i < fs.outputCount; i++) {
+      if (i < widget.outputControllers.length &&
+          widget.outputControllers[i].text.isNotEmpty) {
+        final String name = widget.outputControllers[i].text;
+        String displayName = name;
+        if (name.startsWith('Output') && name.length > 6) {
+          final String portStr = name.substring(6);
+          final int? port = int.tryParse(portStr);
+          if (port != null && port > 0) {
+            displayName = name;
+          }
+        }
+
+        final List<int> values = _resolveSignalValues(
+          prevPortValues: prevPortValues,
+          prevValueMap: prevValueMap,
+          primaryKey: _dioOutputKey(i),
+          alternateKey: _plcOutputKey(i),
+          name: displayName,
+          additionalNames: _outputFallbackNames(i),
+          defaultWaveLength: defaultWaveLength,
+        );
+
+        outputSignalMap[i] = SignalData(
+          name: displayName,
+          signalType: SignalType.output,
+          values: values,
+          isVisible: i < _outputVisibility.length ? _outputVisibility[i] : true,
+        );
+      }
+    }
+
+    // PLC/EIP出力信号
+    if (_plcEipOption != PlcEipOptions.none) {
+      for (int i = 0; i < fs.outputCount; i++) {
+        if (i < widget.plcEipOutputControllers.length &&
+            widget.plcEipOutputControllers[i].text.isNotEmpty) {
+          final String prefix =
+              _plcEipOption == PlcEipOptions.plc ? 'PLO' : 'ESO';
+          final String base = '$prefix${i + 1}';
+          final String user = widget.plcEipOutputControllers[i].text;
+
+          String label;
+          if ((user.startsWith('PLO') || user.startsWith('ESO')) &&
+              user.length > 3) {
+            final String portStr = user.substring(3);
+            final int? port = int.tryParse(portStr);
+            if (port != null && port > 0) {
+              label = user;
+            } else {
+              label = user.isNotEmpty ? '$base: $user' : base;
+            }
+          } else {
+            label = user.isNotEmpty ? '$base: $user' : base;
+          }
+
+          final int key = fs.outputCount + i;
+          final String fallbackBase = 'Output ${i + 1}';
+          final List<String> additionalNames =
+              <String>[
+                user,
+                base,
+                'Output${i + 1}',
+                fallbackBase,
+                ..._outputFallbackNames(i),
+              ].where((element) => element.trim().isNotEmpty).toSet().toList();
+
+          final List<int> values = _resolveSignalValues(
+            prevPortValues: prevPortValues,
+            prevValueMap: prevValueMap,
+            primaryKey: _plcOutputKey(i),
+            alternateKey: _dioOutputKey(i),
+            name: label,
+            additionalNames: additionalNames,
+            defaultWaveLength: defaultWaveLength,
+          );
+
+          outputSignalMap[key] = SignalData(
+            name: label,
+            signalType: SignalType.output,
+            values: values,
+            isVisible:
+                i < _outputVisibility.length ? _outputVisibility[i] : true,
+          );
+        }
+      }
+    }
+
+    return outputSignalMap;
+  }
+
+  // 信号データリストを構築（信号マップから）
+  void _populateSignalDataList({
+    required Map<int, SignalData> inputSignalMap,
+    required Map<int, SignalData> outputSignalMap,
+    required Map<int, SignalData> hwTriggerSignalMap,
+    required List<String> prevOrder,
+    required Map<String, List<int>> prevValueMap,
+    required int defaultWaveLength,
+  }) {
+    _signalDataList = [];
+
+    // 入力信号を追加
+    for (int i = 0; i < formState.inputCount; i++) {
+      if (inputSignalMap.containsKey(i)) {
+        _signalDataList.add(inputSignalMap[i]!);
+      }
+    }
+
+    // PLC/EIP入力信号を追加
+    if (_plcEipOption != PlcEipOptions.none) {
+      for (int i = 0; i < formState.inputCount; i++) {
+        final int key = formState.inputCount + i;
+        if (inputSignalMap.containsKey(key)) {
+          _signalDataList.add(inputSignalMap[key]!);
+        }
+      }
+    }
+
+    // HWトリガー信号を追加
+    for (int i = 0; i < formState.hwPort; i++) {
+      if (hwTriggerSignalMap.containsKey(i)) {
+        _signalDataList.add(hwTriggerSignalMap[i]!);
+      }
+    }
+
+    // 出力信号を追加
+    for (int i = 0; i < formState.outputCount; i++) {
+      if (outputSignalMap.containsKey(i)) {
+        _signalDataList.add(outputSignalMap[i]!);
+      }
+    }
+
+    // 追加の出力信号を追加
+    final List<int> extraOutputKeys =
+        outputSignalMap.keys.where((k) => k >= formState.outputCount).toList()
+          ..sort();
+    for (final int k in extraOutputKeys) {
+      _signalDataList.add(outputSignalMap[k]!);
+    }
+
+    // 順序を保持
+    if (prevOrder.isNotEmpty) {
+      _signalDataList.sort((a, b) {
+        final int ia = prevOrder.indexOf(a.name);
+        final int ib = prevOrder.indexOf(b.name);
+        if (ia >= 0 && ib >= 0) return ia.compareTo(ib);
+        if (ia >= 0) return -1;
+        if (ib >= 0) return 1;
+        return 0;
+      });
+    }
+
+    // Code/Command Trigger用の信号を追加
+    if (formState.triggerOption == TriggerOptions.code &&
+        !_signalDataList.any((s) => s.name == SignalNames.codeOption)) {
+      _signalDataList.insert(
+        0,
+        SignalData(
+          name: SignalNames.codeOption,
+          signalType: SignalType.input,
+          values:
+              prevValueMap[SignalNames.codeOption] ??
+              List.filled(defaultWaveLength, 0),
+          isVisible: true,
+        ),
+      );
+    }
+
+    if (formState.triggerOption == TriggerOptions.command &&
+        !_signalDataList.any((s) => s.name == SignalNames.commandOption)) {
+      _signalDataList.insert(
+        0,
+        SignalData(
+          name: SignalNames.commandOption,
+          signalType: SignalType.input,
+          values:
+              prevValueMap[SignalNames.commandOption] ??
+              List.filled(defaultWaveLength, 0),
+          isVisible: true,
+        ),
+      );
+    }
+  }
+
   // 現在の設定から信号データリストを生成・更新する（メイン処理）
   void _updateSignalDataList() {
     final Map<String, List<int>> prevPortValues = {
@@ -796,6 +1318,7 @@ class FormTabState extends State<FormTab>
     };
 
     setState(() {
+      // 前の値を収集
       final Map<String, List<int>> prevValueMap = {
         for (final sig in _signalDataList) sig.name: List<int>.from(sig.values),
       };
@@ -805,7 +1328,8 @@ class FormTabState extends State<FormTab>
         }
         _externalSignalValues.clear();
       }
-      // Use the longest known waveform length so new signals stay aligned.
+
+      // デフォルト波形長を計算
       int defaultWaveLength = 0;
       for (final values in prevValueMap.values) {
         defaultWaveLength = math.max(defaultWaveLength, values.length);
@@ -814,282 +1338,62 @@ class FormTabState extends State<FormTab>
         defaultWaveLength = math.max(defaultWaveLength, values.length);
       }
       if (defaultWaveLength == 0) {
-        defaultWaveLength = 32;
+        defaultWaveLength = FormTabConstants.defaultWaveLength;
       }
 
       final List<String> prevOrder =
           _signalDataList.map((s) => s.name).toList();
 
-      _signalDataList = [];
+      // 信号マップを構築
+      final inputSignalMap = _buildInputSignalMap(
+        prevPortValues: prevPortValues,
+        prevValueMap: prevValueMap,
+        defaultWaveLength: defaultWaveLength,
+      );
 
-      final Map<int, SignalData> inputSignalMap = {};
-      final Map<int, SignalData> outputSignalMap = {};
-      final Map<int, SignalData> hwTriggerSignalMap = {};
+      final hwTriggerSignalMap = _buildHwTriggerSignalMap(
+        prevPortValues: prevPortValues,
+        prevValueMap: prevValueMap,
+        defaultWaveLength: defaultWaveLength,
+      );
+
+      final outputSignalMap = _buildOutputSignalMap(
+        prevPortValues: prevPortValues,
+        prevValueMap: prevValueMap,
+        defaultWaveLength: defaultWaveLength,
+      );
+
+      // ポート値を更新
       final Map<String, List<int>> newPortValues = {};
-
-      List<int> resolveValues({
-        required String primaryKey,
-        String? alternateKey,
-        required String name,
-        List<String> additionalNames = const [],
-      }) {
-        final List<int>? fromPort =
-            prevPortValues[primaryKey] ??
-            (alternateKey != null ? prevPortValues[alternateKey] : null);
-        if (fromPort != null) {
-          return List<int>.from(fromPort);
+      for (final entry in inputSignalMap.entries) {
+        if (entry.key < formState.inputCount) {
+          newPortValues[_dioInputKey(entry.key)] = List<int>.from(
+            entry.value.values,
+          );
+        } else {
+          final plcIndex = entry.key - formState.inputCount;
+          newPortValues[_plcInputKey(plcIndex)] = List<int>.from(
+            entry.value.values,
+          );
         }
-
-        final List<int>? direct = prevValueMap[name];
-        if (direct != null) {
-          return List<int>.from(direct);
-        }
-
-        for (final fallbackName in additionalNames) {
-          if (fallbackName.isEmpty) continue;
-          final List<int>? fallback = prevValueMap[fallbackName];
-          if (fallback != null) {
-            return List<int>.from(fallback);
-          }
-        }
-
-        final String normalized = _normalizeSignalName(name);
-        final MapEntry<String, List<int>>? normalizedEntry = prevValueMap
-            .entries
-            .firstWhereOrNull(
-              (entry) => _normalizeSignalName(entry.key) == normalized,
-            );
-        if (normalizedEntry != null) {
-          return List<int>.from(normalizedEntry.value);
-        }
-
-        for (final fallbackName in additionalNames) {
-          if (fallbackName.isEmpty) continue;
-          final String fallbackNormalized = _normalizeSignalName(fallbackName);
-          final MapEntry<String, List<int>>? fallbackEntry = prevValueMap
-              .entries
-              .firstWhereOrNull(
-                (entry) =>
-                    _normalizeSignalName(entry.key) == fallbackNormalized,
-              );
-          if (fallbackEntry != null) {
-            return List<int>.from(fallbackEntry.value);
-          }
-        }
-
-        return List.filled(defaultWaveLength, 0);
       }
-
-      String dioInputKey(int index) => 'dio-input:$index';
-      String plcInputKey(int index) => 'plc-input:$index';
-      String hwKey(int index) => 'hw:$index';
-      String dioOutputKey(int index) => 'dio-output:$index';
-      String plcOutputKey(int index) => 'plc-output:$index';
-
-      List<String> inputFallbackNames(int index) => <String>[
-        'Input${index + 1}',
-        'Input ${index + 1}',
-        'PLI${index + 1}',
-        'ESI${index + 1}',
-      ];
-
-      List<String> outputFallbackNames(int index) => <String>[
-        'Output${index + 1}',
-        'Output ${index + 1}',
-        'PLO${index + 1}',
-        'ESO${index + 1}',
-      ];
-
-      for (int i = 0; i < formState.inputCount; i++) {
-        if (i < widget.inputControllers.length &&
-            widget.inputControllers[i].text.isNotEmpty) {
-          SignalType signalType = SignalType.input;
-          bool isVisible =
-              i < _inputVisibility.length ? _inputVisibility[i] : true;
-
-          if (formState.triggerOption == 'Code Trigger') {
-            if (formState.inputCount >= 32) {
-              if (i >= 1 && i <= 8) {
-                signalType = SignalType.control;
-                isVisible = false;
-                widget.controllersNotifier.setInputText(
-                  i,
-                  'Control Code${i}(bit)',
-                );
-              } else if (i >= 9 && i <= 14) {
-                signalType = SignalType.group;
-                isVisible = false;
-              } else if (i >= 15 && i <= 20) {
-                signalType = SignalType.task;
-                isVisible = false;
-              }
-            } else if (formState.inputCount == 16) {
-              if (i >= 1 && i <= 4) {
-                signalType = SignalType.control;
-                isVisible = false;
-                widget.controllersNotifier.setInputText(
-                  i,
-                  'Control Code${i}(bit)',
-                );
-              } else if (i >= 5 && i <= 7) {
-                signalType = SignalType.group;
-                isVisible = false;
-              } else if (i >= 8 && i <= 13) {
-                signalType = SignalType.task;
-                isVisible = false;
-              }
-            }
-          }
-
-          final String name = widget.inputControllers[i].text;
-          final List<int> values = resolveValues(
-            primaryKey: dioInputKey(i),
-            alternateKey: plcInputKey(i),
-            name: name,
-            additionalNames: inputFallbackNames(i),
+      for (final entry in hwTriggerSignalMap.entries) {
+        newPortValues[_hwKey(entry.key)] = List<int>.from(entry.value.values);
+      }
+      for (final entry in outputSignalMap.entries) {
+        if (entry.key < formState.outputCount) {
+          newPortValues[_dioOutputKey(entry.key)] = List<int>.from(
+            entry.value.values,
           );
-
-          inputSignalMap[i] = SignalData(
-            name: name,
-            signalType: signalType,
-            values: values,
-            isVisible: isVisible,
+        } else {
+          final plcIndex = entry.key - formState.outputCount;
+          newPortValues[_plcOutputKey(plcIndex)] = List<int>.from(
+            entry.value.values,
           );
-          newPortValues[dioInputKey(i)] = List<int>.from(values);
         }
       }
 
-      if (_plcEipOption != 'None') {
-        for (int i = 0; i < formState.inputCount; i++) {
-          if (i < widget.plcEipInputControllers.length &&
-              widget.plcEipInputControllers[i].text.isNotEmpty) {
-            final String name = widget.plcEipInputControllers[i].text;
-            final int key = formState.inputCount + i;
-            final List<int> values = resolveValues(
-              primaryKey: plcInputKey(i),
-              alternateKey: dioInputKey(i),
-              name: name,
-              additionalNames: inputFallbackNames(i),
-            );
-            inputSignalMap[key] = SignalData(
-              name: name,
-              signalType: SignalType.input,
-              values: values,
-              isVisible:
-                  i < _inputVisibility.length ? _inputVisibility[i] : true,
-            );
-            newPortValues[plcInputKey(i)] = List<int>.from(values);
-          }
-        }
-      }
-
-      for (int i = 0; i < formState.hwPort; i++) {
-        if (widget.hwTriggerControllers[i].text.isNotEmpty) {
-          final String name = widget.hwTriggerControllers[i].text;
-          final List<int> values = resolveValues(
-            primaryKey: hwKey(i),
-            name: name,
-          );
-          hwTriggerSignalMap[i] = SignalData(
-            name: name,
-            signalType: SignalType.hwTrigger,
-            values: values,
-            isVisible:
-                i < _hwTriggerVisibility.length
-                    ? _hwTriggerVisibility[i]
-                    : true,
-          );
-          newPortValues[hwKey(i)] = List<int>.from(values);
-        }
-      }
-
-      for (int i = 0; i < formState.outputCount; i++) {
-        if (i < widget.outputControllers.length &&
-            widget.outputControllers[i].text.isNotEmpty) {
-          final String name = widget.outputControllers[i].text;
-
-          String displayName = name;
-          if (name.startsWith('Output') && name.length > 6) {
-            final String portStr = name.substring(6);
-            final int? port = int.tryParse(portStr);
-            if (port != null && port > 0) {
-              displayName = name;
-            }
-          }
-
-          final List<int> values = resolveValues(
-            primaryKey: dioOutputKey(i),
-            alternateKey: plcOutputKey(i),
-            name: displayName,
-            additionalNames: outputFallbackNames(i),
-          );
-
-          outputSignalMap[i] = SignalData(
-            name: displayName,
-            signalType: SignalType.output,
-            values: values,
-            isVisible:
-                i < _outputVisibility.length ? _outputVisibility[i] : true,
-          );
-          newPortValues[dioOutputKey(i)] = List<int>.from(values);
-        }
-      }
-
-      if (_plcEipOption != 'None') {
-        for (int i = 0; i < formState.outputCount; i++) {
-          if (i < widget.plcEipOutputControllers.length &&
-              widget.plcEipOutputControllers[i].text.isNotEmpty) {
-            final String prefix = _plcEipOption == 'PLC' ? 'PLO' : 'ESO';
-            final String base = '$prefix${i + 1}';
-            final String user = widget.plcEipOutputControllers[i].text;
-
-            String label;
-            if ((user.startsWith('PLO') || user.startsWith('ESO')) &&
-                user.length > 3) {
-              final String portStr = user.substring(3);
-              final int? port = int.tryParse(portStr);
-              if (port != null && port > 0) {
-                label = user;
-              } else {
-                label = user.isNotEmpty ? '$base: $user' : base;
-              }
-            } else {
-              label = user.isNotEmpty ? '$base: $user' : base;
-            }
-
-            final int key = formState.outputCount + i;
-            final String fallbackBase = 'Output ${i + 1}';
-            final List<String> additionalNames =
-                <String>[
-                      user,
-                      base,
-                      'Output${i + 1}',
-                      fallbackBase,
-                      ...outputFallbackNames(i),
-                    ]
-                    .where((element) => element.trim().isNotEmpty)
-                    .toSet()
-                    .toList();
-
-            final List<int> values = resolveValues(
-              primaryKey: plcOutputKey(i),
-              alternateKey: dioOutputKey(i),
-              name: label,
-              additionalNames: additionalNames,
-            );
-
-            outputSignalMap[key] = SignalData(
-              name: label,
-              signalType: SignalType.output,
-              values: values,
-              isVisible:
-                  i < _outputVisibility.length ? _outputVisibility[i] : true,
-            );
-            newPortValues[plcOutputKey(i)] = List<int>.from(values);
-          }
-        }
-      }
-
+      // チャートデータを生成
       generateTimingChartDataWithPositions(
         inputSignalMap,
         outputSignalMap,
@@ -1097,77 +1401,15 @@ class FormTabState extends State<FormTab>
         timeLength: defaultWaveLength,
       );
 
-      for (int i = 0; i < formState.inputCount; i++) {
-        if (inputSignalMap.containsKey(i)) {
-          _signalDataList.add(inputSignalMap[i]!);
-        }
-      }
-      if (_plcEipOption != 'None') {
-        for (int i = 0; i < formState.inputCount; i++) {
-          final int key = formState.inputCount + i;
-          if (inputSignalMap.containsKey(key)) {
-            _signalDataList.add(inputSignalMap[key]!);
-          }
-        }
-      }
-      for (int i = 0; i < formState.hwPort; i++) {
-        if (hwTriggerSignalMap.containsKey(i)) {
-          _signalDataList.add(hwTriggerSignalMap[i]!);
-        }
-      }
-      for (int i = 0; i < formState.outputCount; i++) {
-        if (outputSignalMap.containsKey(i)) {
-          _signalDataList.add(outputSignalMap[i]!);
-        }
-      }
-
-      final List<int> extraOutputKeys =
-          outputSignalMap.keys.where((k) => k >= formState.outputCount).toList()
-            ..sort();
-      for (final int k in extraOutputKeys) {
-        _signalDataList.add(outputSignalMap[k]!);
-      }
-
-      if (prevOrder.isNotEmpty) {
-        _signalDataList.sort((a, b) {
-          final int ia = prevOrder.indexOf(a.name);
-          final int ib = prevOrder.indexOf(b.name);
-          if (ia >= 0 && ib >= 0) return ia.compareTo(ib);
-          if (ia >= 0) return -1;
-          if (ib >= 0) return 1;
-          return 0;
-        });
-      }
-
-      if (formState.triggerOption == 'Code Trigger' &&
-          !_signalDataList.any((s) => s.name == 'CODE_OPTION')) {
-        _signalDataList.insert(
-          0,
-          SignalData(
-            name: 'CODE_OPTION',
-            signalType: SignalType.input,
-            values:
-                prevValueMap['CODE_OPTION'] ??
-                List.filled(defaultWaveLength, 0),
-            isVisible: true,
-          ),
-        );
-      }
-
-      if (formState.triggerOption == 'Command Trigger' &&
-          !_signalDataList.any((s) => s.name == 'Command Option')) {
-        _signalDataList.insert(
-          0,
-          SignalData(
-            name: 'Command Option',
-            signalType: SignalType.input,
-            values:
-                prevValueMap['Command Option'] ??
-                List.filled(defaultWaveLength, 0),
-            isVisible: true,
-          ),
-        );
-      }
+      // 信号データリストを構築
+      _populateSignalDataList(
+        inputSignalMap: inputSignalMap,
+        outputSignalMap: outputSignalMap,
+        hwTriggerSignalMap: hwTriggerSignalMap,
+        prevOrder: prevOrder,
+        prevValueMap: prevValueMap,
+        defaultWaveLength: defaultWaveLength,
+      );
 
       _portValues = newPortValues;
     });
@@ -1367,6 +1609,41 @@ class FormTabState extends State<FormTab>
     return sources;
   }
 
+  // Code/Command Option波形を適用する共通メソッド
+  void _applyOptionWave({
+    required List<String> names,
+    required List<List<int>> chartData,
+    required List<SignalType> types,
+    required List<int> ports,
+    required String optionSignalName,
+  }) {
+    final autoIdx = names.indexOf(SignalNames.autoMode);
+    final optionIdx = names.indexOf(optionSignalName);
+
+    int waveLength =
+        chartData.isNotEmpty
+            ? chartData[0].length
+            : FormTabConstants.defaultWaveLength;
+    List<int> optionWave = List<int>.filled(waveLength, 0);
+
+    if (autoIdx != -1) {
+      final autoWave = chartData[autoIdx];
+      optionWave = _generateCodeOptionWave(autoWave, waveLength);
+    }
+
+    if (optionIdx != -1) {
+      chartData[optionIdx] = optionWave;
+    } else {
+      names.insert(0, optionSignalName);
+      types.insert(0, SignalType.input);
+      ports.insert(0, 0);
+      chartData.insert(0, optionWave);
+    }
+
+    // BUSY/TRIGGER/EXPOSURE 調整（共通ルール）
+    _applyOptionPostRules(names, chartData, types, ports, optionSignalName);
+  }
+
   // "Update Chart" ボタンが押されたときの処理
   Future<void> _onUpdateChart() async {
     _updateSignalDataList();
@@ -1378,55 +1655,25 @@ class FormTabState extends State<FormTab>
     List<int> ports = generatePortNumbers();
 
     // CODE_OPTION 波形を生成
-    if (formState.triggerOption == 'Code Trigger') {
-      final autoIdx = names.indexOf('AUTO_MODE');
-      final codeIdx = names.indexOf('CODE_OPTION');
-
-      int waveLength = chartData.isNotEmpty ? chartData[0].length : 32;
-      List<int> codeWave = List<int>.filled(waveLength, 0);
-
-      if (autoIdx != -1) {
-        final autoWave = chartData[autoIdx];
-        codeWave = _generateCodeOptionWave(autoWave, waveLength);
-      }
-
-      if (codeIdx != -1) {
-        chartData[codeIdx] = codeWave;
-      } else {
-        names.insert(0, 'CODE_OPTION');
-        types.insert(0, SignalType.input);
-        ports.insert(0, 0);
-        chartData.insert(0, codeWave);
-      }
-
-      // BUSY/TRIGGER/EXPOSURE 調整（共通ルール）
-      _applyOptionPostRules(names, chartData, types, ports, 'CODE_OPTION');
+    if (formState.triggerOption == TriggerOptions.code) {
+      _applyOptionWave(
+        names: names,
+        chartData: chartData,
+        types: types,
+        ports: ports,
+        optionSignalName: SignalNames.codeOption,
+      );
     }
 
     // Command Option 波形を生成
-    if (formState.triggerOption == 'Command Trigger') {
-      final autoIdx = names.indexOf('AUTO_MODE');
-      final cmdIdx = names.indexOf('Command Option');
-
-      int waveLength = chartData.isNotEmpty ? chartData[0].length : 32;
-      List<int> cmdWave = List<int>.filled(waveLength, 0);
-
-      if (autoIdx != -1) {
-        final autoWave = chartData[autoIdx];
-        cmdWave = _generateCodeOptionWave(autoWave, waveLength);
-      }
-
-      if (cmdIdx != -1) {
-        chartData[cmdIdx] = cmdWave;
-      } else {
-        names.insert(0, 'Command Option');
-        types.insert(0, SignalType.input);
-        ports.insert(0, 0);
-        chartData.insert(0, cmdWave);
-      }
-
-      // BUSY/TRIGGER/EXPOSURE 調整（共通ルール）
-      _applyOptionPostRules(names, chartData, types, ports, 'Command Option');
+    if (formState.triggerOption == TriggerOptions.command) {
+      _applyOptionWave(
+        names: names,
+        chartData: chartData,
+        types: types,
+        ports: ports,
+        optionSignalName: SignalNames.commandOption,
+      );
     }
 
     final visibleNameSet =
@@ -1654,43 +1901,27 @@ class FormTabState extends State<FormTab>
 
     List<int> ports = [];
 
-    if (formState.triggerOption == 'Code Trigger') {
-      final autoIdx = names.indexOf('AUTO_MODE');
-      int waveLength = values.isNotEmpty ? values[0].length : 32;
-
-      List<int> codeWave = List<int>.filled(waveLength, 0);
-
-      if (autoIdx != -1) {
-        final autoWave = values[autoIdx];
-        codeWave = _generateCodeOptionWave(autoWave, waveLength);
-      }
-
-      names.insert(0, 'CODE_OPTION');
-      types.insert(0, SignalType.input);
-      values.insert(0, codeWave);
-
-      _applyOptionPostRules(names, values, types, ports, 'CODE_OPTION');
+    if (formState.triggerOption == TriggerOptions.code) {
+      _applyOptionWave(
+        names: names,
+        chartData: values,
+        types: types,
+        ports: ports,
+        optionSignalName: SignalNames.codeOption,
+      );
     }
 
-    if (formState.triggerOption == 'Command Trigger') {
-      final autoIdx = names.indexOf('AUTO_MODE');
-      int waveLength = values.isNotEmpty ? values[0].length : 32;
-
-      List<int> commandWave = List<int>.filled(waveLength, 0);
-
-      if (autoIdx != -1) {
-        final autoWave = values[autoIdx];
-        commandWave = _generateCodeOptionWave(autoWave, waveLength);
-      }
-
-      names.insert(0, 'Command Option');
-      types.insert(0, SignalType.input);
-      values.insert(0, commandWave);
-
-      _applyOptionPostRules(names, values, types, ports, 'Command Option');
+    if (formState.triggerOption == TriggerOptions.command) {
+      _applyOptionWave(
+        names: names,
+        chartData: values,
+        types: types,
+        ports: ports,
+        optionSignalName: SignalNames.commandOption,
+      );
     }
 
-    if (formState.triggerOption == 'Code Trigger') {
+    if (formState.triggerOption == TriggerOptions.code) {
       _updateSignalDataList();
     }
 
@@ -2138,7 +2369,7 @@ class FormTabState extends State<FormTab>
               SignalData(
                 name: name,
                 signalType: SignalType.output,
-                values: List.filled(32, 0),
+                values: List.filled(FormTabConstants.defaultWaveLength, 0),
                 isVisible:
                     i < _outputVisibility.length ? _outputVisibility[i] : true,
               ),
@@ -2292,6 +2523,248 @@ class FormTabState extends State<FormTab>
     });
   }
 
+  // 既存のコントローラーマップを構築
+  Map<String, Map<String, int>> _buildExistingControllerMaps() {
+    final Map<String, int> existingInputMap = {};
+    final Map<String, int> existingOutputMap = {};
+    final Map<String, int> existingHwTriggerMap = {};
+    final Map<String, int> existingPlcMap = {};
+    final Map<String, int> existingPlcInputMap = {};
+
+    for (int i = 0; i < widget.inputControllers.length; i++) {
+      if (widget.inputControllers[i].text.isNotEmpty) {
+        existingInputMap[widget.inputControllers[i].text] = i;
+      }
+    }
+    for (int i = 0; i < widget.outputControllers.length; i++) {
+      if (widget.outputControllers[i].text.isNotEmpty) {
+        existingOutputMap[widget.outputControllers[i].text] = i;
+      }
+    }
+    for (int i = 0; i < widget.hwTriggerControllers.length; i++) {
+      if (widget.hwTriggerControllers[i].text.isNotEmpty) {
+        existingHwTriggerMap[widget.hwTriggerControllers[i].text] = i;
+      }
+    }
+    for (int i = 0; i < widget.plcEipOutputControllers.length; i++) {
+      if (widget.plcEipOutputControllers[i].text.isNotEmpty) {
+        existingPlcMap[widget.plcEipOutputControllers[i].text] = i;
+      }
+    }
+    for (int i = 0; i < widget.plcEipInputControllers.length; i++) {
+      if (widget.plcEipInputControllers[i].text.isNotEmpty) {
+        existingPlcInputMap[widget.plcEipInputControllers[i].text] = i;
+      }
+    }
+
+    return {
+      'input': existingInputMap,
+      'output': existingOutputMap,
+      'hwTrigger': existingHwTriggerMap,
+      'plc': existingPlcMap,
+      'plcInput': existingPlcInputMap,
+    };
+  }
+
+  // すべてのコントローラーをクリア
+  void _clearAllControllers() {
+    for (var c in widget.inputControllers) {
+      c.text = '';
+    }
+    for (var c in widget.outputControllers) {
+      c.text = '';
+    }
+    for (var c in widget.hwTriggerControllers) {
+      c.text = '';
+    }
+    for (var c in widget.plcEipInputControllers) {
+      c.text = '';
+    }
+  }
+
+  // 入力信号のターゲットインデックスを見つける
+  int _findInputTargetIndex(
+    String name,
+    Map<String, int> existingInputMap,
+    Map<String, int> existingPlcInputMap,
+  ) {
+    int targetIndex = existingInputMap[name] ?? -1;
+
+    // CONTACT_INPUT_WAITINGをInput30に配置（32ポート時）
+    if (targetIndex == -1 && name == SignalNames.contactInputWaiting) {
+      final fs = context.read<FormStateNotifier>().state;
+      if (fs.inputCount >= FormTabConstants.maxInputPorts &&
+          widget.inputControllers.length >= 30) {
+        targetIndex = FormTabConstants.contactInputWaitingIndex32;
+      }
+    }
+
+    if (targetIndex == -1) {
+      for (int j = 0; j < widget.inputControllers.length; j++) {
+        if (widget.inputControllers[j].text.isEmpty) {
+          targetIndex = j;
+          break;
+        }
+      }
+    }
+
+    return targetIndex;
+  }
+
+  // 出力信号のターゲットインデックスを見つける
+  int _findOutputTargetIndex(
+    String name,
+    Map<String, int> existingOutputMap,
+    Map<String, int> existingPlcMap,
+  ) {
+    final fs = context.read<FormStateNotifier>().state;
+    int targetIndex = existingOutputMap[name] ?? -1;
+
+    // 32ポート構成での予約範囲チェック
+    if (targetIndex != -1 &&
+        fs.outputCount == FormTabConstants.standardOutputPorts) {
+      final int reservedStart = FormTabConstants.reservedOutputStart;
+      final int reservedEnd = reservedStart + fs.camera * 2 - 1;
+      final bool isInReserved =
+          targetIndex >= reservedStart && targetIndex <= reservedEnd;
+      final bool isCameraSignal = RegExp(
+        r'^CAMERA_(\d+)_IMAGE_(EXPOSURE|ACQUISITION)',
+      ).hasMatch(name);
+      if (!isCameraSignal && isInReserved) {
+        targetIndex = -1;
+      }
+    }
+
+    // OutputN形式からインデックスを取得
+    if (targetIndex == -1) {
+      final m = RegExp(r'^Output(\d+)$').firstMatch(name);
+      if (m != null) {
+        final portNum = int.tryParse(m.group(1)!);
+        if (portNum != null && portNum >= 1 && portNum <= fs.outputCount) {
+          int candidate = portNum - 1;
+          if (fs.outputCount == FormTabConstants.standardOutputPorts) {
+            final int reservedStart = FormTabConstants.reservedOutputStart;
+            final int reservedEnd = reservedStart + fs.camera * 2 - 1;
+            final bool isInReserved =
+                candidate >= reservedStart && candidate <= reservedEnd;
+            final bool isCameraSignal = RegExp(
+              r'^CAMERA_(\d+)_IMAGE_(EXPOSURE|ACQUISITION)',
+            ).hasMatch(name);
+            if (!isCameraSignal && isInReserved) {
+              candidate = -1;
+            }
+          }
+          if (candidate != -1) {
+            targetIndex = candidate;
+          }
+        }
+      }
+    }
+
+    // プリセットマップから検索
+    if (targetIndex == -1) {
+      targetIndex = _selectOutputIndex(name, fs.outputCount, fs.camera);
+    }
+
+    // 空きスロットを検索
+    if (targetIndex == -1) {
+      int startIdx = 0;
+      if (fs.outputCount == FormTabConstants.standardOutputPorts) {
+        int reservedEnd =
+            FormTabConstants.reservedOutputStart +
+            fs.camera * 2 +
+            2; // TOT_NG index
+        startIdx = reservedEnd + 1;
+        if (startIdx >= widget.outputControllers.length) {
+          startIdx = 0;
+        }
+      }
+
+      for (int j = startIdx; j < widget.outputControllers.length; j++) {
+        if (widget.outputControllers[j].text.isEmpty) {
+          targetIndex = j;
+          break;
+        }
+      }
+      if (targetIndex == -1) {
+        for (int j = 0; j < startIdx; j++) {
+          if (widget.outputControllers[j].text.isEmpty) {
+            targetIndex = j;
+            break;
+          }
+        }
+      }
+    }
+
+    return targetIndex;
+  }
+
+  // 入力信号を割り当て
+  void _assignInputSignal(
+    String name,
+    List<int> values,
+    Map<String, int> existingInputMap,
+    Map<String, int> existingPlcInputMap,
+  ) {
+    final targetIndex = _findInputTargetIndex(
+      name,
+      existingInputMap,
+      existingPlcInputMap,
+    );
+
+    if (existingPlcInputMap.containsKey(name)) {
+      final plcTargetIndex = existingPlcInputMap[name]!;
+      if (plcTargetIndex >= 0 &&
+          plcTargetIndex < widget.plcEipInputControllers.length) {
+        widget.plcEipInputControllers[plcTargetIndex].text = name;
+      }
+    } else {
+      if (targetIndex >= 0 && targetIndex < widget.inputControllers.length) {
+        widget.inputControllers[targetIndex].text = name;
+      }
+    }
+  }
+
+  // 出力信号を割り当て
+  void _assignOutputSignal(
+    String name,
+    List<int> values,
+    Map<String, int> existingOutputMap,
+    Map<String, int> existingPlcMap,
+  ) {
+    final targetIndex = _findOutputTargetIndex(
+      name,
+      existingOutputMap,
+      existingPlcMap,
+    );
+
+    if (!existingPlcMap.containsKey(name)) {
+      if (targetIndex >= 0 && targetIndex < widget.outputControllers.length) {
+        widget.outputControllers[targetIndex].text = name;
+      }
+    }
+  }
+
+  // HWトリガー信号を割り当て
+  void _assignHwTriggerSignal(
+    String name,
+    List<int> values,
+    Map<String, int> existingHwTriggerMap,
+  ) {
+    int targetIndex = existingHwTriggerMap[name] ?? -1;
+    if (targetIndex == -1) {
+      for (int j = 0; j < widget.hwTriggerControllers.length; j++) {
+        if (widget.hwTriggerControllers[j].text.isEmpty) {
+          targetIndex = j;
+          break;
+        }
+      }
+    }
+    if (targetIndex >= 0 && targetIndex < widget.hwTriggerControllers.length) {
+      widget.hwTriggerControllers[targetIndex].text = name;
+    }
+  }
+
   void updateSignalDataFromChartData(
     List<List<int>> chartData,
     List<String> signalNames,
@@ -2303,189 +2776,37 @@ class FormTabState extends State<FormTab>
       _actualChartData = List.from(chartData);
       List<SignalData> newSignalList = [];
 
-      Map<String, int> existingInputMap = {};
-      Map<String, int> existingOutputMap = {};
-      Map<String, int> existingHwTriggerMap = {};
-      final Map<String, int> existingPlcMap = {};
-      final Map<String, int> existingPlcInputMap = {};
+      // 既存のコントローラーマップを構築
+      final existingMaps = _buildExistingControllerMaps();
+      final existingInputMap = existingMaps['input']!;
+      final existingOutputMap = existingMaps['output']!;
+      final existingHwTriggerMap = existingMaps['hwTrigger']!;
+      final existingPlcMap = existingMaps['plc']!;
+      final existingPlcInputMap = existingMaps['plcInput']!;
 
-      for (int i = 0; i < widget.inputControllers.length; i++) {
-        if (widget.inputControllers[i].text.isNotEmpty) {
-          existingInputMap[widget.inputControllers[i].text] = i;
-        }
-      }
-      for (int i = 0; i < widget.outputControllers.length; i++) {
-        if (widget.outputControllers[i].text.isNotEmpty) {
-          existingOutputMap[widget.outputControllers[i].text] = i;
-        }
-      }
-      for (int i = 0; i < widget.hwTriggerControllers.length; i++) {
-        if (widget.hwTriggerControllers[i].text.isNotEmpty) {
-          existingHwTriggerMap[widget.hwTriggerControllers[i].text] = i;
-        }
-      }
-      for (int i = 0; i < widget.plcEipOutputControllers.length; i++) {
-        if (widget.plcEipOutputControllers[i].text.isNotEmpty) {
-          existingPlcMap[widget.plcEipOutputControllers[i].text] = i;
-        }
-      }
-      for (int i = 0; i < widget.plcEipInputControllers.length; i++) {
-        if (widget.plcEipInputControllers[i].text.isNotEmpty) {
-          existingPlcInputMap[widget.plcEipInputControllers[i].text] = i;
-        }
-      }
+      // すべてのコントローラーをクリア
+      _clearAllControllers();
 
-      for (var c in widget.inputControllers) {
-        c.text = '';
-      }
-      for (var c in widget.outputControllers) {
-        c.text = '';
-      }
-      for (var c in widget.hwTriggerControllers) {
-        c.text = '';
-      }
-      for (var c in widget.plcEipInputControllers) {
-        c.text = '';
-      }
-
+      // チャートデータから信号を各コントローラーに割り当て
       for (int i = 0; i < chartData.length; i++) {
         final name = i < signalNames.length ? signalNames[i] : 'Signal $i';
         final type = i < signalTypes.length ? signalTypes[i] : SignalType.input;
-        final values = List<int>.from(
-          chartData[i],
-        ); // 莉･蠕後・譖ｸ縺崎ｾｼ縺ｿ縺ｧ菴ｿ逕ｨ縺吶ｋ縺溘ａ菫晄戟
+        final values = List<int>.from(chartData[i]);
 
         if (type == SignalType.input ||
             type == SignalType.control ||
             type == SignalType.group ||
             type == SignalType.task) {
-          int targetIndex = existingInputMap[name] ?? -1;
-
-          // --- Custom mapping: Place CONTACT_INPUT_WAITING at Input30 when input ports >= 32 ---
-          if (targetIndex == -1 && name == 'CONTACT_INPUT_WAITING') {
-            final fs = context.read<FormStateNotifier>().state;
-            if (fs.inputCount >= 32 && widget.inputControllers.length >= 30) {
-              targetIndex = 29; // 0-based index for Input30
-            }
-          }
-
-          if (targetIndex == -1) {
-            for (int j = 0; j < widget.inputControllers.length; j++) {
-              if (widget.inputControllers[j].text.isEmpty) {
-                targetIndex = j;
-                break;
-              }
-            }
-          }
-          if (existingPlcInputMap.containsKey(name)) {
-            final plcTargetIndex = existingPlcInputMap[name]!;
-            if (plcTargetIndex >= 0 &&
-                plcTargetIndex < widget.plcEipInputControllers.length) {
-              widget.plcEipInputControllers[plcTargetIndex].text = name;
-            }
-          } else {
-            if (targetIndex >= 0 &&
-                targetIndex < widget.inputControllers.length) {
-              widget.inputControllers[targetIndex].text = name;
-            }
-          }
+          _assignInputSignal(
+            name,
+            values,
+            existingInputMap,
+            existingPlcInputMap,
+          );
         } else if (type == SignalType.output) {
-          final fs = context.read<FormStateNotifier>().state;
-          int targetIndex = existingOutputMap[name] ?? -1;
-
-          if (targetIndex != -1) {
-            if (fs.outputCount == 32) {
-              final int reservedStart = 3; // Output4 縺九ｉ
-              final int reservedEnd =
-                  3 + fs.camera * 2 - 1; // Exposure/Acq 縺ｮ譛ｫ蟆ｾ
-              final bool isInReserved =
-                  targetIndex >= reservedStart && targetIndex <= reservedEnd;
-              final bool isCameraSignal = RegExp(
-                r'^CAMERA_(\d+)_IMAGE_(EXPOSURE|ACQUISITION)',
-              ).hasMatch(name);
-              if (!isCameraSignal && isInReserved) {
-                targetIndex = -1; // 莠育ｴ・ヶ繝ｭ繝・け縺ｯ菴ｿ繧上○縺ｪ縺・
-              }
-            }
-          }
-
-          if (targetIndex == -1) {
-            final m = RegExp(r'^Output(\d+)$').firstMatch(name);
-            if (m != null) {
-              final portNum = int.tryParse(m.group(1)!);
-              if (portNum != null &&
-                  portNum >= 1 &&
-                  portNum <= fs.outputCount) {
-                int candidate = portNum - 1; // 0-based index for OutputN
-                if (fs.outputCount == 32) {
-                  final int reservedStart = 3; // Output4 縺九ｉ
-                  final int reservedEnd = 3 + fs.camera * 2 - 1; // 莠育ｴ・忰蟆ｾ
-                  final bool isInReserved =
-                      candidate >= reservedStart && candidate <= reservedEnd;
-                  final bool isCameraSignal = RegExp(
-                    r'^CAMERA_(\d+)_IMAGE_(EXPOSURE|ACQUISITION)',
-                  ).hasMatch(name);
-                  if (!isCameraSignal && isInReserved) {
-                    candidate = -1; // 莠育ｴ・ヶ繝ｭ繝・け縺ｯ菴ｿ繧上○縺ｪ縺・
-                  }
-                }
-                if (candidate != -1) {
-                  targetIndex = candidate;
-                }
-              }
-            }
-          }
-
-          if (targetIndex == -1) {
-            targetIndex = _selectOutputIndex(name, fs.outputCount, fs.camera);
-          }
-
-          if (targetIndex == -1) {
-            int startIdx = 0;
-            if (fs.outputCount == 32) {
-              int reservedEnd = 3 + fs.camera * 2 + 2; // TOT_NG index
-              startIdx = reservedEnd + 1;
-              if (startIdx >= widget.outputControllers.length) {
-                startIdx = 0; // 繝輔か繝ｼ繝ｫ繝舌ャ繧ｯ・亥ｿｵ縺ｮ縺溘ａ・・
-              }
-            }
-
-            for (int j = startIdx; j < widget.outputControllers.length; j++) {
-              if (widget.outputControllers[j].text.isEmpty) {
-                targetIndex = j;
-                break;
-              }
-            }
-            if (targetIndex == -1) {
-              for (int j = 0; j < startIdx; j++) {
-                if (widget.outputControllers[j].text.isEmpty) {
-                  targetIndex = j;
-                  break;
-                }
-              }
-            }
-          }
-
-          if (!existingPlcMap.containsKey(name)) {
-            if (targetIndex >= 0 &&
-                targetIndex < widget.outputControllers.length) {
-              widget.outputControllers[targetIndex].text = name;
-            }
-          }
+          _assignOutputSignal(name, values, existingOutputMap, existingPlcMap);
         } else if (type == SignalType.hwTrigger) {
-          int targetIndex = existingHwTriggerMap[name] ?? -1;
-          if (targetIndex == -1) {
-            for (int j = 0; j < widget.hwTriggerControllers.length; j++) {
-              if (widget.hwTriggerControllers[j].text.isEmpty) {
-                targetIndex = j;
-                break;
-              }
-            }
-          }
-          if (targetIndex >= 0 &&
-              targetIndex < widget.hwTriggerControllers.length) {
-            widget.hwTriggerControllers[targetIndex].text = name;
-          }
+          _assignHwTriggerSignal(name, values, existingHwTriggerMap);
         }
 
         newSignalList.add(

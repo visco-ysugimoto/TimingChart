@@ -10,7 +10,6 @@ import 'generated/l10n.dart';
 import 'models/form/form_state.dart';
 import 'models/chart/signal_data.dart';
 import 'models/chart/timing_chart_annotation.dart';
-import 'models/backup/app_config.dart';
 import 'utils/file_utils.dart';
 import 'widgets/form/form_tab.dart';
 import 'widgets/chart/timing_chart.dart';
@@ -29,6 +28,10 @@ import 'suggestion_loader.dart';
 import 'providers/timing_chart_controller.dart';
 import 'dart:math' as math;
 import 'widgets/common/version_info_dialog.dart';
+import 'services/ziq_import_service.dart';
+import 'models/ziq/output_assignment.dart';
+import 'services/chart_update_service.dart';
+import 'services/export_service.dart';
 
 const bool kZiqImportTest = bool.fromEnvironment(
   'ZIQ_IMPORT_TEST',
@@ -304,6 +307,7 @@ class _MyHomePageState extends State<MyHomePage>
   List<TimingChartAnnotation> _chartAnnotations = [];
   late final TimingChartController _chartController;
 
+  // ZIQインポート結果を保持（エクスポート機能で使用される可能性がある）
   String? _vxVisMgrIniContent;
   String? _dioMonitorLogCsvContent;
   String? _plcDioMonitorLogCsvContent;
@@ -313,47 +317,13 @@ class _MyHomePageState extends State<MyHomePage>
 
   List<StatusSignalSetting> _enabledSignalStructures = [];
 
-  Map<String, String> _vxvisNameToSuggestionId = {};
-
-  List<_OutputAssignment> _dioOutputAssignments = [];
-  List<_OutputAssignment> _plcEipOutputAssignments = [];
+  List<OutputAssignment> _dioOutputAssignments = [];
+  List<OutputAssignment> _plcEipOutputAssignments = [];
   String _plcEipOption = 'None';
 
+  Map<String, String> _vxvisNameToSuggestionId = {};
+
   bool _isImportingZiq = false;
-
-  Future<void> _applyOutputAssignments() async {
-    int maxIndex = 0;
-    for (final a in _dioOutputAssignments) {
-      if (a.outputIndex1Based > maxIndex) maxIndex = a.outputIndex1Based;
-    }
-    if (maxIndex > _formState.outputCount) {
-      _updateOutputCount(maxIndex);
-
-      await SchedulerBinding.instance.endOfFrame;
-    }
-
-    setState(() {
-      for (final a in _dioOutputAssignments) {
-        if (a.suggestionId.isEmpty) continue;
-        final idx = a.outputIndex1Based - 1;
-        if (idx >= 0 && idx < _outputControllers.length) {
-          _controllersNotifier.setOutputText(idx, a.suggestionId);
-        }
-      }
-
-      if (_plcEipOption != 'None') {
-        for (final a in _plcEipOutputAssignments) {
-          if (a.suggestionId.isEmpty) continue;
-          final idx = a.outputIndex1Based - 1;
-          if (idx >= 0 && idx < _plcEipOutputControllers.length) {
-            _controllersNotifier.setPlcEipOutputText(idx, a.suggestionId);
-          }
-        }
-      } else {
-        _clearPlcEipControllersIfDisabled();
-      }
-    });
-  }
 
   void _clearPlcEipControllersIfDisabled() {
     if (_plcEipOption == 'None') {
@@ -534,9 +504,12 @@ class _MyHomePageState extends State<MyHomePage>
     List<List<int>> values,
     List<SignalType> types,
   ) {
-    if (names.length != values.length) {
-      return;
-    }
+    final updatedSignals = ChartUpdateService.handleChartSignalsChanged(
+      names: names,
+      values: values,
+      types: types,
+      existingSignals: _chartSignals,
+    );
 
     final nameToValues = <String, List<int>>{};
     for (int i = 0; i < names.length; i++) {
@@ -550,29 +523,6 @@ class _MyHomePageState extends State<MyHomePage>
     }
 
     setState(() {
-      final currentByName = {
-        for (final signal in _chartSignals) signal.name: signal,
-      };
-      final List<SignalData> updatedSignals = [];
-      for (int i = 0; i < names.length; i++) {
-        final existing = currentByName[names[i]];
-        final copiedValues = List<int>.from(values[i]);
-        if (existing != null) {
-          final signalType = types.length > i ? types[i] : existing.signalType;
-          updatedSignals.add(
-            existing.copyWith(signalType: signalType, values: copiedValues),
-          );
-        } else {
-          final signalType = types.length > i ? types[i] : SignalType.input;
-          updatedSignals.add(
-            SignalData(
-              name: names[i],
-              signalType: signalType,
-              values: copiedValues,
-            ),
-          );
-        }
-      }
       _chartSignals = updatedSignals;
     });
   }
@@ -807,73 +757,22 @@ class _MyHomePageState extends State<MyHomePage>
     return IoChannelSource.unknown;
   }
 
-  IoChannelSource _mapOutSourceTag(String tag) {
-    switch (tag) {
-      case 'PLC':
-        return IoChannelSource.plc;
-      case 'EIP':
-        return IoChannelSource.eip;
-      case 'PLC/EIP':
-        return IoChannelSource.plcEip;
-      case 'DIO':
-        return IoChannelSource.dio;
-      default:
-        return IoChannelSource.unknown;
-    }
-  }
-
-  Future<AppConfig> _createAppConfig() async {
-    debugPrint("\n===== _createAppConfig (Chart first) =====");
-
+  Future<void> _exportConfig() async {
+    // チャートアノテーションを更新
     _chartAnnotations = List.from(_chartController.annotations);
 
-    List<SignalData> signalData = [];
-    List<List<CellMode>> tableData = [];
-    List<bool> inputVisibility = [];
-    List<bool> outputVisibility = [];
-    List<bool> hwTriggerVisibility = [];
-    List<String> rowModes = [];
-
-    if (_formTabKey.currentState != null) {
-      signalData = _formTabKey.currentState!.getSignalDataList();
-      tableData = _formTabKey.currentState!.getTableData();
-      inputVisibility = _formTabKey.currentState!.getInputVisibility();
-      outputVisibility = _formTabKey.currentState!.getOutputVisibility();
-      hwTriggerVisibility = _formTabKey.currentState!.getHwTriggerVisibility();
-      rowModes = _formTabKey.currentState!.getRowModes();
-    }
-
-    if (_timingChartKey.currentState != null) {
-      final orderedNames = _chartController.signalNames;
-      final mapByName = {for (var s in _chartSignals) s.name: s};
-      signalData = orderedNames.map((n) => mapByName[n]!).toList();
-    } else {
-      signalData = List<SignalData>.from(_chartSignals);
-    }
-
-    debugPrint("信号データが存在します: ${signalData.length}");
-    if (signalData.isNotEmpty) {
-      debugPrint(
-        "信号データが存在します: ${signalData.any((signal) => signal.values.any((val) => val != 0))}",
-      );
-    }
-    debugPrint("===== _createAppConfig _====\n");
-
-    return AppConfig.fromCurrentState(
+    final success = await ExportService.exportConfig(
+      context: context,
+      tabIndex: _tabController.index,
       formState: _formState,
-      signals: signalData,
-      tableData: tableData,
+      chartSignals: _chartSignals,
+      chartController: _chartController,
+      chartAnnotations: _chartAnnotations,
+      formTabState: _formTabKey.currentState,
+      timingChartState: _timingChartKey.currentState,
       inputControllers: _inputControllers,
       outputControllers: _outputControllers,
       hwTriggerControllers: _hwTriggerControllers,
-      inputVisibility: inputVisibility,
-      outputVisibility: outputVisibility,
-      hwTriggerVisibility: hwTriggerVisibility,
-      rowModes: rowModes,
-      annotations: _chartAnnotations,
-      omissionIndices:
-          _timingChartKey.currentState?.getOmissionTimeIndices() ?? const [],
-
       timeUnitIsMs:
           Provider.of<SettingsNotifier>(context, listen: false).timeUnitIsMs,
       msPerStep:
@@ -881,103 +780,14 @@ class _MyHomePageState extends State<MyHomePage>
       stepDurationsMs:
           Provider.of<SettingsNotifier>(context, listen: false).stepDurationsMs,
     );
-  }
 
-  Future<bool> _confirmExport() async {
-    debugPrint("===== _confirmExport =====");
-    debugPrint("信号データが見つかりません: ${_tabController.index}");
-
-    if (_tabController.index == 1 && _timingChartKey.currentState != null) {
-      List<List<int>> chartData = _chartController.signals;
-      debugPrint("信号データが存在します: ${chartData.length}");
-      if (chartData.isNotEmpty) {
-        debugPrint("信号データ: ${chartData[0].take(10)}...");
-        final hasNonZero = chartData.any(
-          (row) => row.any((value) => value != 0),
-        );
-        debugPrint("信号データに0が含まれているか: $hasNonZero");
-
-        if (hasNonZero) {
-          return true;
-        }
-      }
-    }
-
-    List<SignalData> signalData = [];
-
-    if (_formTabKey.currentState != null) {
-      signalData = _formTabKey.currentState!.getSignalDataList();
-    }
-
-    if (signalData.isEmpty ||
-        !signalData.any((signal) => signal.values.any((value) => value != 0))) {
-      final shouldUpdate =
-          await showDialog<bool>(
-            context: context,
-            builder:
-                (context) => AlertDialog(
-                  title: const Text('信号データが見つかりません'),
-                  content: const Text(
-                    'エクスポートする前に「Update Chart」ボタンをクリックして信号データを更新することをお勧めします。\n\n'
-                    'このまま進めますか？',
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(false),
-                      child: const Text('キャンセル'),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(true),
-                      child: const Text('このまま進める'),
-                    ),
-                  ],
-                ),
-          ) ??
-          false;
-
-      return shouldUpdate;
-    }
-
-    return true;
-  }
-
-  Future<void> _exportConfig() async {
-    if (_timingChartKey.currentState != null &&
-        _formTabKey.currentState != null) {
-      final chartData = _chartController.signals;
-      _formTabKey.currentState!.setChartDataOnly(chartData);
-    }
-
-    await SchedulerBinding.instance.endOfFrame;
-
-    final shouldContinue = await _confirmExport();
-    if (!shouldContinue) return;
-
-    if (_tabController.index == 1 && _timingChartKey.currentState != null) {
-      final chartData = _chartController.signals;
-      if (_formTabKey.currentState != null) {
-        _formTabKey.currentState!.setChartDataOnly(chartData);
-      }
-    }
-
-    await SchedulerBinding.instance.endOfFrame;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final config = await _createAppConfig();
-      final success = await FileUtils.exportWaveDrom(
-        config,
-        annotations: _chartAnnotations,
-        omissionIndices: _timingChartKey.currentState?.getOmissionTimeIndices(),
-      );
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(success ? 'JSONが正常にエクスポートされました' : 'JSONのエクスポートに失敗しました'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    });
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(success ? 'JSONが正常にエクスポートされました' : 'JSONのエクスポートに失敗しました'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   Future<void> _importConfig() async {
@@ -1055,151 +865,39 @@ class _MyHomePageState extends State<MyHomePage>
   }
 
   Future<void> _exportChartImageJpeg() async {
-    await SchedulerBinding.instance.endOfFrame;
-
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? Colors.black : Colors.white;
-    final bytes = await _timingChartKey.currentState?.captureChartJpeg(
-      backgroundColor: bg,
-      quality: 90,
+    final success = await ExportService.exportChartImageJpeg(
+      context: context,
+      timingChartState: _timingChartKey.currentState,
     );
-    if (bytes == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('JPEGのエクスポートに失敗しました')));
-      return;
-    }
 
-    final ok = await FileUtils.exportJpegBytes(bytes);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(ok ? 'JPEGが正常にエクスポートされました' : 'JPEGのエクスポートに失敗しました'),
+        content: Text(success ? 'JPEGが正常にエクスポートされました' : 'JPEGのエクスポートに失敗しました'),
         duration: const Duration(seconds: 2),
       ),
     );
   }
 
   Future<void> _exportXlsx() async {
-    try {
-      if (_timingChartKey.currentState != null &&
-          _formTabKey.currentState != null) {
-        final chartData = _chartController.signals;
-        _formTabKey.currentState!.setChartDataOnly(chartData);
-      }
+    final success = await ExportService.exportXlsx(
+      context: context,
+      chartSignals: _chartSignals,
+      chartController: _chartController,
+      inputControllers: _inputControllers,
+      outputControllers: _outputControllers,
+      hwTriggerControllers: _hwTriggerControllers,
+      formTabState: _formTabKey.currentState,
+      timingChartState: _timingChartKey.currentState,
+    );
 
-      await SchedulerBinding.instance.endOfFrame;
-
-      debugPrint('=== IO Information: ID to Label conversion ===');
-
-      List<String> inputNames = [];
-      for (int i = 0; i < _inputControllers.length; i++) {
-        final inputText = _inputControllers[i].text.trim();
-        if (inputText.isNotEmpty) {
-          final labelName = await labelOfId(inputText);
-          debugPrint('Converting Input[$i]: $inputText -> $labelName');
-          inputNames.add(labelName);
-        } else {
-          inputNames.add('');
-        }
-      }
-
-      List<String> outputNames = [];
-      for (int i = 0; i < _outputControllers.length; i++) {
-        final outputText = _outputControllers[i].text.trim();
-        if (outputText.isNotEmpty) {
-          final labelName = await labelOfId(outputText);
-          debugPrint('Converting Output[$i]: $outputText -> $labelName');
-          outputNames.add(labelName);
-        } else {
-          outputNames.add('');
-        }
-      }
-
-      List<String> hwTriggerNames = [];
-      for (int i = 0; i < _hwTriggerControllers.length; i++) {
-        final hwText = _hwTriggerControllers[i].text.trim();
-        if (hwText.isNotEmpty) {
-          final labelName = await labelOfId(hwText);
-          debugPrint('Converting HW Trigger[$i]: $hwText -> $labelName');
-          hwTriggerNames.add(labelName);
-        } else {
-          hwTriggerNames.add('');
-        }
-      }
-
-      debugPrint('=== End IO conversion ===');
-
-      List<SignalData> signalData = [];
-
-      if (_timingChartKey.currentState != null) {
-        final orderedNames = _chartController.signalNames;
-        final mapByName = {for (var s in _chartSignals) s.name: s};
-
-        debugPrint('=== XLSX Export: ID to Label conversion ===');
-        debugPrint('Ordered signal IDs: $orderedNames');
-
-        for (String signalId in orderedNames) {
-          if (mapByName.containsKey(signalId)) {
-            final originalSignal = mapByName[signalId]!;
-
-            final labelName = await labelOfId(signalId);
-            debugPrint('Converting: $signalId -> $labelName');
-            final modifiedSignal = originalSignal.copyWith(name: labelName);
-            signalData.add(modifiedSignal);
-          }
-        }
-
-        for (var signal in _chartSignals) {
-          if (!orderedNames.contains(signal.name)) {
-            final labelName = await labelOfId(signal.name);
-            debugPrint(
-              'Converting additional signal: ${signal.name} -> $labelName',
-            );
-            final modifiedSignal = signal.copyWith(name: labelName);
-            signalData.add(modifiedSignal);
-          }
-        }
-
-        debugPrint(
-          'Final signal names for XLSX: ${signalData.map((s) => s.name).toList()}',
-        );
-        debugPrint('=== End conversion ===');
-      } else {
-        for (var signal in _chartSignals) {
-          final labelName = await labelOfId(signal.name);
-          debugPrint(
-            'Converting from _chartSignals: ${signal.name} -> $labelName',
-          );
-          final modifiedSignal = signal.copyWith(name: labelName);
-          signalData.add(modifiedSignal);
-        }
-      }
-
-      final success = await FileUtils.exportXlsx(
-        inputNames: inputNames,
-        outputNames: outputNames,
-        hwTriggerNames: hwTriggerNames,
-        chartSignals: signalData,
-      );
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(success ? 'XLSXが正常にエクスポートされました' : 'XLSXのエクスポートに失敗しました'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('XLSXのエクスポートに失敗しました: $e'),
-          duration: const Duration(seconds: 3),
-        ),
-      );
-    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(success ? 'XLSXが正常にエクスポートされました' : 'XLSXのエクスポートに失敗しました'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   @override
@@ -1318,1004 +1016,221 @@ class _MyHomePageState extends State<MyHomePage>
                   _formTabKey.currentState!.clearAllForImport();
                 }
                 try {
-                  final files = await FileUtils.readRequiredFilesFromZip(
-                    zipPath,
+                  // ZIQインポートサービスの使用
+                  final result = await ZiqImportService.importZiq(
+                    zipPath: zipPath,
+                    currentFormState: _formState,
+                    controllersNotifier: _controllersNotifier,
+                    chartController: _chartController,
+                    formTabState: _formTabKey.currentState,
                   );
+
                   if (!mounted) return;
 
-                  final mapping = await VxVisMgrMappingLoader.loadMapping();
+                  // フォーム状態の更新
+                  if (result.inputPorts != null &&
+                      result.inputPorts! > 0 &&
+                      result.inputPorts != _formState.inputCount) {
+                    _updateInputCount(result.inputPorts!);
+                  }
+                  if (result.outputPorts != null &&
+                      result.outputPorts! > 0 &&
+                      result.outputPorts != _formState.outputCount) {
+                    _updateOutputCount(result.outputPorts!);
+                  }
 
+                  // 状態の更新
                   setState(() {
-                    _vxVisMgrIniContent = files['vxVisMgr.ini'];
-                    _dioMonitorLogCsvContent = files['DioMonitorLog.csv'];
+                    _vxVisMgrIniContent = result.vxVisMgrIniContent;
+                    _dioMonitorLogCsvContent = result.dioMonitorLogCsvContent;
                     _plcDioMonitorLogCsvContent =
-                        files['Plc_DioMonitorLog.csv'];
-                    _vxvisNameToSuggestionId = mapping;
+                        result.plcDioMonitorLogCsvContent;
                     _fnlDioMonitorLogCsvContent =
-                        files['FNL_DioMonitorLog.csv'];
+                        result.fnlDioMonitorLogCsvContent;
+                    _vxvisNameToSuggestionId = result.vxvisNameToSuggestionId;
+                    _enabledStatusSignals = result.enabledStatusSignals;
+                    _enabledSignalStructures = result.enabledSignalStructures;
+                    _dioOutputAssignments = result.dioOutputAssignments;
+                    _plcEipOutputAssignments = result.plcEipOutputAssignments;
+                    _plcEipOption = result.plcEipOption;
+                    _chartSignals = result.chartSignals;
+                    _chartPortNumbers = result.chartPortNumbers;
+                    _chartIoSources = result.chartIoSources;
+                  });
 
-                    if (_vxVisMgrIniContent == null) {
-                      _enabledStatusSignals = [];
-                      _enabledSignalStructures = [];
-                      _dioOutputAssignments = [];
-                      _plcEipOutputAssignments = [];
-                      _plcEipOption = 'None';
-                      _clearPlcEipControllersIfDisabled();
+                  // トリガーオプションの更新
+                  if (result.triggerOption != _formState.triggerOption) {
+                    _scheduleFormUpdate(
+                      (n) => n.update(triggerOption: result.triggerOption),
+                    );
+                  }
+
+                  // PLC/EIPオプションの設定
+                  if (_formTabKey.currentState != null) {
+                    _formTabKey.currentState!.setPlcEipOption(
+                      result.plcEipOption,
+                    );
+                  }
+                  _clearPlcEipControllersIfDisabled();
+
+                  // ステップ継続時間の設定
+                  if (result.stepDurationsMs.isNotEmpty) {
+                    final settings = Provider.of<SettingsNotifier>(
+                      context,
+                      listen: false,
+                    );
+
+                    final double sumMs = result.stepDurationsMs
+                        .where((e) => e.isFinite && e > 0)
+                        .fold<double>(0.0, (a, b) => a + b);
+                    final double avgMs = sumMs / result.stepDurationsMs.length;
+                    if (avgMs.isFinite && avgMs > 0) {
+                      settings.msPerStep = avgMs;
+                    }
+
+                    final int maxLen =
+                        result.chartSignals.isNotEmpty
+                            ? result.chartSignals[0].values.length
+                            : 0;
+                    if (result.stepDurationsMs.length != maxLen) {
+                      final List<double> fixed = List<double>.from(
+                        result.stepDurationsMs,
+                      );
+                      if (fixed.length < maxLen) {
+                        fixed.addAll(
+                          List<double>.filled(
+                            maxLen - fixed.length,
+                            settings.msPerStep,
+                          ),
+                        );
+                      } else if (fixed.length > maxLen) {
+                        fixed.removeRange(maxLen, fixed.length);
+                      }
+                      settings.setStepDurationsMs(fixed);
+                      _chartController.setStepDurationsMs(fixed);
                     } else {
-                      final ioActive = VxVisMgrParser.parseIOActive(
-                        _vxVisMgrIniContent!,
+                      settings.setStepDurationsMs(result.stepDurationsMs);
+                      _chartController.setStepDurationsMs(
+                        result.stepDurationsMs,
                       );
-                      if (ioActive != null) {
-                        if (ioActive.pinPorts > 0 &&
-                            ioActive.pinPorts != _formState.inputCount) {
-                          _updateInputCount(ioActive.pinPorts);
-                        }
-                        if (ioActive.poutPorts > 0 &&
-                            ioActive.poutPorts != _formState.outputCount) {
-                          _updateOutputCount(ioActive.poutPorts);
-                        }
-                      }
+                    }
+                  }
 
-                      final all = VxVisMgrParser.parseStatusSignalSettings(
-                        _vxVisMgrIniContent!,
+                  // 時間単位の設定
+                  Provider.of<SettingsNotifier>(context, listen: false)
+                      .timeUnitIsMs = true;
+
+                  // チャートデータの更新
+                  if (result.chartSignals.isNotEmpty) {
+                    final signalNames =
+                        result.chartSignals.map((s) => s.name).toList();
+                    final signalValues =
+                        result.chartSignals.map((s) => s.values).toList();
+                    final signalTypes =
+                        result.chartSignals.map((s) => s.signalType).toList();
+
+                    if (_formTabKey.currentState != null) {
+                      _formTabKey.currentState!.setChartDataOnly(signalValues);
+                      _formTabKey.currentState!.updateSignalDataFromChartData(
+                        signalValues,
+                        signalNames,
+                        signalTypes,
                       );
-                      _enabledSignalStructures =
-                          all.where((s) => s.enabled).toList();
-                      _enabledStatusSignals =
-                          _enabledSignalStructures.map((e) => e.name).toList();
+                      _formTabKey.currentState!.refreshSignalDataList();
+                    }
 
-                      final ioSetting = VxVisMgrParser.parseIOSetting(
-                        _vxVisMgrIniContent!,
+                    if (_timingChartKey.currentState != null) {
+                      // 表示名の生成
+                      final Map<String, int> nameToPortForLabel = {};
+                      for (int i = 0; i < result.chartSignals.length; i++) {
+                        final signal = result.chartSignals[i];
+                        if (signal.signalType == SignalType.output &&
+                            i < result.chartPortNumbers.length) {
+                          nameToPortForLabel[signal.name] =
+                              result.chartPortNumbers[i];
+                        }
+                      }
+
+                      final List<String> displayNames = List.generate(
+                        signalNames.length,
+                        (i) {
+                          final name = signalNames[i];
+                          final type = signalTypes[i];
+                          if (type != SignalType.output) {
+                            return name;
+                          }
+                          final port = nameToPortForLabel[name] ?? 0;
+                          final src = result.plcEipOption;
+                          String prefix;
+                          if (src == 'PLC') {
+                            prefix = 'PLO';
+                          } else if (src == 'EIP') {
+                            prefix = 'ESO';
+                          } else {
+                            prefix = 'Output';
+                          }
+                          if (port > 0) {
+                            return '$prefix$port: $name';
+                          }
+                          return name;
+                        },
                       );
 
-                      String triggerOption = _formState.triggerOption;
-                      _plcEipOption = 'None';
-                      if (ioSetting != null) {
-                        if (ioSetting.plcLinkEnabled) {
-                          _plcEipOption = 'PLC';
-                        } else if (ioSetting.ethernetIpEnabled) {
-                          _plcEipOption = 'EIP';
-                        } else if (ioSetting.useVirtualIoOnTrigger == 1) {
-                          if (ioSetting.plcLinkEnabled) {
-                            _plcEipOption = 'PLC';
-                          } else if (ioSetting.ethernetIpEnabled) {
-                            _plcEipOption = 'EIP';
-                          }
-                        }
-
-                        final bool isPlcCommand =
-                            ioSetting.plcLinkEnabled &&
-                            ioSetting.plcCommandEnabled;
-                        final bool isEipCommand =
-                            ioSetting.ethernetIpEnabled &&
-                            ioSetting.ethernetIpCommandEnabled;
-                        if (isPlcCommand || isEipCommand) {
-                          triggerOption = 'Command Trigger';
-                        } else {
-                          triggerOption =
-                              ioSetting.triggerMode == 0
-                                  ? 'Code Trigger'
-                                  : 'Single Trigger';
-                        }
-                      }
-
-                      _dioOutputAssignments = [];
-                      _plcEipOutputAssignments = [];
-
-                      final assignedSignalNames = <String>{};
-
-                      for (final s in _enabledSignalStructures) {
-                        if (!s.portNoByIndex.containsKey(0)) continue;
-                        final n0 = s.portNoByIndex[0]!;
-                        final type = s.portTypeByIndex[0];
-                        final suggestionId =
-                            _vxvisNameToSuggestionId[s.name] ?? '';
-
-                        final signalName =
-                            suggestionId.isNotEmpty ? suggestionId : s.name;
-
-                        debugPrint(
-                          'INI信号名: ${s.name} -> Port.No=${n0 + 1}, Type=$type, SignalName=$signalName',
-                        );
-
-                        if (assignedSignalNames.contains(signalName)) {
-                          debugPrint('INI信号名が重複しています: $signalName (${s.name})');
-                          continue;
-                        }
-                        assignedSignalNames.add(signalName);
-                        debugPrint(
-                          'INI信号名: $signalName (${s.name}) -> Port.No=${n0 + 1}, Type=$type',
-                        );
-
-                        final assignment = _OutputAssignment(
-                          name: s.name,
-                          suggestionId: suggestionId,
-                          portNo0: n0 + 1,
-                          outputIndex1Based: n0 + 1,
-                        );
-
-                        if (type != null && type != 0) {
-                          _plcEipOutputAssignments.add(assignment);
-                        } else {
-                          _dioOutputAssignments.add(assignment);
-                        }
-                      }
-
-                      debugPrint('=== DIO信号名 ===');
-                      for (final a in _dioOutputAssignments) {
-                        debugPrint(
-                          'DIO: ${a.name} -> Port.No=${a.portNo0}, SuggestionId=${a.suggestionId}',
-                        );
-                      }
-                      debugPrint('=== PLC/EIP信号名 ===');
-                      for (final a in _plcEipOutputAssignments) {
-                        debugPrint(
-                          'PLC/EIP: ${a.name} -> Port.No=${a.portNo0}, SuggestionId=${a.suggestionId}',
-                        );
-                      }
-
-                      for (final a in _dioOutputAssignments) {
-                        final idx = a.outputIndex1Based - 1;
-                        if (idx >= 0 && idx < _outputControllers.length) {
-                          final signalName =
-                              a.suggestionId.isNotEmpty
-                                  ? a.suggestionId
-                                  : a.name;
-                          _outputControllers[idx].text = signalName;
-                          debugPrint('DIO信号名: $signalName -> DIO[$idx]');
-                        }
-                      }
-
-                      for (final a in _plcEipOutputAssignments) {
-                        final idx = a.outputIndex1Based - 1;
-                        if (idx >= 0 && idx < _plcEipOutputControllers.length) {
-                          final signalName =
-                              a.suggestionId.isNotEmpty
-                                  ? a.suggestionId
-                                  : a.name;
-                          _plcEipOutputControllers[idx].text = signalName;
-                          debugPrint(
-                            'PLC/EIP信号名: $signalName -> PLC/EIP[$idx]',
-                          );
-                        }
-                      }
-
-                      if (_formTabKey.currentState != null) {
-                        _formTabKey.currentState!.setPlcEipOption(
-                          _plcEipOption,
-                        );
-                      }
-
-                      _scheduleFormUpdate(
-                        (n) => n.update(triggerOption: triggerOption),
+                      _timingChartKey.currentState!.updateSignalNames(
+                        displayNames,
                       );
-                      _clearPlcEipControllersIfDisabled();
+                      _timingChartKey.currentState!.updateSignals(signalValues);
+                    }
 
-                      final csvPairs = <MapEntry<String, String>>[];
-                      if (_dioMonitorLogCsvContent != null &&
-                          _dioMonitorLogCsvContent!.isNotEmpty) {
-                        csvPairs.add(
-                          MapEntry('DIO', _dioMonitorLogCsvContent!),
-                        );
-                      }
-                      if (_plcDioMonitorLogCsvContent != null &&
-                          _plcDioMonitorLogCsvContent!.isNotEmpty) {
-                        csvPairs.add(
-                          MapEntry('PLC', _plcDioMonitorLogCsvContent!),
-                        );
-                      }
-                      if (_fnlDioMonitorLogCsvContent != null &&
-                          _fnlDioMonitorLogCsvContent!.isNotEmpty) {
-                        csvPairs.add(
-                          MapEntry('EIP', _fnlDioMonitorLogCsvContent!),
-                        );
-                      }
-                      if (csvPairs.isNotEmpty) {
-                        final activePorts =
-                            ActivePortDetector.detectActivePorts(csvPairs);
+                    _chartController.setSignalNames(signalNames);
+                    _chartController.setSignals(signalValues);
+                  }
 
-                        final definedPorts = <String, Set<int>>{};
-                        for (final a in _dioOutputAssignments) {
-                          definedPorts
-                              .putIfAbsent('DIO', () => <int>{})
-                              .add(a.portNo0);
-                        }
-                        for (final a in _plcEipOutputAssignments) {
-                          final source = _plcEipOption == 'PLC' ? 'PLC' : 'EIP';
-                          definedPorts
-                              .putIfAbsent(source, () => <int>{})
-                              .add(a.portNo0);
-                        }
-
-                        final undefinedActivePorts = <String, Set<int>>{};
-                        for (final source in activePorts.keys) {
-                          final defined = definedPorts[source] ?? <int>{};
-                          final active = activePorts[source]!;
-                          final undefined = active.difference(defined);
-                          if (undefined.isNotEmpty) {
-                            undefinedActivePorts[source] = undefined;
-                          }
-                        }
-
-                        final assignedNames = <String>{};
-                        for (final a in _dioOutputAssignments) {
-                          if (a.suggestionId.isNotEmpty) {
-                            assignedNames.add(a.suggestionId);
-                          } else {
-                            assignedNames.add(a.name);
-                          }
-                        }
-                        for (final a in _plcEipOutputAssignments) {
-                          if (a.suggestionId.isNotEmpty) {
-                            assignedNames.add(a.suggestionId);
-                          } else {
-                            assignedNames.add(a.name);
-                          }
-                        }
-
-                        for (final source in undefinedActivePorts.keys) {
-                          final ports = undefinedActivePorts[source]!;
-                          for (final port in ports) {
-                            String signalName;
-                            if (source == 'DIO') {
-                              signalName = 'Output$port';
-                            } else if (source == 'PLC') {
-                              signalName = 'PLO$port';
-                            } else if (source == 'EIP') {
-                              signalName = 'ESO$port';
-                            } else {
-                              continue;
-                            }
-
-                            if (assignedNames.contains(signalName)) {
-                              debugPrint(
-                                'CSV信号名が重複しています: $signalName ($source:$port)',
-                              );
-                              continue;
-                            }
-
-                            if (source == 'DIO' &&
-                                port <= _outputControllers.length) {
-                              if (_outputControllers[port - 1].text.isEmpty) {
-                                _outputControllers[port - 1].text = signalName;
-                                debugPrint('CSV信号名: $signalName -> DIO:$port');
-                              }
-                            } else if ((source == 'PLC' || source == 'EIP') &&
-                                port <= _plcEipOutputControllers.length) {
-                              if (_plcEipOutputControllers[port - 1]
-                                  .text
-                                  .isEmpty) {
-                                _plcEipOutputControllers[port - 1].text =
-                                    signalName;
-                                debugPrint(
-                                  'CSV信号名: $signalName -> $source:$port',
-                                );
-                              }
-                            }
-                          }
-                        }
-
-                        final activeInputPorts =
-                            ActivePortDetector.detectActiveInputPorts(csvPairs);
-                        for (final entry in activeInputPorts.entries) {
-                          final source = entry.key;
-                          final ports = entry.value.toList()..sort();
-                          for (final port in ports) {
-                            if (source == 'DIO') {
-                              if (port >= 1 &&
-                                  port <= _inputControllers.length) {
-                                if (_inputControllers[port - 1].text.isEmpty) {
-                                  _inputControllers[port - 1].text =
-                                      'Input$port';
-                                  debugPrint('CSV信号名: Input$port -> DIO:$port');
-                                }
-                              }
-                            } else if (source == 'PLC' || source == 'EIP') {
-                              if (port >= 1 &&
-                                  port <= _plcEipInputControllers.length) {
-                                if (_plcEipInputControllers[port - 1]
-                                    .text
-                                    .isEmpty) {
-                                  final prefix =
-                                      (source == 'PLC') ? 'PLI' : 'ESI';
-                                  final name = '$prefix$port';
-                                  _plcEipInputControllers[port - 1].text = name;
-                                  debugPrint('CSV信号名: $name -> $source:$port');
-                                }
-                              }
-                            }
-                          }
-                        }
-
-                        final timeline = CsvIoLogParser.parseTimelineMulti(
-                          csvPairs,
-                        );
-
-                        final stepDurationsMs =
-                            CsvIoLogParserTimestamps.inferStepDurationsMsFromTimeline(
-                              timeline,
-                            );
-                        if (stepDurationsMs.isNotEmpty) {
-                          final settings = Provider.of<SettingsNotifier>(
-                            context,
-                            listen: false,
-                          );
-
-                          final double sumMs = stepDurationsMs
-                              .where((e) => e.isFinite && e > 0)
-                              .fold<double>(0.0, (a, b) => a + b);
-                          final double avgMs = sumMs / stepDurationsMs.length;
-                          if (avgMs.isFinite && avgMs > 0) {
-                            settings.msPerStep = avgMs;
-                          }
-
-                          final int maxLen = timeline.entries.length;
-                          if (stepDurationsMs.length != maxLen) {
-                            final List<double> fixed = List<double>.from(
-                              stepDurationsMs,
-                            );
-                            if (fixed.length < maxLen) {
-                              fixed.addAll(
-                                List<double>.filled(
-                                  maxLen - fixed.length,
-                                  settings.msPerStep,
-                                ),
-                              );
-                            } else if (fixed.length > maxLen) {
-                              fixed.removeRange(maxLen, fixed.length);
-                            }
-                            settings.setStepDurationsMs(fixed);
-                            _chartController.setStepDurationsMs(fixed);
-                          } else {
-                            settings.setStepDurationsMs(stepDurationsMs);
-                            _chartController.setStepDurationsMs(
-                              stepDurationsMs,
-                            );
-                          }
-                        }
-
-                        Provider.of<SettingsNotifier>(context, listen: false)
-                            .timeUnitIsMs = true;
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (mounted) {
-                            _chartController.requestGridRecompute();
-                            setState(() {});
-                          }
-                        });
-
-                        final int timeLength = timeline.entries.length;
-
-                        final outSource = <String, String>{};
-                        final outNamesDio = <String>[];
-                        final outTypesDio = <SignalType>[];
-                        final outPortsDio = <int>[];
-                        final outValuesDio = <List<int>>[];
-                        final outNamesPlc = <String>[];
-                        final outTypesPlc = <SignalType>[];
-                        final outPortsPlc = <int>[];
-                        final outValuesPlc = <List<int>>[];
-                        if (timeLength > 0) {
-                          int dioOutputs = _formState.outputCount;
-                          for (final a in _dioOutputAssignments) {
-                            if (a.outputIndex1Based > dioOutputs)
-                              dioOutputs = a.outputIndex1Based;
-                          }
-
-                          for (final source in undefinedActivePorts.keys) {
-                            if (source == 'DIO') {
-                              final ports = undefinedActivePorts[source]!;
-                              for (final port in ports) {
-                                if (port > dioOutputs) dioOutputs = port;
-                              }
-                            }
-                          }
-                          List<List<int>> outChartRowsDio = List.generate(
-                            dioOutputs,
-                            (_) => List.filled(timeLength, 0),
-                          );
-
-                          for (final a in _dioOutputAssignments) {
-                            final outIdx = a.outputIndex1Based - 1;
-                            final portK = a.portNo0;
-                            if (outIdx < 0 || outIdx >= dioOutputs) continue;
-                            int last = 0;
-                            for (int t = 0; t < timeLength; t++) {
-                              final e = timeline.entries[t];
-                              if (e.type == 'OUT' &&
-                                  (e.source == null || e.source == 'DIO')) {
-                                final row = e.bits;
-                                final colIdx = row.length - portK;
-                                final v =
-                                    (colIdx >= 0 &&
-                                            colIdx < row.length &&
-                                            row[colIdx] != 0)
-                                        ? 1
-                                        : 0;
-                                last = v;
-                                outChartRowsDio[outIdx][t] = v;
-                              } else {
-                                outChartRowsDio[outIdx][t] = last;
-                              }
-                            }
-                          }
-
-                          for (final source in undefinedActivePorts.keys) {
-                            if (source == 'DIO') {
-                              final ports = undefinedActivePorts[source]!;
-                              for (final port in ports) {
-                                final outIdx = port - 1;
-                                if (outIdx < 0 || outIdx >= dioOutputs)
-                                  continue;
-                                int last = 0;
-                                for (int t = 0; t < timeLength; t++) {
-                                  final e = timeline.entries[t];
-                                  if (e.type == 'OUT' &&
-                                      (e.source == null || e.source == 'DIO')) {
-                                    final row = e.bits;
-                                    final colIdx = row.length - port;
-                                    final v =
-                                        (colIdx >= 0 &&
-                                                colIdx < row.length &&
-                                                row[colIdx] != 0)
-                                            ? 1
-                                            : 0;
-                                    last = v;
-                                    outChartRowsDio[outIdx][t] = v;
-                                  } else {
-                                    outChartRowsDio[outIdx][t] = last;
-                                  }
-                                }
-                              }
-                            }
-                          }
-                          for (int i = 0; i < dioOutputs; i++) {
-                            if (i >= _outputControllers.length) continue;
-                            final name = _outputControllers[i].text.trim();
-                            if (name.isEmpty) continue;
-                            outNamesDio.add(name);
-                            outTypesDio.add(SignalType.output);
-                            outPortsDio.add(i + 1);
-                            outValuesDio.add(outChartRowsDio[i]);
-
-                            final s = outSource[name];
-                            if (s == null) {
-                              outSource[name] = 'DIO';
-                            } else if (s == 'PLC' ||
-                                s == 'EIP' ||
-                                s == 'PLC/EIP') {
-                              outSource[name] = 'PLC/EIP';
-                            }
-                          }
-
-                          if (_plcEipOption != 'None') {
-                            int plcOutputs = _formState.outputCount;
-                            for (final a in _plcEipOutputAssignments) {
-                              if (a.outputIndex1Based > plcOutputs)
-                                plcOutputs = a.outputIndex1Based;
-                            }
-
-                            for (final source in undefinedActivePorts.keys) {
-                              if (source == 'PLC' || source == 'EIP') {
-                                final ports = undefinedActivePorts[source]!;
-                                for (final port in ports) {
-                                  if (port > plcOutputs) plcOutputs = port;
-                                }
-                              }
-                            }
-                            List<List<int>> outChartRowsPlc = List.generate(
-                              plcOutputs,
-                              (_) => List.filled(timeLength, 0),
-                            );
-                            bool seenPlc = false;
-                            bool seenEip = false;
-
-                            for (final a in _plcEipOutputAssignments) {
-                              final outIdx = a.outputIndex1Based - 1;
-                              final portK = a.portNo0;
-                              if (outIdx < 0 || outIdx >= plcOutputs) continue;
-                              int last = 0;
-                              for (int t = 0; t < timeLength; t++) {
-                                final e = timeline.entries[t];
-                                if (e.type == 'OUT' &&
-                                    (e.source == 'PLC' || e.source == 'EIP')) {
-                                  final row = e.bits;
-                                  final colIdx = row.length - portK;
-                                  final v =
-                                      (colIdx >= 0 &&
-                                              colIdx < row.length &&
-                                              row[colIdx] != 0)
-                                          ? 1
-                                          : 0;
-                                  last = v;
-                                  outChartRowsPlc[outIdx][t] = v;
-                                  if (e.source == 'PLC')
-                                    seenPlc = true;
-                                  else if (e.source == 'EIP')
-                                    seenEip = true;
-                                } else {
-                                  outChartRowsPlc[outIdx][t] = last;
-                                }
-                              }
-                            }
-
-                            for (final source in undefinedActivePorts.keys) {
-                              if (source == 'PLC' || source == 'EIP') {
-                                final ports = undefinedActivePorts[source]!;
-                                for (final port in ports) {
-                                  final outIdx = port - 1;
-                                  if (outIdx < 0 || outIdx >= plcOutputs)
-                                    continue;
-                                  int last = 0;
-                                  for (int t = 0; t < timeLength; t++) {
-                                    final e = timeline.entries[t];
-                                    if (e.type == 'OUT' && e.source == source) {
-                                      final row = e.bits;
-                                      final colIdx = row.length - port;
-                                      final v =
-                                          (colIdx >= 0 &&
-                                                  colIdx < row.length &&
-                                                  row[colIdx] != 0)
-                                              ? 1
-                                              : 0;
-                                      last = v;
-                                      outChartRowsPlc[outIdx][t] = v;
-                                      if (e.source == 'PLC')
-                                        seenPlc = true;
-                                      else if (e.source == 'EIP')
-                                        seenEip = true;
-                                    } else {
-                                      outChartRowsPlc[outIdx][t] = last;
-                                    }
-                                  }
-                                }
-                              }
-                            }
-                            for (int i = 0; i < plcOutputs; i++) {
-                              if (i >= _plcEipOutputControllers.length)
-                                continue;
-                              final name =
-                                  _plcEipOutputControllers[i].text.trim();
-                              if (name.isEmpty) continue;
-                              outNamesPlc.add(name);
-                              outTypesPlc.add(SignalType.output);
-                              outPortsPlc.add(i + 1);
-                              outValuesPlc.add(outChartRowsPlc[i]);
-
-                              final src =
-                                  (seenPlc && seenEip)
-                                      ? 'PLC/EIP'
-                                      : (seenPlc ? 'PLC' : 'EIP');
-                              final s = outSource[name];
-                              if (s == null) {
-                                outSource[name] = src;
-                              } else if (s != src) {
-                                outSource[name] = 'PLC/EIP';
-                              }
-                            }
-                          }
-                        }
-
-                        final int inTime = timeline.entries.length;
-                        if (inTime > 0 && _formTabKey.currentState != null) {
-                          final int inputs = _formState.inputCount;
-
-                          if (triggerOption == 'Code Trigger' &&
-                              _inputControllers.isNotEmpty) {
-                            _controllersNotifier.setInputText(0, 'TRIGGER');
-                          }
-
-                          List<List<int>> inChart = [];
-                          List<String> inNames = [];
-                          List<SignalType> inTypes = [];
-
-                          for (int idx0 = 0; idx0 < inputs; idx0++) {
-                            if (idx0 >= _inputControllers.length) continue;
-                            final name = _inputControllers[idx0].text.trim();
-                            if (name.isEmpty) continue;
-                            List<int> series = List.filled(inTime, 0);
-                            for (int t = 0; t < inTime; t++) {
-                              final e = timeline.entries[t];
-                              if (e.type == 'IN' && e.source == 'DIO') {
-                                final row = e.bits;
-
-                                final col = row.length - (idx0 + 1);
-                                if (col >= 0 && col < row.length) {
-                                  series[t] = row[col] != 0 ? 1 : 0;
-                                }
-                              } else if (e.type != 'IN') {
-                                series[t] = 0;
-                              }
-                            }
-                            inChart.add(series);
-                            inNames.add(name);
-                            inTypes.add(SignalType.input);
-                          }
-
-                          for (int idx0 = 0; idx0 < inputs; idx0++) {
-                            if (idx0 >= _plcEipInputControllers.length)
-                              continue;
-                            final name =
-                                _plcEipInputControllers[idx0].text.trim();
-                            if (name.isEmpty) continue;
-
-                            bool allowPlc;
-                            bool allowEip;
-                            if (name.startsWith('PLI')) {
-                              allowPlc = true;
-                              allowEip = false;
-                            } else if (name.startsWith('ESI')) {
-                              allowPlc = false;
-                              allowEip = true;
-                            } else {
-                              if (_plcEipOption == 'PLC') {
-                                allowPlc = true;
-                                allowEip = false;
-                              } else if (_plcEipOption == 'EIP') {
-                                allowPlc = false;
-                                allowEip = true;
-                              } else {
-                                allowPlc = true;
-                                allowEip = true;
-                              }
-                            }
-                            List<int> series = List.filled(inTime, 0);
-                            for (int t = 0; t < inTime; t++) {
-                              final e = timeline.entries[t];
-                              if (e.type == 'IN') {
-                                final isPlc = e.source == 'PLC';
-                                final isEip = e.source == 'EIP';
-                                if ((isPlc && allowPlc) ||
-                                    (isEip && allowEip)) {
-                                  final row = e.bits;
-                                  final col = row.length - (idx0 + 1);
-                                  if (col >= 0 && col < row.length) {
-                                    series[t] = row[col] != 0 ? 1 : 0;
-                                  }
-                                }
-                              } else if (e.type != 'IN') {
-                                series[t] = 0;
-                              }
-                            }
-                            inChart.add(series);
-                            inNames.add(name);
-                            inTypes.add(SignalType.input);
-                          }
-
-                          final combinedValues = <List<int>>[];
-                          final combinedNames = <String>[];
-                          final combinedTypes = <SignalType>[];
-
-                          int idxCode = inNames.indexOf('CODE_OPTION');
-                          if (idxCode != -1) {
-                            combinedNames.add(inNames[idxCode]);
-                            combinedTypes.add(inTypes[idxCode]);
-                            combinedValues.add(inChart[idxCode]);
-                          } else {
-                            if (triggerOption == 'Code Trigger') {
-                              combinedNames.add('CODE_OPTION');
-                              combinedTypes.add(SignalType.input);
-                              combinedValues.add(
-                                List<int>.filled(timeLength, 0),
-                              );
-                            }
-                          }
-
-                          int idxCmd = inNames.indexOf('Command Option');
-                          if (idxCmd != -1) {
-                            combinedNames.add(inNames[idxCmd]);
-                            combinedTypes.add(inTypes[idxCmd]);
-                            combinedValues.add(inChart[idxCmd]);
-                          }
-
-                          for (int i = 0; i < inNames.length; i++) {
-                            if (i == idxCode || i == idxCmd) continue;
-                            combinedNames.add(inNames[i]);
-                            combinedTypes.add(inTypes[i]);
-                            combinedValues.add(inChart[i]);
-                          }
-
-                          if (_formState.hwPort > 0) {
-                            for (int j = 0; j < _formState.hwPort; j++) {
-                              final hwName =
-                                  (j < _hwTriggerControllers.length)
-                                      ? _hwTriggerControllers[j].text.trim()
-                                      : '';
-                              if (hwName.isEmpty) continue;
-                              combinedNames.add(hwName);
-                              combinedTypes.add(SignalType.hwTrigger);
-                              combinedValues.add(
-                                List<int>.filled(timeLength, 0),
-                              );
-                            }
-                          }
-
-                          if (timeLength > 0) {
-                            final dioMap = <String, List<int>>{};
-                            for (int i = 0; i < outNamesDio.length; i++) {
-                              dioMap[outNamesDio[i]] = outValuesDio[i];
-                            }
-                            final plcMap = <String, List<int>>{};
-                            for (int i = 0; i < outNamesPlc.length; i++) {
-                              plcMap[outNamesPlc[i]] = outValuesPlc[i];
-                            }
-
-                            final orderedOutputNames = <String>[];
-                            for (final n in outNamesDio) {
-                              if (!orderedOutputNames.contains(n))
-                                orderedOutputNames.add(n);
-                            }
-                            for (final n in outNamesPlc) {
-                              if (!orderedOutputNames.contains(n))
-                                orderedOutputNames.add(n);
-                            }
-
-                            final mergedValuesByName = <String, List<int>>{};
-                            for (final n in orderedOutputNames) {
-                              final dio = dioMap[n];
-                              final plc = plcMap[n];
-                              if (dio == null && plc != null) {
-                                mergedValuesByName[n] = plc;
-                              } else if (dio != null && plc == null) {
-                                mergedValuesByName[n] = dio;
-                              } else if (dio != null && plc != null) {
-                                final len = math.min(dio.length, plc.length);
-                                final merged = List<int>.from(dio);
-                                for (int t = 0; t < len; t++) {
-                                  if (plc[t] != 0) merged[t] = plc[t];
-                                }
-                                mergedValuesByName[n] = merged;
-                              }
-                            }
-
-                            for (final n in orderedOutputNames) {
-                              final v = mergedValuesByName[n];
-                              if (v == null) continue;
-                              combinedNames.add(n);
-                              combinedTypes.add(SignalType.output);
-                              combinedValues.add(v);
-                            }
-                          }
-
-                          if (combinedNames.isNotEmpty) {
-                            debugPrint(
-                              '[COMBINED] names=${combinedNames.length}, valuesRows=${combinedValues.length}, anyNonZero=${combinedValues.any((r) => r.any((v) => v != 0))}',
-                            );
-
-                            if (_formTabKey.currentState != null) {
-                              _formTabKey.currentState!.setChartDataOnly(
-                                combinedValues,
-                              );
-                            }
-
-                            setState(() {
-                              final syncedSignals = <SignalData>[];
-                              final syncedPorts = <int>[];
-                              final syncedSources = <IoChannelSource>[];
-
-                              final inputNameToPort = <String, int>{
-                                for (int i = 0; i < inNames.length; i++)
-                                  inNames[i]: i + 1,
-                              };
-
-                              final outputNameToPort = <String, int>{};
-                              for (int i = 0; i < outNamesDio.length; i++) {
-                                outputNameToPort.putIfAbsent(
-                                  outNamesDio[i],
-                                  () => outPortsDio[i],
-                                );
-                              }
-                              for (int i = 0; i < outNamesPlc.length; i++) {
-                                outputNameToPort.putIfAbsent(
-                                  outNamesPlc[i],
-                                  () => outPortsPlc[i],
-                                );
-                              }
-                              final hwNameToPort = <String, int>{
-                                for (int i = 0; i < _formState.hwPort; i++)
-                                  if (i < _hwTriggerControllers.length &&
-                                      _hwTriggerControllers[i].text
-                                          .trim()
-                                          .isNotEmpty)
-                                    _hwTriggerControllers[i].text.trim(): i + 1,
-                              };
-
-                              for (int i = 0; i < combinedNames.length; i++) {
-                                final name = combinedNames[i];
-                                final type = combinedTypes[i];
-                                final vals = combinedValues[i];
-                                syncedSignals.add(
-                                  SignalData(
-                                    name: name,
-                                    signalType: type,
-                                    values: vals,
-                                    isVisible: true,
-                                  ),
-                                );
-
-                                int portNum = 0;
-                                switch (type) {
-                                  case SignalType.output:
-                                    portNum = outputNameToPort[name] ?? 0;
-                                    break;
-                                  case SignalType.input:
-                                    if (name != 'CODE_OPTION' &&
-                                        name != 'Command Option') {
-                                      portNum = inputNameToPort[name] ?? 0;
-                                    }
-                                    break;
-                                  case SignalType.hwTrigger:
-                                    portNum = hwNameToPort[name] ?? 0;
-                                    break;
-                                  default:
-                                    portNum = 0;
-                                }
-                                syncedPorts.add(portNum);
-                                IoChannelSource source;
-                                if (type == SignalType.output) {
-                                  source = _mapOutSourceTag(
-                                    outSource[name] ?? 'DIO',
-                                  );
-                                  if (source == IoChannelSource.plcEip) {
-                                    final resolved = _resolvePlcEipSource(
-                                      allowUnknown: true,
-                                    );
-                                    if (resolved != IoChannelSource.unknown) {
-                                      source = resolved;
-                                    }
-                                  }
-                                } else if (type == SignalType.input) {
-                                  source = _detectIoSourceFor(name, type);
-                                } else {
-                                  source = IoChannelSource.unknown;
-                                }
-                                syncedSources.add(source);
-                              }
-                              _chartSignals = syncedSignals;
-                              _chartPortNumbers = syncedPorts;
-                              _chartIoSources = syncedSources;
-                            });
-                            _formTabKey.currentState!
-                                .updateSignalDataFromChartData(
-                                  combinedValues,
-                                  combinedNames,
-                                  combinedTypes,
-                                );
-
-                            _formTabKey.currentState!.refreshSignalDataList();
-
-                            if (_timingChartKey.currentState != null) {
-                              final Map<String, int> nameToPortForLabel = {};
-                              for (int i = 0; i < outNamesDio.length; i++) {
-                                nameToPortForLabel.putIfAbsent(
-                                  outNamesDio[i],
-                                  () => outPortsDio[i],
-                                );
-                              }
-                              for (int i = 0; i < outNamesPlc.length; i++) {
-                                nameToPortForLabel.putIfAbsent(
-                                  outNamesPlc[i],
-                                  () => outPortsPlc[i],
-                                );
-                              }
-
-                              final List<String> displayNames = List.generate(
-                                combinedNames.length,
-                                (i) {
-                                  final name = combinedNames[i];
-                                  final type = combinedTypes[i];
-                                  if (type != SignalType.output) {
-                                    return name;
-                                  }
-                                  final port = nameToPortForLabel[name] ?? 0;
-                                  final src = outSource[name] ?? 'DIO';
-                                  String prefix;
-                                  if (src == 'PLC' ||
-                                      (src == 'PLC/EIP' &&
-                                          _plcEipOption == 'PLC')) {
-                                    prefix = 'PLO';
-                                  } else if (src == 'EIP' ||
-                                      (src == 'PLC/EIP' &&
-                                          _plcEipOption == 'EIP')) {
-                                    prefix = 'ESO';
-                                  } else {
-                                    prefix = 'Output';
-                                  }
-                                  if (port > 0) {
-                                    return '$prefix$port: $name';
-                                  }
-                                  return name;
-                                },
-                              );
-
-                              _timingChartKey.currentState!.updateSignalNames(
-                                displayNames,
-                              );
-                              _timingChartKey.currentState!.updateSignals(
-                                combinedValues,
-                              );
-                            }
-
-                            if (_timingChartKey.currentState != null) {
-                              final Map<String, int> nameToPortForLabel = {};
-                              for (int i = 0; i < outNamesDio.length; i++) {
-                                nameToPortForLabel.putIfAbsent(
-                                  outNamesDio[i],
-                                  () => outPortsDio[i],
-                                );
-                              }
-                              for (int i = 0; i < outNamesPlc.length; i++) {
-                                nameToPortForLabel.putIfAbsent(
-                                  outNamesPlc[i],
-                                  () => outPortsPlc[i],
-                                );
-                              }
-                              final controllerDisplayNames = List.generate(
-                                combinedNames.length,
-                                (i) {
-                                  final name = combinedNames[i];
-                                  final type = combinedTypes[i];
-                                  if (type != SignalType.output) return name;
-                                  if (_showIoNumbers) {
-                                    return name;
-                                  }
-                                  final port = nameToPortForLabel[name] ?? 0;
-                                  final src = outSource[name] ?? 'DIO';
-                                  String prefix;
-                                  if (src == 'PLC' ||
-                                      (src == 'PLC/EIP' &&
-                                          _plcEipOption == 'PLC')) {
-                                    prefix = 'PLO';
-                                  } else if (src == 'EIP' ||
-                                      (src == 'PLC/EIP' &&
-                                          _plcEipOption == 'EIP')) {
-                                    prefix = 'ESO';
-                                  } else {
-                                    prefix = 'Output';
-                                  }
-                                  if (port > 0) {
-                                    return '$prefix$port: $name';
-                                  }
-                                  return name;
-                                },
-                              );
-                              _chartController.setSignalNames(
-                                controllerDisplayNames,
-                              );
-                              _chartController.setSignals(combinedValues);
-                            }
-                          }
-                        }
-                      }
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) {
+                      _chartController.requestGridRecompute();
+                      setState(() {});
                     }
                   });
 
+                  // スナックバーの表示
                   final foundIni =
-                      _vxVisMgrIniContent != null
+                      result.vxVisMgrIniContent != null
                           ? 'OK'
                           : 'vxVisMgr.iniが見つかりません';
                   final foundDio =
-                      _dioMonitorLogCsvContent != null
+                      result.dioMonitorLogCsvContent != null
                           ? 'OK'
                           : 'DioMonitorLog.csvが見つかりません';
                   final foundPlc =
-                      _plcDioMonitorLogCsvContent != null
+                      result.plcDioMonitorLogCsvContent != null
                           ? 'OK'
                           : 'Plc_DioMonitorLog.csvが見つかりません';
                   final foundFnl =
-                      _fnlDioMonitorLogCsvContent != null
+                      result.fnlDioMonitorLogCsvContent != null
                           ? 'OK'
                           : 'FNL_DioMonitorLog.csvが見つかりません';
 
+                  if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
-                        'ZIPファイルが正常にインポートされました: vxVisMgr.ini:$foundIni  DioMonitorLog.csv:$foundDio  Plc_DioMonitorLog.csv:$foundPlc  FNL_DioMonitorLog.csv:$foundFnl  EnabledSignals:${_enabledStatusSignals.length}  DioMap:${_dioOutputAssignments.length}  PlcEipMap:${_plcEipOutputAssignments.length}',
+                        'ZIPファイルが正常にインポートされました: vxVisMgr.ini:$foundIni  DioMonitorLog.csv:$foundDio  Plc_DioMonitorLog.csv:$foundPlc  FNL_DioMonitorLog.csv:$foundFnl  EnabledSignals:${result.enabledStatusSignals.length}  DioMap:${result.dioOutputAssignments.length}  PlcEipMap:${result.plcEipOutputAssignments.length}',
                       ),
                       duration: const Duration(seconds: 3),
                     ),
                   );
 
-                  await _applyOutputAssignments();
+                  // 出力数の更新が必要な場合
+                  int maxIndex = 0;
+                  for (final a in result.dioOutputAssignments) {
+                    if (a.outputIndex1Based > maxIndex)
+                      maxIndex = a.outputIndex1Based;
+                  }
+                  if (maxIndex > _formState.outputCount) {
+                    _updateOutputCount(maxIndex);
+                    await SchedulerBinding.instance.endOfFrame;
+                  }
                 } finally {
                   if (mounted) setState(() => _isImportingZiq = false);
                 }
@@ -2481,141 +1396,24 @@ class _MyHomePageState extends State<MyHomePage>
                   ioSources,
                   bool overrideFlag,
                 ) {
+                  // チャート更新サービスの使用
+                  final result = ChartUpdateService.updateChart(
+                    signalNames: signalNames,
+                    chartData: chartData,
+                    signalTypes: signalTypes,
+                    portNumbers: portNumbers,
+                    ioSources: ioSources,
+                    overrideFlag: overrideFlag,
+                    existingSignals: _chartSignals,
+                    chartController: _chartController,
+                    timingChartState: _timingChartKey.currentState,
+                    detectIoSource: _detectIoSourceFor,
+                  );
+
                   setState(() {
-                    Map<String, List<int>> existingValuesMap = {};
-                    if (_timingChartKey.currentState != null) {
-                      final currentChartValues = _chartController.signals;
-
-                      for (
-                        int i = 0;
-                        i < _chartSignals.length &&
-                            i < currentChartValues.length;
-                        i++
-                      ) {
-                        existingValuesMap[_chartSignals[i].name] =
-                            currentChartValues[i];
-                      }
-                    } else {
-                      for (var signal in _chartSignals) {
-                        existingValuesMap[signal.name] = signal.values;
-                      }
-                    }
-
-                    List<SignalData> newChartSignals = [];
-                    List<IoChannelSource> newChartSources = [];
-
-                    for (int i = 0; i < signalNames.length; i++) {
-                      List<int> signalValues;
-
-                      if (overrideFlag) {
-                        if (i < chartData.length) {
-                          signalValues = List<int>.from(chartData[i]);
-                        } else {
-                          signalValues = List.filled(32, 0);
-                        }
-                      } else {
-                        if (existingValuesMap.containsKey(signalNames[i])) {
-                          signalValues = List<int>.from(
-                            existingValuesMap[signalNames[i]]!,
-                          );
-
-                          if (i < chartData.length &&
-                              signalValues.length != chartData[i].length) {
-                            if (signalValues.length < chartData[i].length) {
-                              signalValues.addAll(
-                                List.filled(
-                                  chartData[i].length - signalValues.length,
-                                  0,
-                                ),
-                              );
-                            } else if (signalValues.length >
-                                chartData[i].length) {}
-                          }
-                        } else if (i < chartData.length) {
-                          signalValues = List<int>.from(chartData[i]);
-                        } else {
-                          signalValues = List.filled(32, 0);
-                        }
-                      }
-
-                      newChartSignals.add(
-                        SignalData(
-                          name: signalNames[i],
-                          signalType: signalTypes[i],
-                          values: signalValues,
-                          isVisible: true,
-                        ),
-                      );
-                      newChartSources.add(
-                        _detectIoSourceFor(signalNames[i], signalTypes[i]),
-                      );
-                    }
-
-                    _chartSignals = newChartSignals;
-
-                    var effectiveSources = List<IoChannelSource>.from(
-                      ioSources,
-                    );
-
-                    if (!overrideFlag && _timingChartKey.currentState != null) {
-                      final currentOrder = _chartController.signalNames;
-
-                      if (currentOrder.isNotEmpty) {
-                        final mapByName = {
-                          for (final s in _chartSignals) s.name: s,
-                        };
-                        final sourceByName = <String, List<IoChannelSource>>{};
-                        for (int i = 0; i < _chartSignals.length; i++) {
-                          final key = _chartSignals[i].name;
-                          sourceByName
-                              .putIfAbsent(key, () => [])
-                              .add(effectiveSources[i]);
-                        }
-
-                        final reordered = <SignalData>[];
-                        final reorderedSources = <IoChannelSource>[];
-                        for (final name in currentOrder) {
-                          final signal = mapByName[name];
-                          if (signal != null) {
-                            reordered.add(signal);
-                            final list = sourceByName[name];
-                            if (list != null && list.isNotEmpty) {
-                              reorderedSources.add(list.removeAt(0));
-                            } else {
-                              reorderedSources.add(IoChannelSource.unknown);
-                            }
-                            mapByName.remove(name);
-                          }
-                        }
-                        for (final entry in mapByName.entries) {
-                          reordered.add(entry.value);
-                          final list = sourceByName[entry.key];
-                          if (list != null && list.isNotEmpty) {
-                            reorderedSources.add(list.removeAt(0));
-                          } else {
-                            reorderedSources.add(IoChannelSource.unknown);
-                          }
-                        }
-
-                        _chartSignals = reordered;
-                        effectiveSources = reorderedSources;
-                      }
-                    }
-
-                    final nameToPort = <String, int>{};
-                    for (
-                      int i = 0;
-                      i < signalNames.length && i < portNumbers.length;
-                      i++
-                    ) {
-                      nameToPort[signalNames[i]] = portNumbers[i];
-                    }
-
-                    _chartPortNumbers =
-                        _chartSignals
-                            .map((s) => nameToPort[s.name] ?? 0)
-                            .toList();
-                    _chartIoSources = effectiveSources;
+                    _chartSignals = result.signals;
+                    _chartPortNumbers = result.portNumbers;
+                    _chartIoSources = result.ioSources;
 
                     if (_timingChartKey.currentState != null) {
                       final orderedNames =
@@ -2683,18 +1481,4 @@ class _MyHomePageState extends State<MyHomePage>
       ),
     );
   }
-}
-
-class _OutputAssignment {
-  final String name;
-  final String suggestionId;
-  final int portNo0;
-  final int outputIndex1Based;
-
-  const _OutputAssignment({
-    required this.name,
-    required this.suggestionId,
-    required this.portNo0,
-    required this.outputIndex1Based,
-  });
 }

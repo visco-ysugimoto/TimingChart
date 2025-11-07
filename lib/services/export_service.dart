@@ -1,0 +1,365 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+
+import '../models/backup/app_config.dart';
+import '../models/chart/signal_data.dart';
+import '../models/chart/timing_chart_annotation.dart';
+import '../models/form/form_state.dart';
+import '../providers/timing_chart_controller.dart';
+import '../utils/file_utils.dart';
+import '../widgets/form/form_tab.dart';
+import '../widgets/chart/timing_chart.dart';
+import '../suggestion_loader.dart';
+
+/// エクスポートサービスクラス
+class ExportService {
+  /// AppConfigを作成する
+  static Future<AppConfig> createAppConfig({
+    required TimingFormState formState,
+    required List<SignalData> chartSignals,
+    required TimingChartController chartController,
+    required List<TimingChartAnnotation> chartAnnotations,
+    FormTabState? formTabState,
+    TimingChartState? timingChartState,
+    required List<TextEditingController> inputControllers,
+    required List<TextEditingController> outputControllers,
+    required List<TextEditingController> hwTriggerControllers,
+    required bool timeUnitIsMs,
+    required double msPerStep,
+    required List<double> stepDurationsMs,
+  }) async {
+    debugPrint("\n===== _createAppConfig (Chart first) =====");
+
+    List<SignalData> signalData = [];
+    List<List<CellMode>> tableData = [];
+    List<bool> inputVisibility = [];
+    List<bool> outputVisibility = [];
+    List<bool> hwTriggerVisibility = [];
+    List<String> rowModes = [];
+
+    if (formTabState != null) {
+      signalData = formTabState.getSignalDataList();
+      tableData = formTabState.getTableData();
+      inputVisibility = formTabState.getInputVisibility();
+      outputVisibility = formTabState.getOutputVisibility();
+      hwTriggerVisibility = formTabState.getHwTriggerVisibility();
+      rowModes = formTabState.getRowModes();
+    }
+
+    if (timingChartState != null) {
+      final orderedNames = chartController.signalNames;
+      final mapByName = {for (var s in chartSignals) s.name: s};
+      signalData = orderedNames.map((n) => mapByName[n]!).toList();
+    } else {
+      signalData = List<SignalData>.from(chartSignals);
+    }
+
+    debugPrint("信号データが存在します: ${signalData.length}");
+    if (signalData.isNotEmpty) {
+      debugPrint(
+        "信号データが存在します: ${signalData.any((signal) => signal.values.any((val) => val != 0))}",
+      );
+    }
+    debugPrint("===== _createAppConfig _====\n");
+
+    return AppConfig.fromCurrentState(
+      formState: formState,
+      signals: signalData,
+      tableData: tableData,
+      inputControllers: inputControllers,
+      outputControllers: outputControllers,
+      hwTriggerControllers: hwTriggerControllers,
+      inputVisibility: inputVisibility,
+      outputVisibility: outputVisibility,
+      hwTriggerVisibility: hwTriggerVisibility,
+      rowModes: rowModes,
+      annotations: chartAnnotations,
+      omissionIndices:
+          timingChartState?.getOmissionTimeIndices() ?? const [],
+      timeUnitIsMs: timeUnitIsMs,
+      msPerStep: msPerStep,
+      stepDurationsMs: stepDurationsMs,
+    );
+  }
+
+  /// エクスポート前の確認を行う
+  static Future<bool> confirmExport({
+    required BuildContext context,
+    required int tabIndex,
+    required TimingChartController chartController,
+    required List<SignalData> chartSignals,
+    FormTabState? formTabState,
+    TimingChartState? timingChartState,
+  }) async {
+    debugPrint("===== _confirmExport =====");
+    debugPrint("信号データが見つかりません: $tabIndex");
+
+    if (tabIndex == 1 && timingChartState != null) {
+      List<List<int>> chartData = chartController.signals;
+      debugPrint("信号データが存在します: ${chartData.length}");
+      if (chartData.isNotEmpty) {
+        debugPrint("信号データ: ${chartData[0].take(10)}...");
+        final hasNonZero = chartData.any(
+          (row) => row.any((value) => value != 0),
+        );
+        debugPrint("信号データに0が含まれているか: $hasNonZero");
+
+        if (hasNonZero) {
+          return true;
+        }
+      }
+    }
+
+    List<SignalData> signalData = [];
+
+    if (formTabState != null) {
+      signalData = formTabState.getSignalDataList();
+    }
+
+    if (signalData.isEmpty ||
+        !signalData.any((signal) => signal.values.any((value) => value != 0))) {
+      final shouldUpdate =
+          await showDialog<bool>(
+            context: context,
+            builder:
+                (context) => AlertDialog(
+                  title: const Text('信号データが見つかりません'),
+                  content: const Text(
+                    'エクスポートする前に「Update Chart」ボタンをクリックして信号データを更新することをお勧めします。\n\n'
+                    'このまま進めますか？',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: const Text('キャンセル'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      child: const Text('このまま進める'),
+                    ),
+                  ],
+                ),
+          ) ??
+          false;
+
+      return shouldUpdate;
+    }
+
+    return true;
+  }
+
+  /// JSONエクスポートを実行する
+  static Future<bool> exportConfig({
+    required BuildContext context,
+    required int tabIndex,
+    required TimingFormState formState,
+    required List<SignalData> chartSignals,
+    required TimingChartController chartController,
+    required List<TimingChartAnnotation> chartAnnotations,
+    FormTabState? formTabState,
+    TimingChartState? timingChartState,
+    required List<TextEditingController> inputControllers,
+    required List<TextEditingController> outputControllers,
+    required List<TextEditingController> hwTriggerControllers,
+    required bool timeUnitIsMs,
+    required double msPerStep,
+    required List<double> stepDurationsMs,
+  }) async {
+    // チャートデータをフォームに同期
+    if (timingChartState != null && formTabState != null) {
+      final chartData = chartController.signals;
+      formTabState.setChartDataOnly(chartData);
+    }
+
+    await SchedulerBinding.instance.endOfFrame;
+
+    // エクスポート確認
+    final shouldContinue = await confirmExport(
+      context: context,
+      tabIndex: tabIndex,
+      chartController: chartController,
+      chartSignals: chartSignals,
+      formTabState: formTabState,
+      timingChartState: timingChartState,
+    );
+    if (!shouldContinue) return false;
+
+    // タブがチャートタブの場合、再度同期
+    if (tabIndex == 1 && timingChartState != null && formTabState != null) {
+      final chartData = chartController.signals;
+      formTabState.setChartDataOnly(chartData);
+    }
+
+    await SchedulerBinding.instance.endOfFrame;
+
+    // AppConfigを作成してエクスポート
+    final config = await createAppConfig(
+      formState: formState,
+      chartSignals: chartSignals,
+      chartController: chartController,
+      chartAnnotations: chartAnnotations,
+      formTabState: formTabState,
+      timingChartState: timingChartState,
+      inputControllers: inputControllers,
+      outputControllers: outputControllers,
+      hwTriggerControllers: hwTriggerControllers,
+      timeUnitIsMs: timeUnitIsMs,
+      msPerStep: msPerStep,
+      stepDurationsMs: stepDurationsMs,
+    );
+
+    final success = await FileUtils.exportWaveDrom(
+      config,
+      annotations: chartAnnotations,
+      omissionIndices: timingChartState?.getOmissionTimeIndices(),
+    );
+
+    return success;
+  }
+
+  /// JPEGエクスポートを実行する
+  static Future<bool> exportChartImageJpeg({
+    required BuildContext context,
+    required TimingChartState? timingChartState,
+  }) async {
+    await SchedulerBinding.instance.endOfFrame;
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? Colors.black : Colors.white;
+    final bytes = await timingChartState?.captureChartJpeg(
+      backgroundColor: bg,
+      quality: 90,
+    );
+    if (bytes == null) {
+      return false;
+    }
+
+    final ok = await FileUtils.exportJpegBytes(bytes);
+    return ok;
+  }
+
+  /// XLSXエクスポートを実行する
+  static Future<bool> exportXlsx({
+    required BuildContext context,
+    required List<SignalData> chartSignals,
+    required TimingChartController chartController,
+    required List<TextEditingController> inputControllers,
+    required List<TextEditingController> outputControllers,
+    required List<TextEditingController> hwTriggerControllers,
+    FormTabState? formTabState,
+    TimingChartState? timingChartState,
+  }) async {
+    try {
+      // チャートデータをフォームに同期
+      if (timingChartState != null && formTabState != null) {
+        final chartData = chartController.signals;
+        formTabState.setChartDataOnly(chartData);
+      }
+
+      await SchedulerBinding.instance.endOfFrame;
+
+      debugPrint('=== IO Information: ID to Label conversion ===');
+
+      // 入力名の変換
+      List<String> inputNames = [];
+      for (int i = 0; i < inputControllers.length; i++) {
+        final inputText = inputControllers[i].text.trim();
+        if (inputText.isNotEmpty) {
+          final labelName = await labelOfId(inputText);
+          debugPrint('Converting Input[$i]: $inputText -> $labelName');
+          inputNames.add(labelName);
+        } else {
+          inputNames.add('');
+        }
+      }
+
+      // 出力名の変換
+      List<String> outputNames = [];
+      for (int i = 0; i < outputControllers.length; i++) {
+        final outputText = outputControllers[i].text.trim();
+        if (outputText.isNotEmpty) {
+          final labelName = await labelOfId(outputText);
+          debugPrint('Converting Output[$i]: $outputText -> $labelName');
+          outputNames.add(labelName);
+        } else {
+          outputNames.add('');
+        }
+      }
+
+      // HWトリガー名の変換
+      List<String> hwTriggerNames = [];
+      for (int i = 0; i < hwTriggerControllers.length; i++) {
+        final hwText = hwTriggerControllers[i].text.trim();
+        if (hwText.isNotEmpty) {
+          final labelName = await labelOfId(hwText);
+          debugPrint('Converting HW Trigger[$i]: $hwText -> $labelName');
+          hwTriggerNames.add(labelName);
+        } else {
+          hwTriggerNames.add('');
+        }
+      }
+
+      debugPrint('=== End IO conversion ===');
+
+      // 信号データの変換
+      List<SignalData> signalData = [];
+
+      if (timingChartState != null) {
+        final orderedNames = chartController.signalNames;
+        final mapByName = {for (var s in chartSignals) s.name: s};
+
+        debugPrint('=== XLSX Export: ID to Label conversion ===');
+        debugPrint('Ordered signal IDs: $orderedNames');
+
+        for (String signalId in orderedNames) {
+          if (mapByName.containsKey(signalId)) {
+            final originalSignal = mapByName[signalId]!;
+            final labelName = await labelOfId(signalId);
+            debugPrint('Converting: $signalId -> $labelName');
+            final modifiedSignal = originalSignal.copyWith(name: labelName);
+            signalData.add(modifiedSignal);
+          }
+        }
+
+        for (var signal in chartSignals) {
+          if (!orderedNames.contains(signal.name)) {
+            final labelName = await labelOfId(signal.name);
+            debugPrint(
+              'Converting additional signal: ${signal.name} -> $labelName',
+            );
+            final modifiedSignal = signal.copyWith(name: labelName);
+            signalData.add(modifiedSignal);
+          }
+        }
+
+        debugPrint(
+          'Final signal names for XLSX: ${signalData.map((s) => s.name).toList()}',
+        );
+        debugPrint('=== End conversion ===');
+      } else {
+        for (var signal in chartSignals) {
+          final labelName = await labelOfId(signal.name);
+          debugPrint(
+            'Converting from _chartSignals: ${signal.name} -> $labelName',
+          );
+          final modifiedSignal = signal.copyWith(name: labelName);
+          signalData.add(modifiedSignal);
+        }
+      }
+
+      // XLSXエクスポート
+      final success = await FileUtils.exportXlsx(
+        inputNames: inputNames,
+        outputNames: outputNames,
+        hwTriggerNames: hwTriggerNames,
+        chartSignals: signalData,
+      );
+
+      return success;
+    } catch (e) {
+      debugPrint('XLSX export error: $e');
+      return false;
+    }
+  }
+}
+
