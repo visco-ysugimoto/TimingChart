@@ -1,4 +1,4 @@
-﻿import 'dart:math' as math;
+import 'dart:math' as math;
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -23,21 +23,52 @@ import '../../providers/timing_chart_controller.dart';
 
 // Add translation support
 
-/// Layout calculation data for timing chart
+/// Layout calculation data structure for timing chart rendering.
+/// 
+/// This class holds all computed layout values needed to render the timing chart,
+/// including cell dimensions, zoom factors, and visible signal indexes.
+/// These values are calculated once per layout pass and reused throughout rendering.
 class _ChartLayoutData {
+  /// List of visible signal row indexes after filtering by signal type
   final List<int> visibleIndexes;
+  
+  /// Total number of time steps (may be fractional when using ms units)
   final double totalSteps;
+  
+  /// Base cell width before zoom is applied
   final double baseCellWidth;
+  
+  /// Minimum cell width required to show all content in viewport
   final double minCellWidthForFullView;
+  
+  /// Maximum allowed cell width based on zoom constraints
   final double maxCellWidthAllowed;
+  
+  /// Minimum zoom factor allowed for current view
   final double minZoomFactorForView;
+  
+  /// Maximum zoom factor allowed for current view
   final double maxZoomFactorForView;
+  
+  /// Effective zoom factor after clamping to min/max bounds
   final double effectiveZoomFactor;
+  
+  /// Actual cell width used for rendering (baseCellWidth * effectiveZoomFactor)
   final double cellWidth;
+  
+  /// Height of each signal row cell
   final double cellHeight;
+  
+  /// Total width of the chart content area
   final double totalWidth;
+  
+  /// Total height of the chart content area including comment area
   final double totalHeight;
+  
+  /// Height reserved for annotation comments at the bottom
   final double commentAreaHeight;
+  
+  /// Maximum length of all signal arrays (longest signal)
   final int maxLen;
 
   _ChartLayoutData({
@@ -58,9 +89,24 @@ class _ChartLayoutData {
   });
 }
 
-/// Helper class for time position calculations
+/// Helper class for time position calculations in timing charts.
+/// 
+/// Provides static utility methods for converting between pixel positions
+/// and time step indices, handling both step-based and millisecond-based time units.
 class _TimePositionCalculator {
-  /// Calculate step positions array for time unit conversion
+  /// Calculate cumulative step positions array for time unit conversion.
+  /// 
+  /// When using millisecond units, each step may have a different duration.
+  /// This method calculates the cumulative position of each step boundary
+  /// in normalized step units (where 1.0 = one base step duration).
+  /// 
+  /// Returns an array of length maxLen + 1, where pos[i] is the cumulative
+  /// position at the start of step i, and pos[maxLen] is the total position.
+  /// 
+  /// [settings] - Settings containing msPerStep and time unit configuration
+  /// [maxLen] - Maximum number of time steps
+  /// [stepDurationsMs] - Array of durations in milliseconds for each step
+  /// Returns array of cumulative step positions
   static List<double> calculateStepPositions(
     SettingsNotifier settings,
     int maxLen,
@@ -77,7 +123,18 @@ class _TimePositionCalculator {
     return pos;
   }
 
-  /// Get time index from relative X position
+  /// Get time step index from relative X position in pixels.
+  /// 
+  /// Converts a pixel position (relative to the start of the wave area)
+  /// into the corresponding time step index. Handles both step-based
+  /// and millisecond-based time units correctly.
+  /// 
+  /// [relX] - X position in pixels relative to wave area start
+  /// [cellWidth] - Width of one cell in pixels
+  /// [settings] - Settings containing time unit configuration
+  /// [maxLen] - Maximum number of time steps
+  /// [stepDurationsMs] - Array of durations in milliseconds for each step
+  /// Returns the time step index, or -1 if invalid
   static int getTimeIndexFromPosition(
     double relX,
     double cellWidth,
@@ -100,19 +157,46 @@ class _TimePositionCalculator {
   }
 }
 
+/// A StatefulWidget that displays an interactive timing diagram chart.
+/// 
+/// This widget renders a timing chart showing signal waveforms over time,
+/// with support for zooming, panning, editing, annotations, and various
+/// display modes. It handles both step-based and millisecond-based time units.
 class TimingChart extends StatefulWidget {
+  /// Initial signal names (IDs) for each signal row
   final List<String> initialSignalNames;
+  
+  /// Initial signal data: list of signal rows, each row is a list of 0/1 values over time
   final List<List<int>> initialSignals;
+  
+  /// Initial annotations (comments) to display on the chart
   final List<TimingChartAnnotation> initialAnnotations;
+  
+  /// Signal types for each signal row (input, output, control, etc.)
   final List<SignalType> signalTypes;
+  
+  /// Optional controller for managing chart state and undo/redo
   final TimingChartController? controller;
+  
+  /// Whether to automatically fit chart to screen size
   final bool fitToScreen;
 
+  /// Whether to show all signal types including control/group/task signals
   final bool showAllSignalTypes;
+  
+  /// Whether to show IO port numbers in signal labels
   final bool showIoNumbers;
+  
+  /// Port numbers for each signal (used when showIoNumbers is true)
   final List<int> portNumbers;
+  
+  /// IO channel sources for each signal (PLC, EIP, etc.)
   final List<IoChannelSource> ioSources;
+  
+  /// PLC/EIP mode setting ('PLC', 'EIP', or 'None')
   final String plcEipMode;
+  
+  /// Callback invoked when signal values are changed by user interaction
   final void Function(
     List<String> names,
     List<List<int>> values,
@@ -140,48 +224,112 @@ class TimingChart extends StatefulWidget {
   State<TimingChart> createState() => TimingChartState();
 }
 
+/// State class for the TimingChart widget.
+/// 
+/// Manages all chart state including signals, annotations, zoom, selection,
+/// and user interactions. Uses AutomaticKeepAliveClientMixin to preserve
+/// state when widget is not visible.
 class TimingChartState extends State<TimingChart>
     with AutomaticKeepAliveClientMixin {
+  /// Controller for managing chart state and undo/redo operations
   TimingChartController? _controller;
+  
+  /// Callback listener for controller state changes
   late final VoidCallback _controllerListener;
+  
+  /// Signal names in their original ID form (before translation)
   late List<String> _idSignalNames;
+  
+  /// Callback listener for language changes (for signal name translation)
   late final VoidCallback _langListener;
 
   @override
   bool get wantKeepAlive => true;
 
+  /// Signal data: list of rows, each row contains 0/1 values for each time step
   late List<List<int>> signals;
+  
+  /// Display names for signals (may be translated from IDs)
   late List<String> signalNames;
+  
+  /// Annotations (comments) displayed on the chart
   late List<TimingChartAnnotation> annotations;
+  
+  /// Time step indices to highlight with special visual styling
   List<int> _highlightTimeIndices = [];
+  
+  /// Time step indices where omission marks (wavy lines) should be drawn
   List<int> _omissionTimeIndices = [];
+  
+  /// List of signal row indexes that are currently visible (after filtering)
   List<int> _visibleIndexes = [];
 
+  /// Whether user is currently dragging a signal label to reorder rows
   bool _isLabelDrag = false;
+  
+  /// Starting row index when dragging a label
   int? _labelDragStartRow;
+  
+  /// Current row index during label drag operation
   int? _labelDragCurrentRow;
 
+  /// Width of each time step cell in pixels
   double _cellWidth = 40;
+  
+  /// Height of each signal row cell in pixels
   double _cellHeight = 40;
-  double _zoomFactor = 1.0; // Horizontal scaling multiplier.
+  
+  /// Horizontal zoom factor (1.0 = no zoom, >1.0 = zoomed in)
+  double _zoomFactor = 1.0;
+  
+  /// Effective zoom factor after clamping to min/max bounds
   double _effectiveZoomFactor = 1.0;
+  
+  /// Minimum zoom factor allowed for current view
   double _minZoomFactorForView = 1.0;
+  
+  /// Maximum zoom factor allowed for current view
   double _maxZoomFactorForView = 10.0;
+  
+  /// Absolute minimum zoom factor (hard limit)
   static const double _minZoom = 0.1;
+  
+  /// Step size for zoom in/out operations
   static const double _zoomStep = 0.25;
+  
+  /// Minimum allowed cell width in pixels
   static const double _minZoomCellWidth = 2.0;
+  
+  /// Maximum allowed cell width in pixels
   static const double _maxZoomCellWidth = 20000.0;
+  
+  /// Default pixel ratio for chart export/capture
   static const double _defaultExportPixelRatio = 3.0;
+  
+  /// Maximum pixel ratio for chart export/capture
   static const double _maxExportPixelRatio = 6.0;
 
+  /// Whether modifier key (Ctrl/Cmd) is currently pressed
   bool _isModifierPressed = false;
+  
+  /// Width of the signal label area on the left side
   final double labelWidth = 200.0;
+  
+  /// Minimum height for the comment area at bottom
   static const double _minCommentAreaHeight = 100.0;
 
+  /// Bottom margin when no comments are present
   static const double _noCommentBottomMargin = 40.0;
 
+  /// Whether to show advanced timing controls (currently always false)
   bool get _showAdvancedTimingControls => false;
 
+  /// Calculate the height needed for the comment area at the bottom of the chart.
+  /// 
+  /// The height is based on the number of annotations, with a minimum height
+  /// to ensure readability. Returns a fixed margin if there are no annotations.
+  /// 
+  /// Returns the calculated height in pixels
   double _calculateCommentAreaHeight() {
     if (annotations.isEmpty) return _noCommentBottomMargin;
 
@@ -195,6 +343,11 @@ class TimingChartState extends State<TimingChart>
     return math.max(_minCommentAreaHeight, expanded);
   }
 
+  /// Zoom the chart to fit the currently selected time range.
+  /// 
+  /// Calculates the appropriate zoom factor to make the selected time range
+  /// fill the viewport, then adjusts scroll position to keep the selection visible.
+  /// Only works when there is a valid selection.
   void _zoomToSelectionFit() {
     if (!_hasValidSelection) return;
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
@@ -289,32 +442,64 @@ class TimingChartState extends State<TimingChart>
   final double chartMarginTop = 16.0;
   final double _fixedHeaderHeight = 48.0;
 
+  /// Starting signal row index of selection (in visible index space)
   int? _startSignalIndex;
+  
+  /// Ending signal row index of selection (in visible index space)
   int? _endSignalIndex;
+  
+  /// Starting time step index of selection
   int? _startTimeIndex;
+  
+  /// Ending time step index of selection
   int? _endTimeIndex;
 
+  /// Last right-click position for context menu
   Offset? _lastRightClickPos;
 
+  /// ID of currently selected annotation (if any)
   String? _selectedAnnotationId;
 
+  /// Map of annotation IDs to their hit test rectangles
   Map<String, Rect> _annotationHitRects = {};
+  
+  /// ID of annotation currently being dragged
   String? _draggingAnnotationId;
+  
+  /// Local position where annotation drag started
   Offset? _draggingStartLocal;
+  
+  /// Initial top-left position of annotation box when drag started
   Offset? _draggingInitialBoxTopLeft;
 
+  /// Global position where pan/drag gesture started
   Offset? _dragStartGlobal;
 
+  /// Key for the CustomPaint widget that renders the chart
   final GlobalKey _customPaintKey = GlobalKey();
+  
+  /// Key for the RepaintBoundary around the chart content
   final GlobalKey _repaintBoundaryKey = GlobalKey();
+  
+  /// Key for the RepaintBoundary around the viewport
   final GlobalKey _viewportBoundaryKey = GlobalKey();
+  
+  /// Horizontal scroll controller for chart content
   final ScrollController _hScrollController = ScrollController();
+  
+  /// Vertical scroll controller for chart content
   final ScrollController _vScrollController = ScrollController();
 
+  /// Whether step duration editing mode is active
   bool _isEditingSteps = false;
+  
+  /// Index of the step boundary currently being edited (when editing mode is on)
   int? _activeStepIndex;
-  double? _dragStartX;
 
+  /// Initialize the state when the widget is first created.
+  /// 
+  /// Sets up signal names, translations, keyboard handlers, and controller.
+  /// Registers listeners for language changes and controller updates.
   @override
   void initState() {
     super.initState();
@@ -389,6 +574,10 @@ class TimingChartState extends State<TimingChart>
     _controller!.addListener(_controllerListener);
   }
 
+  /// Reset all grid adjustments including zoom, selection, and scroll position.
+  /// 
+  /// Called when the grid is reset from the controller. Resets zoom to 1.0,
+  /// clears selection and highlights, and scrolls to top-left.
   void resetGridAdjustments() {
     setState(() {
       _zoomFactor = 1.0;
@@ -412,6 +601,9 @@ class TimingChartState extends State<TimingChart>
     _forceRepaint();
   }
 
+  /// Update signal data from external source.
+  /// 
+  /// [newSignals] - New signal data to replace current signals
   void updateSignals(List<List<int>> newSignals) {
     setState(() {
       signals = newSignals.map((list) => List<int>.from(list)).toList();
@@ -420,6 +612,9 @@ class TimingChartState extends State<TimingChart>
     _controller?.setSignals(signals);
   }
 
+  /// Notify parent widget that signals have changed.
+  /// 
+  /// Invokes the onSignalsChanged callback if provided.
   void _notifySignalsChanged() {
     final callback = widget.onSignalsChanged;
     if (callback == null) return;
@@ -431,11 +626,17 @@ class TimingChartState extends State<TimingChart>
     callback(names, values, types);
   }
 
+  /// Commit signal changes from chart editing to controller and notify parent.
+  /// 
+  /// Called after user edits signals directly on the chart.
   void _commitSignalsFromChartEdit() {
     _controller?.setSignals(signals);
     _notifySignalsChanged();
   }
 
+  /// Update annotations from external source.
+  /// 
+  /// [newAnnotations] - New annotations to replace current ones
   void updateAnnotations(List<TimingChartAnnotation> newAnnotations) {
     setState(() {
       annotations = List.from(newAnnotations);
@@ -444,6 +645,9 @@ class TimingChartState extends State<TimingChart>
     _controller?.setAnnotations(annotations);
   }
 
+  /// Update signal names from external source.
+  /// 
+  /// [newIdNames] - New signal ID names to replace current ones
   void updateSignalNames(List<String> newIdNames) {
     if (listEquals(_idSignalNames, newIdNames)) {
       return;
@@ -456,6 +660,10 @@ class TimingChartState extends State<TimingChart>
     _translateNames();
   }
 
+  /// Translate signal names from IDs to display names based on current language.
+  /// 
+  /// Asynchronously loads translations for all signal names and updates
+  /// the display names. Handles names with colon prefixes (e.g., "Type: id").
   void _translateNames() async {
     final translated = await Future.wait(
       _idSignalNames.map((id) async {
@@ -546,6 +754,13 @@ class TimingChartState extends State<TimingChart>
     return true;
   }
 
+  /// Check if there is a valid selection range.
+  /// 
+  /// A selection is valid if all four indices are set and within bounds:
+  /// - Signal indices must be within visible signal range
+  /// - Time indices must be within signal data range
+  /// 
+  /// Returns true if selection is valid, false otherwise
   bool get _hasValidSelection {
     if (_startSignalIndex == null ||
         _endSignalIndex == null ||
@@ -553,7 +768,11 @@ class TimingChartState extends State<TimingChart>
         _endTimeIndex == null) {
       return false;
     }
-    if (signals.isEmpty || signals[0].isEmpty) {
+    if (signals.isEmpty) {
+      return false;
+    }
+    final int maxLen = signals.map((e) => e.length).fold<int>(0, math.max);
+    if (maxLen <= 0) {
       return false;
     }
 
@@ -561,7 +780,7 @@ class TimingChartState extends State<TimingChart>
     final edSig = math.max(_startSignalIndex!, _endSignalIndex!);
     final stTime = math.min(_startTimeIndex!, _endTimeIndex!);
     final edTime = math.max(_startTimeIndex!, _endTimeIndex!);
-    final maxTime = signals[0].length - 1;
+    final maxTime = maxLen - 1;
 
     return stSig >= 0 &&
         edSig < _visibleIndexes.length &&
@@ -569,6 +788,13 @@ class TimingChartState extends State<TimingChart>
         edTime <= maxTime;
   }
 
+  /// Get time step index from X coordinate (dx) in widget coordinates.
+  /// 
+  /// Converts a pixel position to a time step index, accounting for
+  /// scroll offset and label area width. Handles both step and ms time units.
+  /// 
+  /// [dx] - X coordinate in widget local coordinates
+  /// Returns time step index, or -1 if invalid
   int _getTimeIndexFromDx(double dx) {
     final double chartX =
         dx -
@@ -592,6 +818,13 @@ class TimingChartState extends State<TimingChart>
     );
   }
 
+  /// Get signal row index from Y coordinate (dy) in widget coordinates.
+  /// 
+  /// Converts a pixel position to a signal row index, accounting for
+  /// scroll offset and chart margin. Returns the visible signal index.
+  /// 
+  /// [dy] - Y coordinate in widget local coordinates
+  /// Returns visible signal row index, or -1 if invalid
   int _getSignalIndexFromDy(double dy) {
     final adjustedY =
         dy -
@@ -605,6 +838,10 @@ class TimingChartState extends State<TimingChart>
     return index;
   }
 
+  /// Clear the current selection range.
+  /// 
+  /// Resets all selection indices (signal and time) to null.
+  /// Only updates state if there was an active selection.
   void _clearSelection() {
     if (_startSignalIndex == null &&
         _startTimeIndex == null &&
@@ -620,6 +857,14 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
+  /// Handle tap gesture on the chart.
+  /// 
+  /// Processes tap events to handle annotation selection, signal row selection,
+  /// and signal value toggling. If tapping on a label area, selects the entire row.
+  /// If tapping on a signal cell, toggles its value. If tapping within an existing
+  /// selection, toggles all signals in that selection.
+  /// 
+  /// [details] - Tap gesture details containing tap position
   void _handleTap(TapUpDetails details) {
     final chartLocalPos = details.localPosition;
     final adjustedPos = Offset(
@@ -750,6 +995,13 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
+  /// Toggle a single signal value at the specified position.
+  /// 
+  /// Flips the signal value (0 to 1, or 1 to 0) at the given visible row
+  /// and time step index. Updates the chart state and commits changes.
+  /// 
+  /// [visibleRow] - Visible signal row index
+  /// [time] - Time step index
   void _toggleSingleSignal(int visibleRow, int time) {
     if (visibleRow >= 0 && visibleRow < _visibleIndexes.length) {
       final originalRow = _visibleIndexes[visibleRow];
@@ -765,6 +1017,13 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
+  /// Handle pan gesture start.
+  /// 
+  /// Initiates drag operations for annotations, signal row reordering,
+  /// or selection range. Determines the type of drag based on the starting
+  /// position (annotation, label area, or chart area).
+  /// 
+  /// [details] - Pan gesture start details containing initial position
   void _onPanStart(DragStartDetails details) {
     final box = context.findRenderObject() as RenderBox?;
     if (box == null) return;
@@ -832,6 +1091,13 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
+  /// Handle pan gesture update.
+  /// 
+  /// Updates the current drag operation. Handles annotation dragging,
+  /// signal row reordering, or selection range expansion based on the
+  /// active drag type.
+  /// 
+  /// [details] - Pan gesture update details containing current position
   void _onPanUpdate(DragUpdateDetails details) {
     if (_draggingAnnotationId != null &&
         _draggingStartLocal != null &&
@@ -907,6 +1173,13 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
+  /// Handle pan gesture end.
+  /// 
+  /// Completes the drag operation. For annotation dragging, finalizes position.
+  /// For signal row reordering, applies the reorder if valid. For selection,
+  /// clears selection if it's a single point.
+  /// 
+  /// [details] - Pan gesture end details
   void _onPanEnd(DragEndDetails details) {
     if (_draggingAnnotationId != null) {
       setState(() {
@@ -949,6 +1222,13 @@ class TimingChartState extends State<TimingChart>
   }
 
   // =====step duration editing =====
+  
+  /// Handle pan gesture start for step duration editing mode.
+  /// 
+  /// When editing step durations, finds the nearest step boundary to the
+  /// starting position and sets it as the active step index for dragging.
+  /// 
+  /// [details] - Pan gesture start details containing initial position
   void _onPanStartEditSteps(DragStartDetails details) {
     if (!_isEditingSteps) return;
     final chartLocalPos = details.localPosition;
@@ -957,7 +1237,6 @@ class TimingChartState extends State<TimingChart>
         dx -
         chartMarginLeft +
         (_hScrollController.hasClients ? _hScrollController.offset : 0);
-    _dragStartX = chartX;
 
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
     final maxLen =
@@ -984,9 +1263,14 @@ class TimingChartState extends State<TimingChart>
       }
     }
     setState(() => _activeStepIndex = nearest);
-    _dragStartX = (chartX - labelWidth).clamp(0, double.infinity);
   }
 
+  /// Handle pan gesture update for step duration editing mode.
+  /// 
+  /// Updates the duration of the active step boundary based on the current
+  /// drag position. Calculates new duration in milliseconds and updates settings.
+  /// 
+  /// [details] - Pan gesture update details containing current position
   void _onPanUpdateEditSteps(DragUpdateDetails details) {
     if (!_isEditingSteps || _activeStepIndex == null) return;
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
@@ -1002,7 +1286,6 @@ class TimingChartState extends State<TimingChart>
         chartMarginLeft +
         (_hScrollController.hasClients ? _hScrollController.offset : 0);
     final double relX = (chartX - labelWidth).clamp(0, double.infinity);
-    _dragStartX = relX;
 
     final List<double> list = List<double>.from(settings.stepDurationsMs);
     if (list.length < maxLen) {
@@ -1027,6 +1310,12 @@ class TimingChartState extends State<TimingChart>
     settings.setStepDurationsMs(list);
   }
 
+  /// Handle pan gesture end for step duration editing mode.
+  /// 
+  /// Exits step duration editing mode and clears the active step index.
+  /// Resets step durations list to trigger recalculation.
+  /// 
+  /// [details] - Pan gesture end details
   void _onPanEndEditSteps(DragEndDetails details) {
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
     settings.setStepDurationsMs([]);
@@ -1036,7 +1325,18 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  /// Find nearest step index from relative X position with snap distance
+  /// Find nearest step index from relative X position with snap distance.
+  /// 
+  /// Calculates which time step boundary is closest to the given X position.
+  /// If within snap distance, returns that boundary index. Otherwise, returns
+  /// the step index containing that position.
+  /// 
+  /// [relX] - Relative X position in pixels (from label area start)
+  /// [settings] - Settings containing time unit configuration
+  /// [maxLen] - Maximum number of time steps
+  /// [stepDurationsMs] - Array of step durations in milliseconds
+  /// [snapDistance] - Maximum pixel distance for snapping to boundary
+  /// Returns the nearest step index
   int _findNearestStepIndex(
     double relX,
     SettingsNotifier settings,
@@ -1076,6 +1376,12 @@ class TimingChartState extends State<TimingChart>
     return math.max(0, maxLen - 1);
   }
 
+  /// Handle tap gesture in step duration editing mode.
+  /// 
+  /// When tapping in edit mode, either snaps to a nearby step boundary
+  /// or opens a dialog to manually enter the duration for the tapped step.
+  /// 
+  /// [details] - Tap gesture details containing tap position
   void _onTapUpEditSteps(TapUpDetails details) {
     if (!_isEditingSteps) return;
     final chartLocalPos = details.localPosition;
@@ -1110,7 +1416,6 @@ class TimingChartState extends State<TimingChart>
     if (best <= snapPx) {
       setState(() {
         _activeStepIndex = nearest;
-        _dragStartX = relX;
       });
       return;
     }
@@ -1167,6 +1472,12 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
+  /// Handle long press gesture start.
+  /// 
+  /// Initiates annotation dragging when long pressing on an annotation.
+  /// Sets up drag state variables for the annotation.
+  /// 
+  /// [details] - Long press gesture start details containing initial position
   void _onLongPressStart(LongPressStartDetails details) {
     final chartLocalPos = details.localPosition;
     final adjustedPos = Offset(
@@ -1191,6 +1502,12 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
+  /// Handle long press gesture move update.
+  /// 
+  /// Updates annotation position during long press drag. Clamps movement
+  /// to prevent dragging above the chart area.
+  /// 
+  /// [details] - Long press gesture move update details containing current position
   void _onLongPressMoveUpdate(LongPressMoveUpdateDetails details) {
     if (_draggingAnnotationId == null || _draggingStartLocal == null) return;
     final chartLocalPos = details.localPosition;
@@ -1230,6 +1547,11 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
+  /// Handle long press gesture end.
+  /// 
+  /// Completes annotation dragging and clears drag state variables.
+  /// 
+  /// [details] - Long press gesture end details
   void _onLongPressEnd(LongPressEndDetails details) {
     if (_draggingAnnotationId != null) {
       setState(() {
@@ -1241,6 +1563,15 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
+  /// Show context menu at the specified position.
+  /// 
+  /// Displays a context menu with actions based on what was right-clicked:
+  /// - If clicking on an annotation: edit/delete annotation options
+  /// - If clicking on chart area: selection manipulation options
+  /// Handles menu item selection and executes the corresponding action.
+  /// 
+  /// [context] - Build context for showing the menu
+  /// [position] - Global position where the menu should appear
   void _showContextMenu(BuildContext context, Offset position) async {
     final RenderBox overlay =
         Overlay.of(context).context.findRenderObject() as RenderBox;
@@ -1271,7 +1602,22 @@ class TimingChartState extends State<TimingChart>
       chartLocalPos.dy - chartMarginTop,
     );
 
-    final int clickedTime = _getTimeIndexFromDx(rootLocalPos.dx);
+    final settingsRO = Provider.of<SettingsNotifier>(context, listen: false);
+    int clickedTimeIndex;
+    if (settingsRO.timeUnitIsMs) {
+      final int maxLen =
+          signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
+      final double chartX = chartLocalPos.dx - chartMarginLeft;
+      final double relX = (chartX - labelWidth).clamp(0, double.infinity);
+      clickedTimeIndex = _findNearestStepIndex(
+        relX,
+        settingsRO,
+        maxLen,
+        settingsRO.stepDurationsMs,
+      );
+    } else {
+      clickedTimeIndex = _getTimeIndexFromDx(rootLocalPos.dx);
+    }
 
     final int clickedSig = _getSignalIndexFromDy(rootLocalPos.dy);
 
@@ -1312,33 +1658,14 @@ class TimingChartState extends State<TimingChart>
     } else {
       setState(() {
         _highlightTimeIndices.clear();
-        final settings = Provider.of<SettingsNotifier>(context, listen: false);
-        int clickedTime;
-        if (settings.timeUnitIsMs) {
-          final int maxLen =
-              signals.isEmpty
-                  ? 0
-                  : signals.map((e) => e.length).fold(0, math.max);
-          final double chartX = chartLocalPos.dx - chartMarginLeft;
-          final double relX = (chartX - labelWidth).clamp(0, double.infinity);
-          clickedTime = _findNearestStepIndex(
-            relX,
-            settings,
-            maxLen,
-            settings.stepDurationsMs,
-          );
-        } else {
-          clickedTime = _getTimeIndexFromDx(rootLocalPos.dx);
-        }
-
         if (_hasValidSelection) {
           final stTime = math.min(_startTimeIndex!, _endTimeIndex!);
           final edTime = math.max(_startTimeIndex!, _endTimeIndex!);
           _highlightTimeIndices.add(stTime);
           _highlightTimeIndices.add(edTime + 1);
         } else {
-          if (clickedTime >= 0) {
-            _highlightTimeIndices.add(clickedTime);
+          if (clickedTimeIndex >= 0) {
+            _highlightTimeIndices.add(clickedTimeIndex);
           }
         }
       });
@@ -1352,11 +1679,13 @@ class TimingChartState extends State<TimingChart>
           value: 'selectAll',
           child: Text(s.ctx_select_all_signals),
         ),
-        PopupMenuItem(value: 'delete', child: Text(s.ctx_delete_selection)),
-        PopupMenuItem(
-          value: 'deleteColumns',
-          child: Text(s.ctx_delete_columns),
-        ),
+        if (_hasValidSelection)
+          PopupMenuItem(value: 'delete', child: Text(s.ctx_delete_selection)),
+        if (_hasValidSelection)
+          PopupMenuItem(
+            value: 'deleteColumns',
+            child: Text(s.ctx_delete_columns),
+          ),
         PopupMenuItem(value: 'addComment', child: Text(s.ctx_add_comment)),
         PopupMenuItem(value: 'omit', child: Text(s.ctx_draw_omission)),
       ];
@@ -1432,12 +1761,16 @@ class TimingChartState extends State<TimingChart>
           }
           break;
         case 'omit':
-          _toggleOmissionTime(clickedTime);
+          _toggleOmissionTime(clickedTimeIndex);
           break;
       }
     }
   }
 
+  /// Show dialog to add a new single-point annotation.
+  /// 
+  /// Opens a dialog at the last right-click position allowing the user
+  /// to enter text for a new annotation at a specific time step.
   Future<void> _showAddCommentDialog() async {
     if (_lastRightClickPos == null) return;
 
@@ -1503,6 +1836,10 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
+  /// Show dialog to add a new range annotation.
+  /// 
+  /// Opens a dialog allowing the user to enter text for a new annotation
+  /// that spans the currently selected time range.
   Future<void> _showAddRangeCommentDialog() async {
     if (!_hasValidSelection) return;
 
@@ -1562,6 +1899,12 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
+  /// Edit an existing annotation's text.
+  /// 
+  /// Opens a dialog allowing the user to modify the text of the annotation
+  /// with the given ID. Updates the annotation if text is changed.
+  /// 
+  /// [annId] - ID of the annotation to edit
   void _editComment(String annId) async {
     final ann = annotations.firstWhereOrNull((a) => a.id == annId);
     if (ann == null) return;
@@ -1615,6 +1958,12 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
+  /// Delete an annotation.
+  /// 
+  /// Removes the annotation with the given ID from the chart.
+  /// Also clears selection if this annotation was selected.
+  /// 
+  /// [annId] - ID of the annotation to delete
   void _deleteComment(String annId) {
     final index = annotations.indexWhere((a) => a.id == annId);
     if (index == -1) return;
@@ -1628,6 +1977,10 @@ class TimingChartState extends State<TimingChart>
     _controller?.setAnnotations(annotations);
   }
 
+  /// Toggle all signal values within the current selection.
+  /// 
+  /// Flips all signal values (0 to 1, or 1 to 0) in the selected range
+  /// for all selected signal rows. Commits changes to controller.
   void _toggleSignalsInSelection() {
     if (!_hasValidSelection) return;
     final stSig = math.min(_startSignalIndex!, _endSignalIndex!);
@@ -1652,6 +2005,11 @@ class TimingChartState extends State<TimingChart>
     _commitSignalsFromChartEdit();
   }
 
+  /// Insert zero values into the selected range.
+  /// 
+  /// Inserts a number of zero values equal to the selection width at the
+  /// start of the selection for all selected signal rows. This effectively
+  /// shifts existing values to the right.
   void _insertZerosToSelection() {
     if (!_hasValidSelection) return;
     final stSig = math.min(_startSignalIndex!, _endSignalIndex!);
@@ -1676,7 +2034,22 @@ class TimingChartState extends State<TimingChart>
     _commitSignalsFromChartEdit();
   }
 
+  /// Delete time columns at the specified range.
+  /// 
+  /// Removes time steps from all signals within the given time range.
+  /// Also updates step durations, omission indices, and annotations to
+  /// reflect the deletion. This is used when deleting entire columns.
+  /// 
+  /// [stTime] - Start time index (inclusive)
+  /// [edTime] - End time index (inclusive)
   void _deleteColumnsAtRange(int stTime, int edTime) {
+    debugPrint('deleteColumnsAtRange: stTime=$stTime, edTime=$edTime');
+    debugPrint('deleteColumnsAtRange: signals=${signals.map((e) => e.length).toList()}');
+    debugPrint('deleteColumnsAtRange: _visibleIndexes=${_visibleIndexes.map((e) => e).toList()}');
+    debugPrint('deleteColumnsAtRange: _startSignalIndex=$_startSignalIndex');
+    debugPrint('deleteColumnsAtRange: _endSignalIndex=$_endSignalIndex');
+    debugPrint('deleteColumnsAtRange: _startTimeIndex=$_startTimeIndex');
+    debugPrint('deleteColumnsAtRange: _endTimeIndex=$_endTimeIndex');
     final int oldMaxLen =
         signals.isEmpty ? 0 : signals.map((e) => e.length).reduce(math.max);
     final int clampedSt = stTime.clamp(0, oldMaxLen);
@@ -1695,7 +2068,11 @@ class TimingChartState extends State<TimingChart>
       }
       _normalizeSignalLengths();
       _clearSelection();
+      _forceRepaint();
     });
+
+    // Commit signals to controller first to prevent listener from overwriting with old state
+    _controller?.setSignals(signals);
 
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
     if (settings.timeUnitIsMs && deleteLen > 0) {
@@ -1765,13 +2142,28 @@ class TimingChartState extends State<TimingChart>
     _commitSignalsFromChartEdit();
   }
 
+  /// Delete the selected range from signals.
+  /// 
+  /// Removes the selected time range from the selected signal rows.
+  /// If all visible signals are selected, delegates to column deletion.
+  /// Otherwise, removes only from the selected rows.
   void _deleteRange() {
-    if (!_hasValidSelection) return;
-    final stSig = math.min(_startSignalIndex!, _endSignalIndex!);
-    final edSig = math.max(_startSignalIndex!, _endSignalIndex!);
+    // More tolerant: verify index existence, then safely clamp and process
+    if (_startSignalIndex == null ||
+        _endSignalIndex == null ||
+        _startTimeIndex == null ||
+        _endTimeIndex == null) {
+      return;
+    }
+    if (_visibleIndexes.isEmpty || signals.isEmpty) return;
+    final stSig = math
+        .min(_startSignalIndex!, _endSignalIndex!)
+        .clamp(0, _visibleIndexes.length - 1);
+    final edSig = math
+        .max(_startSignalIndex!, _endSignalIndex!)
+        .clamp(0, _visibleIndexes.length - 1);
     final stTime = math.min(_startTimeIndex!, _endTimeIndex!);
     final edTime = math.max(_startTimeIndex!, _endTimeIndex!);
-    if (stSig < 0 || edSig >= _visibleIndexes.length) return;
 
     final bool allVisibleSelected =
         stSig == 0 && edSig == _visibleIndexes.length - 1;
@@ -1791,30 +2183,53 @@ class TimingChartState extends State<TimingChart>
       }
       _normalizeSignalLengths();
       _clearSelection();
+      _forceRepaint();
     });
     _commitSignalsFromChartEdit();
   }
 
+  /// Delete columns at the selected time range.
+  /// 
+  /// Removes entire time columns (across all signals) for the selected
+  /// time range. More tolerant: only verifies time index existence,
+  /// then safely clamps and processes the range.
   void _deleteColumns() {
-    if (!_hasValidSelection) return;
+    // More tolerant: only verify time index existence, then safely clamp and process range
+    if (_startTimeIndex == null || _endTimeIndex == null){
+      debugPrint('deleteColumns: _startTimeIndex=$_startTimeIndex');
+      debugPrint('deleteColumns: _endTimeIndex=$_endTimeIndex');
+      return;
+    }
     final stTime = math.min(_startTimeIndex!, _endTimeIndex!);
     final edTime = math.max(_startTimeIndex!, _endTimeIndex!);
+    debugPrint('deleteColumns: stTime=$stTime, edTime=$edTime');
+    debugPrint('deleteColumns: signals=${signals.map((e) => e.length).toList()}');
+    debugPrint('deleteColumns: _visibleIndexes=${_visibleIndexes.map((e) => e).toList()}');
+    debugPrint('deleteColumns: _startSignalIndex=$_startSignalIndex');
+    debugPrint('deleteColumns: _endSignalIndex=$_endSignalIndex');
+    debugPrint('deleteColumns: _startTimeIndex=$_startTimeIndex');
+    debugPrint('deleteColumns: _endTimeIndex=$_endTimeIndex');
     _deleteColumnsAtRange(stTime, edTime);
   }
 
+  /// Duplicate the selected range to the end of signals.
+  /// 
+  /// Copies the selected signal and time range, appending it to the end
+  /// of each selected signal row. Also duplicates annotations and omission
+  /// marks that fall within the selection. Updates step durations if using ms units.
   void _duplicateRange() {
     if (!_hasValidSelection) return;
 
-    // 驕ｸ謚樒ｯ・峇縺ｮ菫｡蜿ｷ繧､繝ｳ繝・ャ繧ｯ繧ｹ縺ｨ譎ょ綾繧､繝ｳ繝・ャ繧ｯ繧ｹ繧呈ｭ｣隕丞喧
+    // Calculate start and end signal indices and time indices
     final stSig = math.min(_startSignalIndex!, _endSignalIndex!);
     final edSig = math.max(_startSignalIndex!, _endSignalIndex!);
     final stTime = math.min(_startTimeIndex!, _endTimeIndex!);
     final edTime = math.max(_startTimeIndex!, _endTimeIndex!);
 
-    // 驕ｸ謚槭＆繧後◆菫｡蜿ｷ縺悟庄隕也ｯ・峇螟悶・蝣ｴ蜷医・蜃ｦ逅・＠縺ｪ縺・
+    // Verify that calculated signal indices are within valid range
     if (stSig < 0 || edSig >= _visibleIndexes.length) return;
 
-    // 霑ｽ蜉: 譛ｫ蟆ｾ髢句ｧ九が繝輔そ繝・ヨ繧定ｨ育ｮ励＠縺ｦ縺翫￥
+    // Step durations: prepare step durations array for duplication
     final int oldMaxLen =
         signals.isEmpty ? 0 : signals.map((e) => e.length).reduce(math.max);
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
@@ -1920,6 +2335,10 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
+  /// Normalize all signal lengths to match the longest signal.
+  /// 
+  /// Pads shorter signals with zero values so all signals have the same length.
+  /// This ensures consistent time step counts across all signal rows.
   void _normalizeSignalLengths() {
     if (signals.isEmpty) return;
 
@@ -1938,6 +2357,12 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
+  /// Toggle omission mark at the specified time index.
+  /// 
+  /// Adds or removes a wavy line (omission mark) at the given time step.
+  /// Omission marks indicate that time steps are skipped or omitted.
+  /// 
+  /// [timeIndex] - Time step index to toggle omission mark
   void _toggleOmissionTime(int timeIndex) {
     if (timeIndex < 0) return;
     setState(() {
@@ -1951,6 +2376,9 @@ class TimingChartState extends State<TimingChart>
     _controller?.setOmissionTimeIndices(_omissionTimeIndices);
   }
 
+  /// Zoom in by one step.
+  /// 
+  /// Increases zoom factor by _zoomStep, clamped to maximum allowed zoom.
   void _zoomIn() {
     final double current = math.max(_zoomFactor, _minZoomFactorForView);
     final double next = math.min(current + _zoomStep, _maxZoomFactorForView);
@@ -1960,6 +2388,9 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
+  /// Zoom out by one step.
+  /// 
+  /// Decreases zoom factor by _zoomStep, clamped to minimum allowed zoom.
   void _zoomOut() {
     final double current = math.max(_zoomFactor, _minZoomFactorForView);
     final double next = math.max(current - _zoomStep, _minZoomFactorForView);
@@ -1969,6 +2400,10 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
+  /// Reset zoom to default (1.0) if possible, otherwise to minimum.
+  /// 
+  /// Attempts to set zoom to 1.0, but falls back to minimum zoom if
+  /// 1.0 is outside the allowed range.
   void _resetZoom() {
     final double preferred = 1.0;
     final double minAllowed = math.max(_minZoomFactorForView, _minZoom);
@@ -1982,13 +2417,24 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
+  /// Get the width of the viewport available for wave display.
+  /// 
+  /// Calculates available width by subtracting margins and label width
+  /// from total widget width.
+  /// 
+  /// Returns viewport width in pixels
   double _getViewportWaveWidth() {
     final double widgetWidth = MediaQuery.of(context).size.width;
     final double viewportWaveWidth = widgetWidth - chartMarginLeft - labelWidth;
     return viewportWaveWidth.isFinite ? math.max(0.0, viewportWaveWidth) : 0.0;
   }
 
-  /// Calculate visible indexes based on signal types
+  /// Calculate list of visible signal row indexes based on signal type filtering.
+  /// 
+  /// Filters out control, group, and task signals unless showAllSignalTypes is true.
+  /// Returns indexes of signals that should be displayed in the chart.
+  /// 
+  /// Returns list of visible signal row indexes
   List<int> _calculateVisibleIndexes() {
     final visibleIndexes = <int>[];
     final int safeLen = math.min(
@@ -2007,7 +2453,15 @@ class TimingChartState extends State<TimingChart>
     return visibleIndexes;
   }
 
-  /// Calculate total steps based on time unit
+  /// Calculate total number of time steps (may be fractional for ms units).
+  /// 
+  /// When using millisecond units, sums up the normalized durations of all steps.
+  /// When using step units, returns the count of steps.
+  /// 
+  /// [settings] - Settings containing time unit configuration
+  /// [maxLen] - Maximum number of time steps
+  /// [durationsForLayout] - Array of step durations in milliseconds
+  /// Returns total steps as a double (may be fractional)
   double _calculateTotalSteps(
     SettingsNotifier settings,
     int maxLen,
@@ -2058,7 +2512,15 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  /// Calculate layout data for chart rendering
+  /// Calculate all layout data needed for chart rendering.
+  /// 
+  /// This is the main layout calculation method that computes cell dimensions,
+  /// zoom factors, visible indexes, and total chart dimensions based on
+  /// current constraints, signal data, and settings.
+  /// 
+  /// [constraints] - Box constraints from parent widget
+  /// [settings] - Settings containing time unit and display configuration
+  /// Returns _ChartLayoutData containing all computed layout values
   _ChartLayoutData _calculateLayoutData(
     BoxConstraints constraints,
     SettingsNotifier settings,
@@ -2233,6 +2695,12 @@ class TimingChartState extends State<TimingChart>
     );
   }
 
+  /// Compute total time step units across all signals.
+  /// 
+  /// Calculates the total normalized step units. For ms units, sums up
+  /// normalized durations. For step units, returns the maximum signal length.
+  /// 
+  /// Returns total step units as a double
   double _computeTotalStepUnits() {
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
     final int maxLen =
@@ -2253,6 +2721,14 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
+  /// Apply scroll correction to maintain anchor point after zoom.
+  /// 
+  /// After zooming, adjusts scroll position so that the point at anchorXInWave
+  /// remains at the same visual position. Uses stepsUnitsBefore to calculate
+  /// the new scroll offset.
+  /// 
+  /// [anchorXInWave] - X position in wave area to keep fixed
+  /// [stepsUnitsBefore] - Step units before the anchor point
   void _applyAnchorScrollCorrection({
     required double anchorXInWave,
     required double stepsUnitsBefore,
@@ -2272,6 +2748,10 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
+  /// Zoom in while maintaining center of viewport as anchor point.
+  /// 
+  /// Zooms in by one step and adjusts scroll to keep the center of the
+  /// viewport at the same visual position.
   void _zoomInWithAnchorAtCenter() {
     final double viewportWaveWidth = _getViewportWaveWidth();
     final double anchorXInWave = viewportWaveWidth / 2;
@@ -2288,6 +2768,10 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
+  /// Zoom out while maintaining center of viewport as anchor point.
+  /// 
+  /// Zooms out by one step and adjusts scroll to keep the center of the
+  /// viewport at the same visual position.
   void _zoomOutWithAnchorAtCenter() {
     final double viewportWaveWidth = _getViewportWaveWidth();
     final double anchorXInWave = viewportWaveWidth / 2;
@@ -2304,6 +2788,12 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
+  /// Handle pointer signal events (mouse wheel scrolling).
+  /// 
+  /// When Ctrl/Cmd is pressed, uses scroll wheel to zoom in/out.
+  /// Maintains the cursor position as the zoom anchor point.
+  /// 
+  /// [event] - Pointer signal event (typically scroll wheel)
   void _handlePointerSignal(PointerSignalEvent event) {
     if (event is! PointerScrollEvent) return;
 
@@ -2688,38 +3178,108 @@ class TimingChartState extends State<TimingChart>
         (_effectiveZoomFactor - _minZoomFactorForView).abs() > 0.001;
     final bool canFitSelection = _hasValidSelection;
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        OutlinedButton.icon(
-          icon: const Icon(Icons.zoom_out, size: 16),
-          label: const Text('Zoom out'),
-          onPressed: canZoomOut ? _zoomOutWithAnchorAtCenter : null,
-        ),
-        const SizedBox(width: 6),
-        Text('$zoomPercent%'),
-        const SizedBox(width: 6),
-        OutlinedButton.icon(
-          icon: const Icon(Icons.zoom_in, size: 16),
-          label: const Text('Zoom in'),
-          onPressed: canZoomIn ? _zoomInWithAnchorAtCenter : null,
-        ),
-        const SizedBox(width: 6),
-        OutlinedButton.icon(
-          icon: const Icon(Icons.fit_screen, size: 16),
-          label: const Text('Fit'),
-          onPressed: canReset ? _resetZoom : null,
-        ),
-        const SizedBox(width: 6),
-        OutlinedButton.icon(
-          icon: const Icon(Icons.fit_screen_outlined, size: 16),
-          label: const Text('Fit sel'),
-          onPressed: canFitSelection ? _zoomToSelectionFit : null,
-        ),
-      ],
+    if (_controller == null) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          OutlinedButton.icon(
+            icon: const Icon(Icons.zoom_out, size: 16),
+            label: const Text('Zoom out'),
+            onPressed: canZoomOut ? _zoomOutWithAnchorAtCenter : null,
+          ),
+          const SizedBox(width: 6),
+          Text('$zoomPercent%'),
+          const SizedBox(width: 6),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.zoom_in, size: 16),
+            label: const Text('Zoom in'),
+            onPressed: canZoomIn ? _zoomInWithAnchorAtCenter : null,
+          ),
+          const SizedBox(width: 6),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.fit_screen, size: 16),
+            label: const Text('Fit'),
+            onPressed: canReset ? _resetZoom : null,
+          ),
+          const SizedBox(width: 6),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.fit_screen_outlined, size: 16),
+            label: const Text('Fit sel'),
+            onPressed: canFitSelection ? _zoomToSelectionFit : null,
+          ),
+        ],
+      );
+    }
+
+    return ListenableBuilder(
+      listenable: _controller!,
+      builder: (context, _) {
+        final bool canUndo = _controller?.canUndo ?? false;
+        final bool canRedo = _controller?.canRedo ?? false;
+
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            OutlinedButton.icon(
+              icon: const Icon(Icons.undo, size: 16),
+              label: const Text('Undo'),
+              onPressed:
+                  canUndo
+                      ? () {
+                        _controller?.undo();
+                      }
+                      : null,
+            ),
+            const SizedBox(width: 6),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.redo, size: 16),
+              label: const Text('Redo'),
+              onPressed:
+                  canRedo
+                      ? () {
+                        _controller?.redo();
+                      }
+                      : null,
+            ),
+            const SizedBox(width: 12),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.zoom_out, size: 16),
+              label: const Text('Zoom out'),
+              onPressed: canZoomOut ? _zoomOutWithAnchorAtCenter : null,
+            ),
+            const SizedBox(width: 6),
+            Text('$zoomPercent%'),
+            const SizedBox(width: 6),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.zoom_in, size: 16),
+              label: const Text('Zoom in'),
+              onPressed: canZoomIn ? _zoomInWithAnchorAtCenter : null,
+            ),
+            const SizedBox(width: 6),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.fit_screen, size: 16),
+              label: const Text('Fit'),
+              onPressed: canReset ? _resetZoom : null,
+            ),
+            const SizedBox(width: 6),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.fit_screen_outlined, size: 16),
+              label: const Text('Fit sel'),
+              onPressed: canFitSelection ? _zoomToSelectionFit : null,
+            ),
+          ],
+        );
+      },
     );
   }
 
+  /// Compute total duration in milliseconds for the current selection.
+  /// 
+  /// Sums up the step durations for all time steps within the selection range.
+  /// Returns 0.0 if there is no valid selection.
+  /// 
+  /// [settings] - Settings containing step duration configuration
+  /// Returns total duration in milliseconds
   double _computeSelectionDurationMs(SettingsNotifier settings) {
     if (!_hasValidSelection) return 0.0;
     final int stTime = math.min(_startTimeIndex!, _endTimeIndex!);
@@ -2739,6 +3299,12 @@ class TimingChartState extends State<TimingChart>
     return sumMs;
   }
 
+  /// Compute number of time steps in the current selection.
+  /// 
+  /// Calculates the width of the selection in time steps.
+  /// Returns 0 if there is no valid selection.
+  /// 
+  /// Returns number of steps in selection
   int _computeSelectionSteps() {
     if (!_hasValidSelection) return 0;
     final int stTime = math.min(_startTimeIndex!, _endTimeIndex!);
@@ -2746,6 +3312,13 @@ class TimingChartState extends State<TimingChart>
     return (edTime - stTime + 1).clamp(0, 1 << 30);
   }
 
+  /// Build a label string describing the current selection.
+  /// 
+  /// Returns a formatted string showing either the duration in milliseconds
+  /// or the number of steps, depending on the current time unit setting.
+  /// 
+  /// [settings] - Settings containing time unit configuration
+  /// Returns formatted selection label string
   String _buildSelectionLabel(SettingsNotifier settings) {
     if (settings.timeUnitIsMs) {
       final double ms = _computeSelectionDurationMs(settings);
@@ -2757,6 +3330,14 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
+  /// Build the unit toggle and control panel widget.
+  /// 
+  /// Creates a container with switches for time unit (ms/step) and bottom labels,
+  /// along with zoom controls and selection information. May include advanced
+  /// timing controls if enabled.
+  /// 
+  /// [context] - Build context
+  /// Returns the unit toggle widget
   Widget _buildUnitToggle(BuildContext context) {
     final settings = Provider.of<SettingsNotifier>(context);
     final bool isMs = settings.timeUnitIsMs;
@@ -2836,6 +3417,12 @@ class TimingChartState extends State<TimingChart>
     );
   }
 
+  /// Build text field for editing milliseconds per step.
+  /// 
+  /// Creates a small text input field that allows users to set the base
+  /// milliseconds per step value used for time unit conversion.
+  /// 
+  /// Returns the ms/step input field widget
   Widget _buildMsPerStepField() {
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
     final controller = TextEditingController(
@@ -2863,6 +3450,12 @@ class TimingChartState extends State<TimingChart>
     );
   }
 
+  /// Build button for editing step durations in bulk.
+  /// 
+  /// Creates a button that opens a dialog allowing users to edit all step
+  /// durations at once using comma-separated values.
+  /// 
+  /// Returns the edit step durations button widget
   Widget _buildEditStepDurationsButton() {
     return OutlinedButton.icon(
       icon: const Icon(Icons.tune, size: 16),
@@ -2924,6 +3517,10 @@ class TimingChartState extends State<TimingChart>
     );
   }
 
+  /// Force a repaint of the chart CustomPaint widget.
+  /// 
+  /// Manually triggers a repaint by marking the CustomPaint render object
+  /// as needing paint. Used when state changes don't automatically trigger repaint.
   void _forceRepaint() {
     final customPaint = _customPaintKey.currentContext?.findRenderObject();
     if (customPaint is RenderCustomPaint) {
@@ -2931,6 +3528,13 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
+  /// Capture the chart as a PNG image.
+  /// 
+  /// Renders the chart content to an image using RepaintBoundary and returns
+  /// the PNG bytes. Uses high pixel ratio for better quality.
+  /// 
+  /// [pixelRatio] - Optional pixel ratio (defaults to device ratio or 3.0)
+  /// Returns PNG image bytes, or null if capture fails
   Future<Uint8List?> captureChartPng({double? pixelRatio}) async {
     try {
       RenderRepaintBoundary? boundary =
@@ -2953,6 +3557,15 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
+  /// Capture the chart as a JPEG image.
+  /// 
+  /// Renders the chart content to an image and converts to JPEG format.
+  /// Handles alpha channel compositing with background color.
+  /// 
+  /// [pixelRatio] - Optional pixel ratio (defaults to device ratio or 3.0)
+  /// [backgroundColor] - Background color for alpha compositing (defaults to theme)
+  /// [quality] - JPEG quality 0-100 (defaults to 90)
+  /// Returns JPEG image bytes, or null if capture fails
   Future<Uint8List?> captureChartJpeg({
     double? pixelRatio,
     Color? backgroundColor,
@@ -3037,6 +3650,13 @@ class TimingChartState extends State<TimingChart>
     _controller?.setOmissionTimeIndices(_omissionTimeIndices);
   }
 
+  /// Set annotation arrow tip to point at a specific signal row.
+  /// 
+  /// Updates the vertical position of an annotation's arrow tip to point
+  /// at the center of the specified visible signal row.
+  /// 
+  /// [annId] - ID of the annotation to update
+  /// [visibleRowIndex] - Visible signal row index to point at
   void _setAnnotationArrowToSignal(String annId, int visibleRowIndex) {
     if (visibleRowIndex < 0 || visibleRowIndex >= _visibleIndexes.length)
       return;
@@ -3064,18 +3684,13 @@ class TimingChartState extends State<TimingChart>
     super.dispose();
   }
 
-  KeyEventResult _handleKeyEvent(KeyEvent event) {
-    final bool pressed =
-        HardwareKeyboard.instance.isControlPressed ||
-        HardwareKeyboard.instance.isMetaPressed;
-    if (pressed != _isModifierPressed) {
-      setState(() {
-        _isModifierPressed = pressed;
-      });
-    }
-    return KeyEventResult.ignored;
-  }
-
+  /// Handle modifier key (Ctrl/Cmd) press/release events.
+  /// 
+  /// Updates the _isModifierPressed state when Ctrl or Cmd keys are pressed
+  /// or released. Used to enable/disable certain interaction modes.
+  /// 
+  /// [event] - Keyboard event
+  /// Returns false to allow event propagation
   bool _handleModifierKeyEvent(KeyEvent event) {
     final bool pressed =
         HardwareKeyboard.instance.isControlPressed ||
@@ -3088,18 +3703,44 @@ class TimingChartState extends State<TimingChart>
     return false;
   }
 
+  /// Handle keyboard events for chart interactions.
+  /// 
+  /// Processes keyboard shortcuts:
+  /// - Ctrl/Cmd+Z: Undo
+  /// - Ctrl/Cmd+Y: Redo
+  /// - Ctrl/Cmd+A: Select all signals
+  /// - 0/1 keys: Set signal values in selection to 0 or 1
+  /// 
+  /// [event] - Keyboard event
   void _onKeyEvent(KeyEvent event) {
     if (event is! KeyDownEvent) return;
     final bool isModifierPressed =
         HardwareKeyboard.instance.isControlPressed ||
         HardwareKeyboard.instance.isMetaPressed;
 
+    // Undo/Redoショートカット
+    if (isModifierPressed) {
+      if (event.logicalKey == LogicalKeyboardKey.keyZ) {
+        // Ctrl+Z または Cmd+Z = Undo
+        if (_controller?.canUndo ?? false) {
+          _controller?.undo();
+        }
+        return;
+      } else if (event.logicalKey == LogicalKeyboardKey.keyY) {
+        // Ctrl+Y または Cmd+Y = Redo
+        if (_controller?.canRedo ?? false) {
+          _controller?.redo();
+        }
+        return;
+      }
+    }
+
     if (isModifierPressed && event.logicalKey == LogicalKeyboardKey.keyA) {
       _selectAllSignals();
       return;
     }
 
-    // 遽・峇驕ｸ謚槭′縺ゅｋ蝣ｴ蜷医・1/0繧ｭ繝ｼ蜃ｦ逅・
+    // 選択範囲がある場合、1/0キーで信号を設定
     if (_hasValidSelection) {
       if (event.logicalKey == LogicalKeyboardKey.digit1) {
         _setSignalsInSelection(1);
@@ -3111,6 +3752,10 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
+  /// Select all visible signals across all time steps.
+  /// 
+  /// Sets selection to cover all visible signal rows from time 0 to the
+  /// maximum time step. Updates chart state to highlight the selection.
   void _selectAllSignals() {
     if (signals.isEmpty || _visibleIndexes.isEmpty) return;
     setState(() {
@@ -3122,6 +3767,12 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
+  /// Set all signal values in selection to the specified value.
+  /// 
+  /// Sets all signal values within the selected range to either 0 or 1.
+  /// Used for keyboard shortcuts (0/1 keys) to set signal states.
+  /// 
+  /// [value] - Value to set (0 or 1)
   void _setSignalsInSelection(int value) {
     if (!_hasValidSelection) return;
     final stSig = math.min(_startSignalIndex!, _endSignalIndex!);
@@ -3147,6 +3798,14 @@ class TimingChartState extends State<TimingChart>
     _commitSignalsFromChartEdit();
   }
 
+  /// Move a signal row up or down by swapping with adjacent row.
+  /// 
+  /// Swaps the signal at the given visible index with the signal at
+  /// (visibleIndex + direction). Also swaps associated names, types,
+  /// port numbers, IO sources, and ID names.
+  /// 
+  /// [visibleIndex] - Visible signal row index to move
+  /// [direction] - Direction to move (-1 for up, +1 for down)
   void _moveSignal(int visibleIndex, int direction) {
     final int targetVisible = visibleIndex + direction;
     if (targetVisible < 0 || targetVisible >= _visibleIndexes.length) return;
@@ -3189,6 +3848,13 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
+  /// Reorder signal rows by moving one row to a new position.
+  /// 
+  /// Moves the signal row from fromVisible to toVisible by repeatedly
+  /// swapping adjacent rows. Used when dragging signal labels to reorder.
+  /// 
+  /// [fromVisible] - Source visible row index
+  /// [toVisible] - Destination visible row index
   void _reorderSignalRows(int fromVisible, int toVisible) {
     if (fromVisible == toVisible) return;
 
@@ -3204,6 +3870,11 @@ class TimingChartState extends State<TimingChart>
   }
 }
 
+/// Custom painter for rendering the timing chart content.
+/// 
+/// Handles drawing of grid lines, signal waveforms, annotations, selections,
+/// and omission marks. Delegates to specialized manager classes for different
+/// aspects of rendering (grid, signals, annotations).
 class _StepTimingChartPainter extends CustomPainter {
   _StepTimingChartPainter({
     required this.signals,
@@ -3524,6 +4195,10 @@ class _StepTimingChartPainter extends CustomPainter {
   }
 }
 
+/// Custom painter for rendering signal labels overlay.
+/// 
+/// Draws the signal name labels in the left margin area, including
+/// IO port numbers, prefixes, and highlighting for selected rows.
 class _LabelsOverlayPainter extends CustomPainter {
   _LabelsOverlayPainter({
     required this.signalNames,

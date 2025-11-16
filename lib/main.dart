@@ -166,7 +166,7 @@ Future<void> _runZiqImportTestMode() async {
           }
         }
 
-        String _fallbackName(String source, int port) {
+        String fallbackName(String source, int port) {
           if (source == 'DIO') return 'Output$port';
           if (source == 'PLC') return 'PLO$port';
           if (source == 'EIP') return 'ESO$port';
@@ -180,7 +180,7 @@ Future<void> _runZiqImportTestMode() async {
           final sorted = ports.toList()..sort();
           for (final p in sorted) {
             final name =
-                namesBySourcePort[source]?[p] ?? _fallbackName(source, p);
+                namesBySourcePort[source]?[p] ?? fallbackName(source, p);
             print('  - $source:$p -> $name');
           }
         }
@@ -1224,8 +1224,9 @@ class _MyHomePageState extends State<MyHomePage>
                   // 出力数の更新が必要な場合
                   int maxIndex = 0;
                   for (final a in result.dioOutputAssignments) {
-                    if (a.outputIndex1Based > maxIndex)
+                    if (a.outputIndex1Based > maxIndex) {
                       maxIndex = a.outputIndex1Based;
+                    }
                   }
                   if (maxIndex > _formState.outputCount) {
                     _updateOutputCount(maxIndex);
