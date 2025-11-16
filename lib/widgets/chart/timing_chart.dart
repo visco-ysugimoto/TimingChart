@@ -17,58 +17,58 @@ import 'chart_signals.dart';
 import 'chart_drawing_util.dart';
 import '../../suggestion_loader.dart';
 import '../../providers/settings_notifier.dart';
-import 'package:provider/provider.dart'; // Added for Provider
+import 'package:provider/provider.dart'; // Provider用
 import '../../generated/l10n.dart';
 import '../../providers/timing_chart_controller.dart';
 
-// Add translation support
+// 翻訳サポート用
 
-/// Layout calculation data structure for timing chart rendering.
+/// タイミングチャートのレンダリングに必要なレイアウト計算データ構造
 /// 
-/// This class holds all computed layout values needed to render the timing chart,
-/// including cell dimensions, zoom factors, and visible signal indexes.
-/// These values are calculated once per layout pass and reused throughout rendering.
+/// このクラスは、タイミングチャートをレンダリングするために必要なすべての計算済みレイアウト値を保持します。
+/// セルの寸法、ズーム係数、表示可能な信号インデックスなどが含まれます。
+/// これらの値はレイアウトパスごとに一度計算され、レンダリング全体で再利用されます。
 class _ChartLayoutData {
-  /// List of visible signal row indexes after filtering by signal type
+  /// 信号タイプでフィルタリング後の表示可能な信号行インデックスのリスト
   final List<int> visibleIndexes;
   
-  /// Total number of time steps (may be fractional when using ms units)
+  /// 時間ステップの総数（ミリ秒単位を使用する場合は小数になる可能性がある）
   final double totalSteps;
   
-  /// Base cell width before zoom is applied
+  /// ズームが適用される前の基本セル幅
   final double baseCellWidth;
   
-  /// Minimum cell width required to show all content in viewport
+  /// ビューポート内のすべてのコンテンツを表示するために必要な最小セル幅
   final double minCellWidthForFullView;
   
-  /// Maximum allowed cell width based on zoom constraints
+  /// ズーム制約に基づく最大許可セル幅
   final double maxCellWidthAllowed;
   
-  /// Minimum zoom factor allowed for current view
+  /// 現在のビューで許可される最小ズーム係数
   final double minZoomFactorForView;
   
-  /// Maximum zoom factor allowed for current view
+  /// 現在のビューで許可される最大ズーム係数
   final double maxZoomFactorForView;
   
-  /// Effective zoom factor after clamping to min/max bounds
+  /// 最小/最大境界にクランプされた後の実効ズーム係数
   final double effectiveZoomFactor;
   
-  /// Actual cell width used for rendering (baseCellWidth * effectiveZoomFactor)
+  /// レンダリングに使用される実際のセル幅（baseCellWidth * effectiveZoomFactor）
   final double cellWidth;
   
-  /// Height of each signal row cell
+  /// 各信号行セルの高さ
   final double cellHeight;
   
-  /// Total width of the chart content area
+  /// チャートコンテンツ領域の総幅
   final double totalWidth;
   
-  /// Total height of the chart content area including comment area
+  /// コメント領域を含むチャートコンテンツ領域の総高さ
   final double totalHeight;
   
-  /// Height reserved for annotation comments at the bottom
+  /// 下部に予約されているアノテーションコメント領域の高さ
   final double commentAreaHeight;
   
-  /// Maximum length of all signal arrays (longest signal)
+  /// すべての信号配列の最大長（最長の信号）
   final int maxLen;
 
   _ChartLayoutData({
@@ -89,24 +89,24 @@ class _ChartLayoutData {
   });
 }
 
-/// Helper class for time position calculations in timing charts.
+/// タイミングチャートでの時間位置計算用のヘルパークラス
 /// 
-/// Provides static utility methods for converting between pixel positions
-/// and time step indices, handling both step-based and millisecond-based time units.
+/// ピクセル位置と時間ステップインデックス間の変換を行う静的ユーティリティメソッドを提供します。
+/// ステップベースとミリ秒ベースの両方の時間単位を処理します。
 class _TimePositionCalculator {
-  /// Calculate cumulative step positions array for time unit conversion.
+  /// 時間単位変換用の累積ステップ位置配列を計算します
   /// 
-  /// When using millisecond units, each step may have a different duration.
-  /// This method calculates the cumulative position of each step boundary
-  /// in normalized step units (where 1.0 = one base step duration).
+  /// ミリ秒単位を使用する場合、各ステップの継続時間が異なる可能性があります。
+  /// このメソッドは、正規化されたステップ単位（1.0 = 1つの基本ステップ継続時間）で
+  /// 各ステップ境界の累積位置を計算します。
   /// 
-  /// Returns an array of length maxLen + 1, where pos[i] is the cumulative
-  /// position at the start of step i, and pos[maxLen] is the total position.
+  /// 長さmaxLen + 1の配列を返します。pos[i]はステップiの開始時の累積位置で、
+  /// pos[maxLen]は総位置です。
   /// 
-  /// [settings] - Settings containing msPerStep and time unit configuration
-  /// [maxLen] - Maximum number of time steps
-  /// [stepDurationsMs] - Array of durations in milliseconds for each step
-  /// Returns array of cumulative step positions
+  /// [settings] - msPerStepと時間単位設定を含む設定
+  /// [maxLen] - 時間ステップの最大数
+  /// [stepDurationsMs] - 各ステップの継続時間（ミリ秒）の配列
+  /// 累積ステップ位置の配列を返します
   static List<double> calculateStepPositions(
     SettingsNotifier settings,
     int maxLen,
@@ -123,18 +123,17 @@ class _TimePositionCalculator {
     return pos;
   }
 
-  /// Get time step index from relative X position in pixels.
+  /// ピクセル単位の相対X位置から時間ステップインデックスを取得します
   /// 
-  /// Converts a pixel position (relative to the start of the wave area)
-  /// into the corresponding time step index. Handles both step-based
-  /// and millisecond-based time units correctly.
+  /// ピクセル位置（波形領域の開始位置からの相対位置）を対応する時間ステップインデックスに変換します。
+  /// ステップベースとミリ秒ベースの両方の時間単位を正しく処理します。
   /// 
-  /// [relX] - X position in pixels relative to wave area start
-  /// [cellWidth] - Width of one cell in pixels
-  /// [settings] - Settings containing time unit configuration
-  /// [maxLen] - Maximum number of time steps
-  /// [stepDurationsMs] - Array of durations in milliseconds for each step
-  /// Returns the time step index, or -1 if invalid
+  /// [relX] - 波形領域の開始位置からの相対X位置（ピクセル）
+  /// [cellWidth] - 1つのセルの幅（ピクセル）
+  /// [settings] - 時間単位設定を含む設定
+  /// [maxLen] - 時間ステップの最大数
+  /// [stepDurationsMs] - 各ステップの継続時間（ミリ秒）の配列
+  /// 時間ステップインデックスを返します。無効な場合は-1を返します
   static int getTimeIndexFromPosition(
     double relX,
     double cellWidth,
@@ -157,46 +156,46 @@ class _TimePositionCalculator {
   }
 }
 
-/// A StatefulWidget that displays an interactive timing diagram chart.
+/// インタラクティブなタイミング図チャートを表示するStatefulWidget
 /// 
-/// This widget renders a timing chart showing signal waveforms over time,
-/// with support for zooming, panning, editing, annotations, and various
-/// display modes. It handles both step-based and millisecond-based time units.
+/// このウィジェットは、時間経過に伴う信号波形を表示するタイミングチャートをレンダリングします。
+/// ズーム、パン、編集、アノテーション、およびさまざまな表示モードをサポートします。
+/// ステップベースとミリ秒ベースの両方の時間単位を処理します。
 class TimingChart extends StatefulWidget {
-  /// Initial signal names (IDs) for each signal row
+  /// 各信号行の初期信号名（ID）
   final List<String> initialSignalNames;
   
-  /// Initial signal data: list of signal rows, each row is a list of 0/1 values over time
+  /// 初期信号データ：信号行のリスト。各行は時間経過に伴う0/1値のリスト
   final List<List<int>> initialSignals;
   
-  /// Initial annotations (comments) to display on the chart
+  /// チャートに表示する初期アノテーション（コメント）
   final List<TimingChartAnnotation> initialAnnotations;
   
-  /// Signal types for each signal row (input, output, control, etc.)
+  /// 各信号行の信号タイプ（入力、出力、制御など）
   final List<SignalType> signalTypes;
   
-  /// Optional controller for managing chart state and undo/redo
+  /// チャート状態とアンドゥ/リドゥを管理するオプションのコントローラー
   final TimingChartController? controller;
   
-  /// Whether to automatically fit chart to screen size
+  /// チャートを画面サイズに自動的にフィットするかどうか
   final bool fitToScreen;
 
-  /// Whether to show all signal types including control/group/task signals
+  /// 制御/グループ/タスク信号を含むすべての信号タイプを表示するかどうか
   final bool showAllSignalTypes;
   
-  /// Whether to show IO port numbers in signal labels
+  /// 信号ラベルにIOポート番号を表示するかどうか
   final bool showIoNumbers;
   
-  /// Port numbers for each signal (used when showIoNumbers is true)
+  /// 各信号のポート番号（showIoNumbersがtrueの場合に使用）
   final List<int> portNumbers;
   
-  /// IO channel sources for each signal (PLC, EIP, etc.)
+  /// 各信号のIOチャネルソース（PLC、EIPなど）
   final List<IoChannelSource> ioSources;
   
-  /// PLC/EIP mode setting ('PLC', 'EIP', or 'None')
+  /// PLC/EIPモード設定（'PLC'、'EIP'、または'None'）
   final String plcEipMode;
   
-  /// Callback invoked when signal values are changed by user interaction
+  /// ユーザー操作によって信号値が変更されたときに呼び出されるコールバック
   final void Function(
     List<String> names,
     List<List<int>> values,
@@ -224,112 +223,111 @@ class TimingChart extends StatefulWidget {
   State<TimingChart> createState() => TimingChartState();
 }
 
-/// State class for the TimingChart widget.
+/// TimingChartウィジェットのStateクラス
 /// 
-/// Manages all chart state including signals, annotations, zoom, selection,
-/// and user interactions. Uses AutomaticKeepAliveClientMixin to preserve
-/// state when widget is not visible.
+/// 信号、アノテーション、ズーム、選択、ユーザー操作を含むすべてのチャート状態を管理します。
+/// AutomaticKeepAliveClientMixinを使用して、ウィジェットが表示されていないときに状態を保持します。
 class TimingChartState extends State<TimingChart>
     with AutomaticKeepAliveClientMixin {
-  /// Controller for managing chart state and undo/redo operations
+  /// チャート状態とアンドゥ/リドゥ操作を管理するコントローラー
   TimingChartController? _controller;
   
-  /// Callback listener for controller state changes
+  /// コントローラーの状態変更用のコールバックリスナー
   late final VoidCallback _controllerListener;
   
-  /// Signal names in their original ID form (before translation)
+  /// 元のID形式の信号名（翻訳前）
   late List<String> _idSignalNames;
   
-  /// Callback listener for language changes (for signal name translation)
+  /// 言語変更用のコールバックリスナー（信号名の翻訳用）
   late final VoidCallback _langListener;
 
   @override
   bool get wantKeepAlive => true;
 
-  /// Signal data: list of rows, each row contains 0/1 values for each time step
+  /// 信号データ：行のリスト。各行には各時間ステップの0/1値が含まれます
   late List<List<int>> signals;
   
-  /// Display names for signals (may be translated from IDs)
+  /// 信号の表示名（IDから翻訳された可能性がある）
   late List<String> signalNames;
   
-  /// Annotations (comments) displayed on the chart
+  /// チャートに表示されるアノテーション（コメント）
   late List<TimingChartAnnotation> annotations;
   
-  /// Time step indices to highlight with special visual styling
+  /// 特別な視覚的スタイリングでハイライトする時間ステップインデックス
   List<int> _highlightTimeIndices = [];
   
-  /// Time step indices where omission marks (wavy lines) should be drawn
+  /// 省略マーク（波線）を描画する時間ステップインデックス
   List<int> _omissionTimeIndices = [];
   
-  /// List of signal row indexes that are currently visible (after filtering)
+  /// 現在表示されている信号行インデックスのリスト（フィルタリング後）
   List<int> _visibleIndexes = [];
 
-  /// Whether user is currently dragging a signal label to reorder rows
+  /// ユーザーが現在信号ラベルをドラッグして行を並べ替えているかどうか
   bool _isLabelDrag = false;
   
-  /// Starting row index when dragging a label
+  /// ラベルをドラッグする際の開始行インデックス
   int? _labelDragStartRow;
   
-  /// Current row index during label drag operation
+  /// ラベルドラッグ操作中の現在の行インデックス
   int? _labelDragCurrentRow;
 
-  /// Width of each time step cell in pixels
+  /// 各時間ステップセルの幅（ピクセル）
   double _cellWidth = 40;
   
-  /// Height of each signal row cell in pixels
+  /// 各信号行セルの高さ（ピクセル）
   double _cellHeight = 40;
   
-  /// Horizontal zoom factor (1.0 = no zoom, >1.0 = zoomed in)
+  /// 水平ズーム係数（1.0 = ズームなし、>1.0 = ズームイン）
   double _zoomFactor = 1.0;
   
-  /// Effective zoom factor after clamping to min/max bounds
+  /// 最小/最大境界にクランプされた後の実効ズーム係数
   double _effectiveZoomFactor = 1.0;
   
-  /// Minimum zoom factor allowed for current view
+  /// 現在のビューで許可される最小ズーム係数
   double _minZoomFactorForView = 1.0;
   
-  /// Maximum zoom factor allowed for current view
+  /// 現在のビューで許可される最大ズーム係数
   double _maxZoomFactorForView = 10.0;
   
-  /// Absolute minimum zoom factor (hard limit)
+  /// 絶対最小ズーム係数（ハードリミット）
   static const double _minZoom = 0.1;
   
-  /// Step size for zoom in/out operations
+  /// ズームイン/アウト操作のステップサイズ
   static const double _zoomStep = 0.25;
   
-  /// Minimum allowed cell width in pixels
+  /// 許可される最小セル幅（ピクセル）
   static const double _minZoomCellWidth = 2.0;
   
-  /// Maximum allowed cell width in pixels
+  /// 許可される最大セル幅（ピクセル）
   static const double _maxZoomCellWidth = 20000.0;
   
-  /// Default pixel ratio for chart export/capture
+  /// チャートエクスポート/キャプチャ用のデフォルトピクセル比
   static const double _defaultExportPixelRatio = 3.0;
   
-  /// Maximum pixel ratio for chart export/capture
+  /// チャートエクスポート/キャプチャ用の最大ピクセル比
   static const double _maxExportPixelRatio = 6.0;
 
-  /// Whether modifier key (Ctrl/Cmd) is currently pressed
+  /// 修飾キー（Ctrl/Cmd）が現在押されているかどうか
   bool _isModifierPressed = false;
   
-  /// Width of the signal label area on the left side
+  /// 左側の信号ラベル領域の幅
   final double labelWidth = 200.0;
   
-  /// Minimum height for the comment area at bottom
+  /// 下部のコメント領域の最小高さ
   static const double _minCommentAreaHeight = 100.0;
 
-  /// Bottom margin when no comments are present
+  /// コメントがない場合の下部マージン
   static const double _noCommentBottomMargin = 40.0;
 
-  /// Whether to show advanced timing controls (currently always false)
+  /// 高度なタイミング制御を表示するかどうか（現在は常にfalse）
   bool get _showAdvancedTimingControls => false;
 
-  /// Calculate the height needed for the comment area at the bottom of the chart.
+  /// チャート下部のコメント領域に必要な高さを計算します
   /// 
-  /// The height is based on the number of annotations, with a minimum height
-  /// to ensure readability. Returns a fixed margin if there are no annotations.
+  /// 高さはアノテーションの数に基づいており、可読性を確保するための最小高さがあります。
+  /// アノテーションがない場合は固定マージンを返します。
   /// 
-  /// Returns the calculated height in pixels
+  /// 計算された高さ（ピクセル）を返します
   double _calculateCommentAreaHeight() {
     if (annotations.isEmpty) return _noCommentBottomMargin;
 
@@ -343,11 +341,11 @@ class TimingChartState extends State<TimingChart>
     return math.max(_minCommentAreaHeight, expanded);
   }
 
-  /// Zoom the chart to fit the currently selected time range.
+  /// チャートを現在選択されている時間範囲にフィットするようにズームします
   /// 
-  /// Calculates the appropriate zoom factor to make the selected time range
-  /// fill the viewport, then adjusts scroll position to keep the selection visible.
-  /// Only works when there is a valid selection.
+  /// 選択された時間範囲がビューポートを埋めるように適切なズーム係数を計算し、
+  /// その後、選択範囲が見えるようにスクロール位置を調整します。
+  /// 有効な選択がある場合にのみ機能します。
   void _zoomToSelectionFit() {
     if (!_hasValidSelection) return;
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
@@ -442,64 +440,64 @@ class TimingChartState extends State<TimingChart>
   final double chartMarginTop = 16.0;
   final double _fixedHeaderHeight = 48.0;
 
-  /// Starting signal row index of selection (in visible index space)
+  /// 選択の開始信号行インデックス（表示インデックス空間内）
   int? _startSignalIndex;
   
-  /// Ending signal row index of selection (in visible index space)
+  /// 選択の終了信号行インデックス（表示インデックス空間内）
   int? _endSignalIndex;
   
-  /// Starting time step index of selection
+  /// 選択の開始時間ステップインデックス
   int? _startTimeIndex;
   
-  /// Ending time step index of selection
+  /// 選択の終了時間ステップインデックス
   int? _endTimeIndex;
 
-  /// Last right-click position for context menu
+  /// コンテキストメニュー用の最後の右クリック位置
   Offset? _lastRightClickPos;
 
-  /// ID of currently selected annotation (if any)
+  /// 現在選択されているアノテーションのID（存在する場合）
   String? _selectedAnnotationId;
 
-  /// Map of annotation IDs to their hit test rectangles
+  /// アノテーションIDからそのヒットテスト矩形へのマップ
   Map<String, Rect> _annotationHitRects = {};
   
-  /// ID of annotation currently being dragged
+  /// 現在ドラッグされているアノテーションのID
   String? _draggingAnnotationId;
   
-  /// Local position where annotation drag started
+  /// アノテーションドラッグが開始されたローカル位置
   Offset? _draggingStartLocal;
   
-  /// Initial top-left position of annotation box when drag started
+  /// ドラッグ開始時のアノテーションボックスの初期左上位置
   Offset? _draggingInitialBoxTopLeft;
 
-  /// Global position where pan/drag gesture started
+  /// パン/ドラッグジェスチャーが開始されたグローバル位置
   Offset? _dragStartGlobal;
 
-  /// Key for the CustomPaint widget that renders the chart
+  /// チャートをレンダリングするCustomPaintウィジェットのキー
   final GlobalKey _customPaintKey = GlobalKey();
   
-  /// Key for the RepaintBoundary around the chart content
+  /// チャートコンテンツ周辺のRepaintBoundaryのキー
   final GlobalKey _repaintBoundaryKey = GlobalKey();
   
-  /// Key for the RepaintBoundary around the viewport
+  /// ビューポート周辺のRepaintBoundaryのキー
   final GlobalKey _viewportBoundaryKey = GlobalKey();
   
-  /// Horizontal scroll controller for chart content
+  /// チャートコンテンツの水平スクロールコントローラー
   final ScrollController _hScrollController = ScrollController();
   
-  /// Vertical scroll controller for chart content
+  /// チャートコンテンツの垂直スクロールコントローラー
   final ScrollController _vScrollController = ScrollController();
 
-  /// Whether step duration editing mode is active
+  /// ステップ継続時間編集モードがアクティブかどうか
   bool _isEditingSteps = false;
   
-  /// Index of the step boundary currently being edited (when editing mode is on)
+  /// 現在編集中のステップ境界のインデックス（編集モードがオンの場合）
   int? _activeStepIndex;
 
-  /// Initialize the state when the widget is first created.
+  /// ウィジェットが最初に作成されたときに状態を初期化します
   /// 
-  /// Sets up signal names, translations, keyboard handlers, and controller.
-  /// Registers listeners for language changes and controller updates.
+  /// 信号名、翻訳、キーボードハンドラー、コントローラーを設定します。
+  /// 言語変更とコントローラー更新のリスナーを登録します。
   @override
   void initState() {
     super.initState();
@@ -574,10 +572,10 @@ class TimingChartState extends State<TimingChart>
     _controller!.addListener(_controllerListener);
   }
 
-  /// Reset all grid adjustments including zoom, selection, and scroll position.
+  /// ズーム、選択、スクロール位置を含むすべてのグリッド調整をリセットします
   /// 
-  /// Called when the grid is reset from the controller. Resets zoom to 1.0,
-  /// clears selection and highlights, and scrolls to top-left.
+  /// コントローラーからグリッドがリセットされたときに呼び出されます。
+  /// ズームを1.0にリセットし、選択とハイライトをクリアし、左上にスクロールします。
   void resetGridAdjustments() {
     setState(() {
       _zoomFactor = 1.0;
@@ -601,9 +599,9 @@ class TimingChartState extends State<TimingChart>
     _forceRepaint();
   }
 
-  /// Update signal data from external source.
+  /// 外部ソースから信号データを更新します
   /// 
-  /// [newSignals] - New signal data to replace current signals
+  /// [newSignals] - 現在の信号を置き換える新しい信号データ
   void updateSignals(List<List<int>> newSignals) {
     setState(() {
       signals = newSignals.map((list) => List<int>.from(list)).toList();
@@ -612,9 +610,9 @@ class TimingChartState extends State<TimingChart>
     _controller?.setSignals(signals);
   }
 
-  /// Notify parent widget that signals have changed.
+  /// 親ウィジェットに信号が変更されたことを通知します
   /// 
-  /// Invokes the onSignalsChanged callback if provided.
+  /// 提供されている場合はonSignalsChangedコールバックを呼び出します。
   void _notifySignalsChanged() {
     final callback = widget.onSignalsChanged;
     if (callback == null) return;
@@ -626,17 +624,17 @@ class TimingChartState extends State<TimingChart>
     callback(names, values, types);
   }
 
-  /// Commit signal changes from chart editing to controller and notify parent.
+  /// チャート編集からの信号変更をコントローラーにコミットし、親に通知します
   /// 
-  /// Called after user edits signals directly on the chart.
+  /// ユーザーがチャート上で直接信号を編集した後に呼び出されます。
   void _commitSignalsFromChartEdit() {
     _controller?.setSignals(signals);
     _notifySignalsChanged();
   }
 
-  /// Update annotations from external source.
+  /// 外部ソースからアノテーションを更新します
   /// 
-  /// [newAnnotations] - New annotations to replace current ones
+  /// [newAnnotations] - 現在のアノテーションを置き換える新しいアノテーション
   void updateAnnotations(List<TimingChartAnnotation> newAnnotations) {
     setState(() {
       annotations = List.from(newAnnotations);
@@ -645,9 +643,9 @@ class TimingChartState extends State<TimingChart>
     _controller?.setAnnotations(annotations);
   }
 
-  /// Update signal names from external source.
+  /// 外部ソースから信号名を更新します
   /// 
-  /// [newIdNames] - New signal ID names to replace current ones
+  /// [newIdNames] - 現在の信号名を置き換える新しい信号ID名
   void updateSignalNames(List<String> newIdNames) {
     if (listEquals(_idSignalNames, newIdNames)) {
       return;
@@ -660,10 +658,10 @@ class TimingChartState extends State<TimingChart>
     _translateNames();
   }
 
-  /// Translate signal names from IDs to display names based on current language.
+  /// 現在の言語に基づいて信号名をIDから表示名に翻訳します
   /// 
-  /// Asynchronously loads translations for all signal names and updates
-  /// the display names. Handles names with colon prefixes (e.g., "Type: id").
+  /// すべての信号名の翻訳を非同期で読み込み、表示名を更新します。
+  /// コロンプレフィックス付きの名前（例：「Type: id」）を処理します。
   void _translateNames() async {
     final translated = await Future.wait(
       _idSignalNames.map((id) async {
@@ -754,13 +752,13 @@ class TimingChartState extends State<TimingChart>
     return true;
   }
 
-  /// Check if there is a valid selection range.
+  /// 有効な選択範囲があるかどうかを確認します
   /// 
-  /// A selection is valid if all four indices are set and within bounds:
-  /// - Signal indices must be within visible signal range
-  /// - Time indices must be within signal data range
+  /// 4つのインデックスがすべて設定され、範囲内にある場合、選択は有効です：
+  /// - 信号インデックスは表示信号範囲内である必要があります
+  /// - 時間インデックスは信号データ範囲内である必要があります
   /// 
-  /// Returns true if selection is valid, false otherwise
+  /// 選択が有効な場合はtrueを返し、それ以外の場合はfalseを返します
   bool get _hasValidSelection {
     if (_startSignalIndex == null ||
         _endSignalIndex == null ||
@@ -788,13 +786,13 @@ class TimingChartState extends State<TimingChart>
         edTime <= maxTime;
   }
 
-  /// Get time step index from X coordinate (dx) in widget coordinates.
+  /// ウィジェット座標のX座標（dx）から時間ステップインデックスを取得します
   /// 
-  /// Converts a pixel position to a time step index, accounting for
-  /// scroll offset and label area width. Handles both step and ms time units.
+  /// ピクセル位置を時間ステップインデックスに変換します。
+  /// スクロールオフセットとラベル領域の幅を考慮します。ステップとミリ秒の両方の時間単位を処理します。
   /// 
-  /// [dx] - X coordinate in widget local coordinates
-  /// Returns time step index, or -1 if invalid
+  /// [dx] - ウィジェットローカル座標のX座標
+  /// 時間ステップインデックスを返します。無効な場合は-1を返します
   int _getTimeIndexFromDx(double dx) {
     final double chartX =
         dx -
@@ -818,13 +816,13 @@ class TimingChartState extends State<TimingChart>
     );
   }
 
-  /// Get signal row index from Y coordinate (dy) in widget coordinates.
+  /// ウィジェット座標のY座標（dy）から信号行インデックスを取得します
   /// 
-  /// Converts a pixel position to a signal row index, accounting for
-  /// scroll offset and chart margin. Returns the visible signal index.
+  /// ピクセル位置を信号行インデックスに変換します。
+  /// スクロールオフセットとチャートマージンを考慮します。表示信号インデックスを返します。
   /// 
-  /// [dy] - Y coordinate in widget local coordinates
-  /// Returns visible signal row index, or -1 if invalid
+  /// [dy] - ウィジェットローカル座標のY座標
+  /// 表示信号行インデックスを返します。無効な場合は-1を返します
   int _getSignalIndexFromDy(double dy) {
     final adjustedY =
         dy -
@@ -838,10 +836,10 @@ class TimingChartState extends State<TimingChart>
     return index;
   }
 
-  /// Clear the current selection range.
+  /// 現在の選択範囲をクリアします
   /// 
-  /// Resets all selection indices (signal and time) to null.
-  /// Only updates state if there was an active selection.
+  /// すべての選択インデックス（信号と時間）をnullにリセットします。
+  /// アクティブな選択があった場合にのみ状態を更新します。
   void _clearSelection() {
     if (_startSignalIndex == null &&
         _startTimeIndex == null &&
@@ -857,14 +855,14 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  /// Handle tap gesture on the chart.
+  /// チャート上のタップジェスチャーを処理します
   /// 
-  /// Processes tap events to handle annotation selection, signal row selection,
-  /// and signal value toggling. If tapping on a label area, selects the entire row.
-  /// If tapping on a signal cell, toggles its value. If tapping within an existing
-  /// selection, toggles all signals in that selection.
+  /// タップイベントを処理して、アノテーション選択、信号行選択、信号値の切り替えを行います。
+  /// ラベル領域をタップすると、行全体が選択されます。
+  /// 信号セルをタップすると、その値が切り替わります。
+  /// 既存の選択範囲内をタップすると、その選択範囲内のすべての信号が切り替わります。
   /// 
-  /// [details] - Tap gesture details containing tap position
+  /// [details] - タップ位置を含むタップジェスチャーの詳細
   void _handleTap(TapUpDetails details) {
     final chartLocalPos = details.localPosition;
     final adjustedPos = Offset(
@@ -995,13 +993,13 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  /// Toggle a single signal value at the specified position.
+  /// 指定された位置の単一信号値を切り替えます
   /// 
-  /// Flips the signal value (0 to 1, or 1 to 0) at the given visible row
-  /// and time step index. Updates the chart state and commits changes.
+  /// 指定された表示行と時間ステップインデックスで信号値を反転します（0から1、または1から0）。
+  /// チャート状態を更新し、変更をコミットします。
   /// 
-  /// [visibleRow] - Visible signal row index
-  /// [time] - Time step index
+  /// [visibleRow] - 表示信号行インデックス
+  /// [time] - 時間ステップインデックス
   void _toggleSingleSignal(int visibleRow, int time) {
     if (visibleRow >= 0 && visibleRow < _visibleIndexes.length) {
       final originalRow = _visibleIndexes[visibleRow];
@@ -1017,13 +1015,12 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  /// Handle pan gesture start.
+  /// パンジェスチャーの開始を処理します
   /// 
-  /// Initiates drag operations for annotations, signal row reordering,
-  /// or selection range. Determines the type of drag based on the starting
-  /// position (annotation, label area, or chart area).
+  /// アノテーション、信号行の並べ替え、または選択範囲のドラッグ操作を開始します。
+  /// 開始位置（アノテーション、ラベル領域、またはチャート領域）に基づいてドラッグのタイプを決定します。
   /// 
-  /// [details] - Pan gesture start details containing initial position
+  /// [details] - 初期位置を含むパンジェスチャー開始の詳細
   void _onPanStart(DragStartDetails details) {
     final box = context.findRenderObject() as RenderBox?;
     if (box == null) return;
@@ -1091,13 +1088,12 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  /// Handle pan gesture update.
+  /// パンジェスチャーの更新を処理します
   /// 
-  /// Updates the current drag operation. Handles annotation dragging,
-  /// signal row reordering, or selection range expansion based on the
-  /// active drag type.
+  /// 現在のドラッグ操作を更新します。アクティブなドラッグタイプに基づいて、
+  /// アノテーションのドラッグ、信号行の並べ替え、または選択範囲の拡張を処理します。
   /// 
-  /// [details] - Pan gesture update details containing current position
+  /// [details] - 現在の位置を含むパンジェスチャー更新の詳細
   void _onPanUpdate(DragUpdateDetails details) {
     if (_draggingAnnotationId != null &&
         _draggingStartLocal != null &&
@@ -1173,13 +1169,13 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  /// Handle pan gesture end.
+  /// パンジェスチャーの終了を処理します
   /// 
-  /// Completes the drag operation. For annotation dragging, finalizes position.
-  /// For signal row reordering, applies the reorder if valid. For selection,
-  /// clears selection if it's a single point.
+  /// ドラッグ操作を完了します。アノテーションのドラッグの場合、位置を確定します。
+  /// 信号行の並べ替えの場合、有効であれば並べ替えを適用します。
+  /// 選択の場合、単一点の場合は選択をクリアします。
   /// 
-  /// [details] - Pan gesture end details
+  /// [details] - パンジェスチャー終了の詳細
   void _onPanEnd(DragEndDetails details) {
     if (_draggingAnnotationId != null) {
       setState(() {
@@ -1221,14 +1217,14 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  // =====step duration editing =====
+  // =====ステップ継続時間編集=====
   
-  /// Handle pan gesture start for step duration editing mode.
+  /// ステップ継続時間編集モード用のパンジェスチャー開始を処理します
   /// 
-  /// When editing step durations, finds the nearest step boundary to the
-  /// starting position and sets it as the active step index for dragging.
+  /// ステップ継続時間を編集する際、開始位置に最も近いステップ境界を見つけ、
+  /// それをドラッグ用のアクティブなステップインデックスとして設定します。
   /// 
-  /// [details] - Pan gesture start details containing initial position
+  /// [details] - 初期位置を含むパンジェスチャー開始の詳細
   void _onPanStartEditSteps(DragStartDetails details) {
     if (!_isEditingSteps) return;
     final chartLocalPos = details.localPosition;
@@ -1265,12 +1261,12 @@ class TimingChartState extends State<TimingChart>
     setState(() => _activeStepIndex = nearest);
   }
 
-  /// Handle pan gesture update for step duration editing mode.
+  /// ステップ継続時間編集モード用のパンジェスチャー更新を処理します
   /// 
-  /// Updates the duration of the active step boundary based on the current
-  /// drag position. Calculates new duration in milliseconds and updates settings.
+  /// 現在のドラッグ位置に基づいてアクティブなステップ境界の継続時間を更新します。
+  /// ミリ秒単位で新しい継続時間を計算し、設定を更新します。
   /// 
-  /// [details] - Pan gesture update details containing current position
+  /// [details] - 現在の位置を含むパンジェスチャー更新の詳細
   void _onPanUpdateEditSteps(DragUpdateDetails details) {
     if (!_isEditingSteps || _activeStepIndex == null) return;
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
@@ -1310,12 +1306,12 @@ class TimingChartState extends State<TimingChart>
     settings.setStepDurationsMs(list);
   }
 
-  /// Handle pan gesture end for step duration editing mode.
+  /// ステップ継続時間編集モード用のパンジェスチャー終了を処理します
   /// 
-  /// Exits step duration editing mode and clears the active step index.
-  /// Resets step durations list to trigger recalculation.
+  /// ステップ継続時間編集モードを終了し、アクティブなステップインデックスをクリアします。
+  /// 再計算をトリガーするためにステップ継続時間リストをリセットします。
   /// 
-  /// [details] - Pan gesture end details
+  /// [details] - パンジェスチャー終了の詳細
   void _onPanEndEditSteps(DragEndDetails details) {
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
     settings.setStepDurationsMs([]);
@@ -1325,18 +1321,18 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  /// Find nearest step index from relative X position with snap distance.
+  /// スナップ距離を考慮して相対X位置から最も近いステップインデックスを見つけます
   /// 
-  /// Calculates which time step boundary is closest to the given X position.
-  /// If within snap distance, returns that boundary index. Otherwise, returns
-  /// the step index containing that position.
+  /// 指定されたX位置に最も近い時間ステップ境界を計算します。
+  /// スナップ距離内にある場合は、その境界インデックスを返します。
+  /// それ以外の場合は、その位置を含むステップインデックスを返します。
   /// 
-  /// [relX] - Relative X position in pixels (from label area start)
-  /// [settings] - Settings containing time unit configuration
-  /// [maxLen] - Maximum number of time steps
-  /// [stepDurationsMs] - Array of step durations in milliseconds
-  /// [snapDistance] - Maximum pixel distance for snapping to boundary
-  /// Returns the nearest step index
+  /// [relX] - 相対X位置（ピクセル、ラベル領域の開始位置から）
+  /// [settings] - 時間単位設定を含む設定
+  /// [maxLen] - 時間ステップの最大数
+  /// [stepDurationsMs] - ステップ継続時間（ミリ秒）の配列
+  /// [snapDistance] - 境界にスナップするための最大ピクセル距離
+  /// 最も近いステップインデックスを返します
   int _findNearestStepIndex(
     double relX,
     SettingsNotifier settings,
@@ -1376,12 +1372,12 @@ class TimingChartState extends State<TimingChart>
     return math.max(0, maxLen - 1);
   }
 
-  /// Handle tap gesture in step duration editing mode.
+  /// ステップ継続時間編集モードでのタップジェスチャーを処理します
   /// 
-  /// When tapping in edit mode, either snaps to a nearby step boundary
-  /// or opens a dialog to manually enter the duration for the tapped step.
+  /// 編集モードでタップすると、近くのステップ境界にスナップするか、
+  /// タップされたステップの継続時間を手動で入力するダイアログを開きます。
   /// 
-  /// [details] - Tap gesture details containing tap position
+  /// [details] - タップ位置を含むタップジェスチャーの詳細
   void _onTapUpEditSteps(TapUpDetails details) {
     if (!_isEditingSteps) return;
     final chartLocalPos = details.localPosition;
@@ -1472,12 +1468,12 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  /// Handle long press gesture start.
+  /// 長押しジェスチャーの開始を処理します
   /// 
-  /// Initiates annotation dragging when long pressing on an annotation.
-  /// Sets up drag state variables for the annotation.
+  /// アノテーションを長押しすると、アノテーションのドラッグを開始します。
+  /// アノテーション用のドラッグ状態変数を設定します。
   /// 
-  /// [details] - Long press gesture start details containing initial position
+  /// [details] - 初期位置を含む長押しジェスチャー開始の詳細
   void _onLongPressStart(LongPressStartDetails details) {
     final chartLocalPos = details.localPosition;
     final adjustedPos = Offset(
@@ -1502,12 +1498,12 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  /// Handle long press gesture move update.
+  /// 長押しジェスチャーの移動更新を処理します
   /// 
-  /// Updates annotation position during long press drag. Clamps movement
-  /// to prevent dragging above the chart area.
+  /// 長押しドラッグ中にアノテーションの位置を更新します。
+  /// チャート領域の上にドラッグしないように移動をクランプします。
   /// 
-  /// [details] - Long press gesture move update details containing current position
+  /// [details] - 現在の位置を含む長押しジェスチャー移動更新の詳細
   void _onLongPressMoveUpdate(LongPressMoveUpdateDetails details) {
     if (_draggingAnnotationId == null || _draggingStartLocal == null) return;
     final chartLocalPos = details.localPosition;
@@ -1547,11 +1543,11 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  /// Handle long press gesture end.
+  /// 長押しジェスチャーの終了を処理します
   /// 
-  /// Completes annotation dragging and clears drag state variables.
+  /// アノテーションのドラッグを完了し、ドラッグ状態変数をクリアします。
   /// 
-  /// [details] - Long press gesture end details
+  /// [details] - 長押しジェスチャー終了の詳細
   void _onLongPressEnd(LongPressEndDetails details) {
     if (_draggingAnnotationId != null) {
       setState(() {
@@ -1563,15 +1559,15 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  /// Show context menu at the specified position.
+  /// 指定された位置にコンテキストメニューを表示します
   /// 
-  /// Displays a context menu with actions based on what was right-clicked:
-  /// - If clicking on an annotation: edit/delete annotation options
-  /// - If clicking on chart area: selection manipulation options
-  /// Handles menu item selection and executes the corresponding action.
+  /// 右クリックされたものに基づいてアクションを含むコンテキストメニューを表示します：
+  /// - アノテーションをクリックした場合：アノテーションの編集/削除オプション
+  /// - チャート領域をクリックした場合：選択操作オプション
+  /// メニュー項目の選択を処理し、対応するアクションを実行します。
   /// 
-  /// [context] - Build context for showing the menu
-  /// [position] - Global position where the menu should appear
+  /// [context] - メニューを表示するためのビルドコンテキスト
+  /// [position] - メニューが表示されるグローバル位置
   void _showContextMenu(BuildContext context, Offset position) async {
     final RenderBox overlay =
         Overlay.of(context).context.findRenderObject() as RenderBox;
@@ -1767,10 +1763,10 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  /// Show dialog to add a new single-point annotation.
+  /// 新しい単一点アノテーションを追加するダイアログを表示します
   /// 
-  /// Opens a dialog at the last right-click position allowing the user
-  /// to enter text for a new annotation at a specific time step.
+  /// 最後の右クリック位置でダイアログを開き、ユーザーが特定の時間ステップで
+  /// 新しいアノテーションのテキストを入力できるようにします。
   Future<void> _showAddCommentDialog() async {
     if (_lastRightClickPos == null) return;
 
@@ -1836,10 +1832,10 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  /// Show dialog to add a new range annotation.
+  /// 新しい範囲アノテーションを追加するダイアログを表示します
   /// 
-  /// Opens a dialog allowing the user to enter text for a new annotation
-  /// that spans the currently selected time range.
+  /// 現在選択されている時間範囲にまたがる新しいアノテーションのテキストを
+  /// ユーザーが入力できるダイアログを開きます。
   Future<void> _showAddRangeCommentDialog() async {
     if (!_hasValidSelection) return;
 
@@ -1899,12 +1895,12 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  /// Edit an existing annotation's text.
+  /// 既存のアノテーションのテキストを編集します
   /// 
-  /// Opens a dialog allowing the user to modify the text of the annotation
-  /// with the given ID. Updates the annotation if text is changed.
+  /// 指定されたIDのアノテーションのテキストをユーザーが変更できるダイアログを開きます。
+  /// テキストが変更された場合はアノテーションを更新します。
   /// 
-  /// [annId] - ID of the annotation to edit
+  /// [annId] - 編集するアノテーションのID
   void _editComment(String annId) async {
     final ann = annotations.firstWhereOrNull((a) => a.id == annId);
     if (ann == null) return;
@@ -1958,12 +1954,12 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  /// Delete an annotation.
+  /// アノテーションを削除します
   /// 
-  /// Removes the annotation with the given ID from the chart.
-  /// Also clears selection if this annotation was selected.
+  /// 指定されたIDのアノテーションをチャートから削除します。
+  /// このアノテーションが選択されていた場合は、選択もクリアします。
   /// 
-  /// [annId] - ID of the annotation to delete
+  /// [annId] - 削除するアノテーションのID
   void _deleteComment(String annId) {
     final index = annotations.indexWhere((a) => a.id == annId);
     if (index == -1) return;
@@ -1977,10 +1973,10 @@ class TimingChartState extends State<TimingChart>
     _controller?.setAnnotations(annotations);
   }
 
-  /// Toggle all signal values within the current selection.
+  /// 現在の選択範囲内のすべての信号値を切り替えます
   /// 
-  /// Flips all signal values (0 to 1, or 1 to 0) in the selected range
-  /// for all selected signal rows. Commits changes to controller.
+  /// 選択されたすべての信号行について、選択範囲内のすべての信号値を反転します（0から1、または1から0）。
+  /// 変更をコントローラーにコミットします。
   void _toggleSignalsInSelection() {
     if (!_hasValidSelection) return;
     final stSig = math.min(_startSignalIndex!, _endSignalIndex!);
@@ -2005,11 +2001,10 @@ class TimingChartState extends State<TimingChart>
     _commitSignalsFromChartEdit();
   }
 
-  /// Insert zero values into the selected range.
+  /// 選択範囲にゼロ値を挿入します
   /// 
-  /// Inserts a number of zero values equal to the selection width at the
-  /// start of the selection for all selected signal rows. This effectively
-  /// shifts existing values to the right.
+  /// 選択されたすべての信号行について、選択範囲の開始位置に選択幅に等しい数のゼロ値を挿入します。
+  /// これにより、既存の値が右にシフトされます。
   void _insertZerosToSelection() {
     if (!_hasValidSelection) return;
     final stSig = math.min(_startSignalIndex!, _endSignalIndex!);
@@ -2034,14 +2029,14 @@ class TimingChartState extends State<TimingChart>
     _commitSignalsFromChartEdit();
   }
 
-  /// Delete time columns at the specified range.
+  /// 指定された範囲の時間列を削除します
   /// 
-  /// Removes time steps from all signals within the given time range.
-  /// Also updates step durations, omission indices, and annotations to
-  /// reflect the deletion. This is used when deleting entire columns.
+  /// 指定された時間範囲内のすべての信号から時間ステップを削除します。
+  /// 削除を反映するために、ステップ継続時間、省略インデックス、アノテーションも更新します。
+  /// これは列全体を削除する際に使用されます。
   /// 
-  /// [stTime] - Start time index (inclusive)
-  /// [edTime] - End time index (inclusive)
+  /// [stTime] - 開始時間インデックス（含む）
+  /// [edTime] - 終了時間インデックス（含む）
   void _deleteColumnsAtRange(int stTime, int edTime) {
     debugPrint('deleteColumnsAtRange: stTime=$stTime, edTime=$edTime');
     debugPrint('deleteColumnsAtRange: signals=${signals.map((e) => e.length).toList()}');
@@ -2142,11 +2137,11 @@ class TimingChartState extends State<TimingChart>
     _commitSignalsFromChartEdit();
   }
 
-  /// Delete the selected range from signals.
+  /// 信号から選択範囲を削除します
   /// 
-  /// Removes the selected time range from the selected signal rows.
-  /// If all visible signals are selected, delegates to column deletion.
-  /// Otherwise, removes only from the selected rows.
+  /// 選択された信号行から選択された時間範囲を削除します。
+  /// すべての表示信号が選択されている場合、列削除に委譲します。
+  /// それ以外の場合は、選択された行からのみ削除します。
   void _deleteRange() {
     // More tolerant: verify index existence, then safely clamp and process
     if (_startSignalIndex == null ||
@@ -2188,11 +2183,10 @@ class TimingChartState extends State<TimingChart>
     _commitSignalsFromChartEdit();
   }
 
-  /// Delete columns at the selected time range.
+  /// 選択された時間範囲の列を削除します
   /// 
-  /// Removes entire time columns (across all signals) for the selected
-  /// time range. More tolerant: only verifies time index existence,
-  /// then safely clamps and processes the range.
+  /// 選択された時間範囲について、時間列全体（すべての信号にわたる）を削除します。
+  /// より寛容：時間インデックスの存在のみを確認し、その後安全に範囲をクランプして処理します。
   void _deleteColumns() {
     // More tolerant: only verify time index existence, then safely clamp and process range
     if (_startTimeIndex == null || _endTimeIndex == null){
@@ -2212,11 +2206,11 @@ class TimingChartState extends State<TimingChart>
     _deleteColumnsAtRange(stTime, edTime);
   }
 
-  /// Duplicate the selected range to the end of signals.
+  /// 選択範囲を信号の末尾に複製します
   /// 
-  /// Copies the selected signal and time range, appending it to the end
-  /// of each selected signal row. Also duplicates annotations and omission
-  /// marks that fall within the selection. Updates step durations if using ms units.
+  /// 選択された信号と時間範囲をコピーし、各選択信号行の末尾に追加します。
+  /// 選択範囲内にあるアノテーションと省略マークも複製します。
+  /// ミリ秒単位を使用している場合は、ステップ継続時間を更新します。
   void _duplicateRange() {
     if (!_hasValidSelection) return;
 
@@ -2335,10 +2329,10 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  /// Normalize all signal lengths to match the longest signal.
+  /// すべての信号の長さを最長の信号に合わせて正規化します
   /// 
-  /// Pads shorter signals with zero values so all signals have the same length.
-  /// This ensures consistent time step counts across all signal rows.
+  /// 短い信号にゼロ値をパディングして、すべての信号が同じ長さになるようにします。
+  /// これにより、すべての信号行間で一貫した時間ステップ数が確保されます。
   void _normalizeSignalLengths() {
     if (signals.isEmpty) return;
 
@@ -2357,12 +2351,12 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  /// Toggle omission mark at the specified time index.
+  /// 指定された時間インデックスで省略マークを切り替えます
   /// 
-  /// Adds or removes a wavy line (omission mark) at the given time step.
-  /// Omission marks indicate that time steps are skipped or omitted.
+  /// 指定された時間ステップで波線（省略マーク）を追加または削除します。
+  /// 省略マークは、時間ステップがスキップまたは省略されていることを示します。
   /// 
-  /// [timeIndex] - Time step index to toggle omission mark
+  /// [timeIndex] - 省略マークを切り替える時間ステップインデックス
   void _toggleOmissionTime(int timeIndex) {
     if (timeIndex < 0) return;
     setState(() {
@@ -2376,9 +2370,9 @@ class TimingChartState extends State<TimingChart>
     _controller?.setOmissionTimeIndices(_omissionTimeIndices);
   }
 
-  /// Zoom in by one step.
+  /// 1ステップズームインします
   /// 
-  /// Increases zoom factor by _zoomStep, clamped to maximum allowed zoom.
+  /// ズーム係数を_zoomStepだけ増やし、最大許可ズームにクランプします。
   void _zoomIn() {
     final double current = math.max(_zoomFactor, _minZoomFactorForView);
     final double next = math.min(current + _zoomStep, _maxZoomFactorForView);
@@ -2388,9 +2382,9 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  /// Zoom out by one step.
+  /// 1ステップズームアウトします
   /// 
-  /// Decreases zoom factor by _zoomStep, clamped to minimum allowed zoom.
+  /// ズーム係数を_zoomStepだけ減らし、最小許可ズームにクランプします。
   void _zoomOut() {
     final double current = math.max(_zoomFactor, _minZoomFactorForView);
     final double next = math.max(current - _zoomStep, _minZoomFactorForView);
@@ -2400,10 +2394,9 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  /// Reset zoom to default (1.0) if possible, otherwise to minimum.
+  /// 可能であればズームをデフォルト（1.0）にリセットし、それ以外の場合は最小値にリセットします
   /// 
-  /// Attempts to set zoom to 1.0, but falls back to minimum zoom if
-  /// 1.0 is outside the allowed range.
+  /// ズームを1.0に設定しようとしますが、1.0が許可範囲外の場合は最小ズームにフォールバックします。
   void _resetZoom() {
     final double preferred = 1.0;
     final double minAllowed = math.max(_minZoomFactorForView, _minZoom);
@@ -2417,24 +2410,23 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  /// Get the width of the viewport available for wave display.
+  /// 波形表示に使用可能なビューポートの幅を取得します
   /// 
-  /// Calculates available width by subtracting margins and label width
-  /// from total widget width.
+  /// マージンとラベル幅を総ウィジェット幅から減算して使用可能な幅を計算します。
   /// 
-  /// Returns viewport width in pixels
+  /// ビューポート幅（ピクセル）を返します
   double _getViewportWaveWidth() {
     final double widgetWidth = MediaQuery.of(context).size.width;
     final double viewportWaveWidth = widgetWidth - chartMarginLeft - labelWidth;
     return viewportWaveWidth.isFinite ? math.max(0.0, viewportWaveWidth) : 0.0;
   }
 
-  /// Calculate list of visible signal row indexes based on signal type filtering.
+  /// 信号タイプフィルタリングに基づいて表示可能な信号行インデックスのリストを計算します
   /// 
-  /// Filters out control, group, and task signals unless showAllSignalTypes is true.
-  /// Returns indexes of signals that should be displayed in the chart.
+  /// showAllSignalTypesがtrueでない限り、制御、グループ、タスク信号をフィルタリングします。
+  /// チャートに表示されるべき信号のインデックスを返します。
   /// 
-  /// Returns list of visible signal row indexes
+  /// 表示可能な信号行インデックスのリストを返します
   List<int> _calculateVisibleIndexes() {
     final visibleIndexes = <int>[];
     final int safeLen = math.min(
@@ -2453,15 +2445,15 @@ class TimingChartState extends State<TimingChart>
     return visibleIndexes;
   }
 
-  /// Calculate total number of time steps (may be fractional for ms units).
+  /// 時間ステップの総数を計算します（ミリ秒単位の場合は小数になる可能性がある）
   /// 
-  /// When using millisecond units, sums up the normalized durations of all steps.
-  /// When using step units, returns the count of steps.
+  /// ミリ秒単位を使用する場合、すべてのステップの正規化された継続時間を合計します。
+  /// ステップ単位を使用する場合、ステップ数を返します。
   /// 
-  /// [settings] - Settings containing time unit configuration
-  /// [maxLen] - Maximum number of time steps
-  /// [durationsForLayout] - Array of step durations in milliseconds
-  /// Returns total steps as a double (may be fractional)
+  /// [settings] - 時間単位設定を含む設定
+  /// [maxLen] - 時間ステップの最大数
+  /// [durationsForLayout] - ステップ継続時間（ミリ秒）の配列
+  /// 総ステップ数をdoubleとして返します（小数になる可能性がある）
   double _calculateTotalSteps(
     SettingsNotifier settings,
     int maxLen,
@@ -2483,7 +2475,7 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  /// Calculate zoom ratio for cell width
+  /// セル幅のズーム比を計算します
   double _calculateZoomByRatio(
     SettingsNotifier settings,
     int maxLen,
@@ -2512,15 +2504,14 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  /// Calculate all layout data needed for chart rendering.
+  /// チャートレンダリングに必要なすべてのレイアウトデータを計算します
   /// 
-  /// This is the main layout calculation method that computes cell dimensions,
-  /// zoom factors, visible indexes, and total chart dimensions based on
-  /// current constraints, signal data, and settings.
+  /// これは、現在の制約、信号データ、設定に基づいてセル寸法、ズーム係数、
+  /// 表示インデックス、総チャート寸法を計算する主要なレイアウト計算メソッドです。
   /// 
-  /// [constraints] - Box constraints from parent widget
-  /// [settings] - Settings containing time unit and display configuration
-  /// Returns _ChartLayoutData containing all computed layout values
+  /// [constraints] - 親ウィジェットからのボックス制約
+  /// [settings] - 時間単位と表示設定を含む設定
+  /// 計算されたすべてのレイアウト値を含む_ChartLayoutDataを返します
   _ChartLayoutData _calculateLayoutData(
     BoxConstraints constraints,
     SettingsNotifier settings,
@@ -2695,12 +2686,12 @@ class TimingChartState extends State<TimingChart>
     );
   }
 
-  /// Compute total time step units across all signals.
+  /// すべての信号にわたる総時間ステップ単位を計算します
   /// 
-  /// Calculates the total normalized step units. For ms units, sums up
-  /// normalized durations. For step units, returns the maximum signal length.
+  /// 総正規化ステップ単位を計算します。ミリ秒単位の場合、正規化された継続時間を合計します。
+  /// ステップ単位の場合、最大信号長を返します。
   /// 
-  /// Returns total step units as a double
+  /// 総ステップ単位をdoubleとして返します
   double _computeTotalStepUnits() {
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
     final int maxLen =
@@ -2721,14 +2712,13 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  /// Apply scroll correction to maintain anchor point after zoom.
+  /// ズーム後にアンカーポイントを維持するためにスクロール補正を適用します
   /// 
-  /// After zooming, adjusts scroll position so that the point at anchorXInWave
-  /// remains at the same visual position. Uses stepsUnitsBefore to calculate
-  /// the new scroll offset.
+  /// ズーム後、anchorXInWaveのポイントが同じ視覚的位置に残るようにスクロール位置を調整します。
+  /// stepsUnitsBeforeを使用して新しいスクロールオフセットを計算します。
   /// 
-  /// [anchorXInWave] - X position in wave area to keep fixed
-  /// [stepsUnitsBefore] - Step units before the anchor point
+  /// [anchorXInWave] - 固定を維持する波形領域内のX位置
+  /// [stepsUnitsBefore] - アンカーポイントより前のステップ単位
   void _applyAnchorScrollCorrection({
     required double anchorXInWave,
     required double stepsUnitsBefore,
@@ -2748,10 +2738,9 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  /// Zoom in while maintaining center of viewport as anchor point.
+  /// ビューポートの中心をアンカーポイントとして維持しながらズームインします
   /// 
-  /// Zooms in by one step and adjusts scroll to keep the center of the
-  /// viewport at the same visual position.
+  /// 1ステップズームインし、ビューポートの中心が同じ視覚的位置に残るようにスクロールを調整します。
   void _zoomInWithAnchorAtCenter() {
     final double viewportWaveWidth = _getViewportWaveWidth();
     final double anchorXInWave = viewportWaveWidth / 2;
@@ -2768,10 +2757,9 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  /// Zoom out while maintaining center of viewport as anchor point.
+  /// ビューポートの中心をアンカーポイントとして維持しながらズームアウトします
   /// 
-  /// Zooms out by one step and adjusts scroll to keep the center of the
-  /// viewport at the same visual position.
+  /// 1ステップズームアウトし、ビューポートの中心が同じ視覚的位置に残るようにスクロールを調整します。
   void _zoomOutWithAnchorAtCenter() {
     final double viewportWaveWidth = _getViewportWaveWidth();
     final double anchorXInWave = viewportWaveWidth / 2;
@@ -2788,12 +2776,12 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  /// Handle pointer signal events (mouse wheel scrolling).
+  /// ポインター信号イベント（マウスホイールスクロール）を処理します
   /// 
-  /// When Ctrl/Cmd is pressed, uses scroll wheel to zoom in/out.
-  /// Maintains the cursor position as the zoom anchor point.
+  /// Ctrl/Cmdが押されている場合、スクロールホイールを使用してズームイン/アウトします。
+  /// カーソル位置をズームのアンカーポイントとして維持します。
   /// 
-  /// [event] - Pointer signal event (typically scroll wheel)
+  /// [event] - ポインター信号イベント（通常はスクロールホイール）
   void _handlePointerSignal(PointerSignalEvent event) {
     if (event is! PointerScrollEvent) return;
 
@@ -2840,7 +2828,7 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  /// Build chart content widget
+  /// チャートコンテンツウィジェットを構築します
   Widget _buildChartContent(
     BuildContext context,
     _ChartLayoutData layoutData,
@@ -3273,13 +3261,13 @@ class TimingChartState extends State<TimingChart>
     );
   }
 
-  /// Compute total duration in milliseconds for the current selection.
+  /// 現在の選択範囲の総継続時間（ミリ秒）を計算します
   /// 
-  /// Sums up the step durations for all time steps within the selection range.
-  /// Returns 0.0 if there is no valid selection.
+  /// 選択範囲内のすべての時間ステップのステップ継続時間を合計します。
+  /// 有効な選択がない場合は0.0を返します。
   /// 
-  /// [settings] - Settings containing step duration configuration
-  /// Returns total duration in milliseconds
+  /// [settings] - ステップ継続時間設定を含む設定
+  /// 総継続時間（ミリ秒）を返します
   double _computeSelectionDurationMs(SettingsNotifier settings) {
     if (!_hasValidSelection) return 0.0;
     final int stTime = math.min(_startTimeIndex!, _endTimeIndex!);
@@ -3299,12 +3287,12 @@ class TimingChartState extends State<TimingChart>
     return sumMs;
   }
 
-  /// Compute number of time steps in the current selection.
+  /// 現在の選択範囲内の時間ステップ数を計算します
   /// 
-  /// Calculates the width of the selection in time steps.
-  /// Returns 0 if there is no valid selection.
+  /// 時間ステップ単位で選択範囲の幅を計算します。
+  /// 有効な選択がない場合は0を返します。
   /// 
-  /// Returns number of steps in selection
+  /// 選択範囲内のステップ数を返します
   int _computeSelectionSteps() {
     if (!_hasValidSelection) return 0;
     final int stTime = math.min(_startTimeIndex!, _endTimeIndex!);
@@ -3312,13 +3300,13 @@ class TimingChartState extends State<TimingChart>
     return (edTime - stTime + 1).clamp(0, 1 << 30);
   }
 
-  /// Build a label string describing the current selection.
+  /// 現在の選択範囲を説明するラベル文字列を構築します
   /// 
-  /// Returns a formatted string showing either the duration in milliseconds
-  /// or the number of steps, depending on the current time unit setting.
+  /// 現在の時間単位設定に応じて、ミリ秒単位の継続時間またはステップ数を示す
+  /// フォーマットされた文字列を返します。
   /// 
-  /// [settings] - Settings containing time unit configuration
-  /// Returns formatted selection label string
+  /// [settings] - 時間単位設定を含む設定
+  /// フォーマットされた選択ラベル文字列を返します
   String _buildSelectionLabel(SettingsNotifier settings) {
     if (settings.timeUnitIsMs) {
       final double ms = _computeSelectionDurationMs(settings);
@@ -3330,14 +3318,13 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  /// Build the unit toggle and control panel widget.
+  /// 単位切り替えとコントロールパネルウィジェットを構築します
   /// 
-  /// Creates a container with switches for time unit (ms/step) and bottom labels,
-  /// along with zoom controls and selection information. May include advanced
-  /// timing controls if enabled.
+  /// 時間単位（ms/step）と下部ラベルのスイッチ、ズームコントロール、選択情報を含む
+  /// コンテナを作成します。有効な場合は高度なタイミング制御を含む場合があります。
   /// 
-  /// [context] - Build context
-  /// Returns the unit toggle widget
+  /// [context] - ビルドコンテキスト
+  /// 単位切り替えウィジェットを返します
   Widget _buildUnitToggle(BuildContext context) {
     final settings = Provider.of<SettingsNotifier>(context);
     final bool isMs = settings.timeUnitIsMs;
@@ -3417,12 +3404,12 @@ class TimingChartState extends State<TimingChart>
     );
   }
 
-  /// Build text field for editing milliseconds per step.
+  /// ステップあたりのミリ秒を編集するためのテキストフィールドを構築します
   /// 
-  /// Creates a small text input field that allows users to set the base
-  /// milliseconds per step value used for time unit conversion.
+  /// 時間単位変換に使用される基本のステップあたりのミリ秒値をユーザーが設定できる
+  /// 小さなテキスト入力フィールドを作成します。
   /// 
-  /// Returns the ms/step input field widget
+  /// ms/step入力フィールドウィジェットを返します
   Widget _buildMsPerStepField() {
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
     final controller = TextEditingController(
@@ -3450,12 +3437,12 @@ class TimingChartState extends State<TimingChart>
     );
   }
 
-  /// Build button for editing step durations in bulk.
+  /// ステップ継続時間を一括編集するためのボタンを構築します
   /// 
-  /// Creates a button that opens a dialog allowing users to edit all step
-  /// durations at once using comma-separated values.
+  /// カンマ区切りの値を使用してすべてのステップ継続時間を一度に編集できる
+  /// ダイアログを開くボタンを作成します。
   /// 
-  /// Returns the edit step durations button widget
+  /// ステップ継続時間編集ボタンウィジェットを返します
   Widget _buildEditStepDurationsButton() {
     return OutlinedButton.icon(
       icon: const Icon(Icons.tune, size: 16),
@@ -3517,10 +3504,10 @@ class TimingChartState extends State<TimingChart>
     );
   }
 
-  /// Force a repaint of the chart CustomPaint widget.
+  /// チャートのCustomPaintウィジェットの再描画を強制します
   /// 
-  /// Manually triggers a repaint by marking the CustomPaint render object
-  /// as needing paint. Used when state changes don't automatically trigger repaint.
+  /// CustomPaintレンダーオブジェクトにペイントが必要であることをマークして
+  /// 手動で再描画をトリガーします。状態変更が自動的に再描画をトリガーしない場合に使用されます。
   void _forceRepaint() {
     final customPaint = _customPaintKey.currentContext?.findRenderObject();
     if (customPaint is RenderCustomPaint) {
@@ -3528,13 +3515,13 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  /// Capture the chart as a PNG image.
+  /// チャートをPNG画像としてキャプチャします
   /// 
-  /// Renders the chart content to an image using RepaintBoundary and returns
-  /// the PNG bytes. Uses high pixel ratio for better quality.
+  /// RepaintBoundaryを使用してチャートコンテンツを画像にレンダリングし、
+  /// PNGバイトを返します。より良い品質のために高いピクセル比を使用します。
   /// 
-  /// [pixelRatio] - Optional pixel ratio (defaults to device ratio or 3.0)
-  /// Returns PNG image bytes, or null if capture fails
+  /// [pixelRatio] - オプションのピクセル比（デフォルトはデバイス比または3.0）
+  /// PNG画像バイトを返します。キャプチャに失敗した場合はnullを返します
   Future<Uint8List?> captureChartPng({double? pixelRatio}) async {
     try {
       RenderRepaintBoundary? boundary =
@@ -3557,15 +3544,15 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  /// Capture the chart as a JPEG image.
+  /// チャートをJPEG画像としてキャプチャします
   /// 
-  /// Renders the chart content to an image and converts to JPEG format.
-  /// Handles alpha channel compositing with background color.
+  /// チャートコンテンツを画像にレンダリングし、JPEG形式に変換します。
+  /// 背景色とのアルファチャネル合成を処理します。
   /// 
-  /// [pixelRatio] - Optional pixel ratio (defaults to device ratio or 3.0)
-  /// [backgroundColor] - Background color for alpha compositing (defaults to theme)
-  /// [quality] - JPEG quality 0-100 (defaults to 90)
-  /// Returns JPEG image bytes, or null if capture fails
+  /// [pixelRatio] - オプションのピクセル比（デフォルトはデバイス比または3.0）
+  /// [backgroundColor] - アルファ合成用の背景色（デフォルトはテーマ）
+  /// [quality] - JPEG品質0-100（デフォルトは90）
+  /// JPEG画像バイトを返します。キャプチャに失敗した場合はnullを返します
   Future<Uint8List?> captureChartJpeg({
     double? pixelRatio,
     Color? backgroundColor,
@@ -3650,13 +3637,13 @@ class TimingChartState extends State<TimingChart>
     _controller?.setOmissionTimeIndices(_omissionTimeIndices);
   }
 
-  /// Set annotation arrow tip to point at a specific signal row.
+  /// アノテーションの矢印の先端を特定の信号行に向けるように設定します
   /// 
-  /// Updates the vertical position of an annotation's arrow tip to point
-  /// at the center of the specified visible signal row.
+  /// アノテーションの矢印の先端の垂直位置を更新して、
+  /// 指定された表示信号行の中心を指すようにします。
   /// 
-  /// [annId] - ID of the annotation to update
-  /// [visibleRowIndex] - Visible signal row index to point at
+  /// [annId] - 更新するアノテーションのID
+  /// [visibleRowIndex] - 指す表示信号行インデックス
   void _setAnnotationArrowToSignal(String annId, int visibleRowIndex) {
     if (visibleRowIndex < 0 || visibleRowIndex >= _visibleIndexes.length)
       return;
@@ -3684,13 +3671,13 @@ class TimingChartState extends State<TimingChart>
     super.dispose();
   }
 
-  /// Handle modifier key (Ctrl/Cmd) press/release events.
+  /// 修飾キー（Ctrl/Cmd）の押下/解放イベントを処理します
   /// 
-  /// Updates the _isModifierPressed state when Ctrl or Cmd keys are pressed
-  /// or released. Used to enable/disable certain interaction modes.
+  /// CtrlまたはCmdキーが押されたり解放されたりしたときに_isModifierPressed状態を更新します。
+  /// 特定のインタラクションモードを有効/無効にするために使用されます。
   /// 
-  /// [event] - Keyboard event
-  /// Returns false to allow event propagation
+  /// [event] - キーボードイベント
+  /// イベント伝播を許可するためにfalseを返します
   bool _handleModifierKeyEvent(KeyEvent event) {
     final bool pressed =
         HardwareKeyboard.instance.isControlPressed ||
@@ -3703,31 +3690,31 @@ class TimingChartState extends State<TimingChart>
     return false;
   }
 
-  /// Handle keyboard events for chart interactions.
+  /// チャート操作のキーボードイベントを処理します
   /// 
-  /// Processes keyboard shortcuts:
-  /// - Ctrl/Cmd+Z: Undo
-  /// - Ctrl/Cmd+Y: Redo
-  /// - Ctrl/Cmd+A: Select all signals
-  /// - 0/1 keys: Set signal values in selection to 0 or 1
+  /// キーボードショートカットを処理します：
+  /// - Ctrl/Cmd+Z: アンドゥ
+  /// - Ctrl/Cmd+Y: リドゥ
+  /// - Ctrl/Cmd+A: すべての信号を選択
+  /// - 0/1キー: 選択範囲の信号値を0または1に設定
   /// 
-  /// [event] - Keyboard event
+  /// [event] - キーボードイベント
   void _onKeyEvent(KeyEvent event) {
     if (event is! KeyDownEvent) return;
     final bool isModifierPressed =
         HardwareKeyboard.instance.isControlPressed ||
         HardwareKeyboard.instance.isMetaPressed;
 
-    // Undo/Redoショートカット
+    // アンドゥ/リドゥショートカット
     if (isModifierPressed) {
       if (event.logicalKey == LogicalKeyboardKey.keyZ) {
-        // Ctrl+Z または Cmd+Z = Undo
+        // Ctrl+Z または Cmd+Z = アンドゥ
         if (_controller?.canUndo ?? false) {
           _controller?.undo();
         }
         return;
       } else if (event.logicalKey == LogicalKeyboardKey.keyY) {
-        // Ctrl+Y または Cmd+Y = Redo
+        // Ctrl+Y または Cmd+Y = リドゥ
         if (_controller?.canRedo ?? false) {
           _controller?.redo();
         }
@@ -3752,10 +3739,10 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  /// Select all visible signals across all time steps.
+  /// すべての時間ステップにわたってすべての表示信号を選択します
   /// 
-  /// Sets selection to cover all visible signal rows from time 0 to the
-  /// maximum time step. Updates chart state to highlight the selection.
+  /// 選択範囲を時間0から最大時間ステップまでのすべての表示信号行をカバーするように設定します。
+  /// チャート状態を更新して選択範囲をハイライトします。
   void _selectAllSignals() {
     if (signals.isEmpty || _visibleIndexes.isEmpty) return;
     setState(() {
@@ -3767,12 +3754,12 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  /// Set all signal values in selection to the specified value.
+  /// 選択範囲内のすべての信号値を指定された値に設定します
   /// 
-  /// Sets all signal values within the selected range to either 0 or 1.
-  /// Used for keyboard shortcuts (0/1 keys) to set signal states.
+  /// 選択範囲内のすべての信号値を0または1に設定します。
+  /// キーボードショートカット（0/1キー）で信号状態を設定するために使用されます。
   /// 
-  /// [value] - Value to set (0 or 1)
+  /// [value] - 設定する値（0または1）
   void _setSignalsInSelection(int value) {
     if (!_hasValidSelection) return;
     final stSig = math.min(_startSignalIndex!, _endSignalIndex!);
@@ -3798,14 +3785,13 @@ class TimingChartState extends State<TimingChart>
     _commitSignalsFromChartEdit();
   }
 
-  /// Move a signal row up or down by swapping with adjacent row.
+  /// 隣接する行と交換して信号行を上下に移動します
   /// 
-  /// Swaps the signal at the given visible index with the signal at
-  /// (visibleIndex + direction). Also swaps associated names, types,
-  /// port numbers, IO sources, and ID names.
+  /// 指定された表示インデックスの信号を（visibleIndex + direction）の信号と交換します。
+  /// 関連する名前、タイプ、ポート番号、IOソース、ID名も交換します。
   /// 
-  /// [visibleIndex] - Visible signal row index to move
-  /// [direction] - Direction to move (-1 for up, +1 for down)
+  /// [visibleIndex] - 移動する表示信号行インデックス
+  /// [direction] - 移動方向（-1は上、+1は下）
   void _moveSignal(int visibleIndex, int direction) {
     final int targetVisible = visibleIndex + direction;
     if (targetVisible < 0 || targetVisible >= _visibleIndexes.length) return;
@@ -3848,13 +3834,13 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
-  /// Reorder signal rows by moving one row to a new position.
+  /// 1つの行を新しい位置に移動して信号行を並べ替えます
   /// 
-  /// Moves the signal row from fromVisible to toVisible by repeatedly
-  /// swapping adjacent rows. Used when dragging signal labels to reorder.
+  /// fromVisibleからtoVisibleへ信号行を移動します。これは隣接する行を繰り返し交換することで行われます。
+  /// 信号ラベルをドラッグして並べ替える際に使用されます。
   /// 
-  /// [fromVisible] - Source visible row index
-  /// [toVisible] - Destination visible row index
+  /// [fromVisible] - ソース表示行インデックス
+  /// [toVisible] - 宛先表示行インデックス
   void _reorderSignalRows(int fromVisible, int toVisible) {
     if (fromVisible == toVisible) return;
 
@@ -3870,11 +3856,11 @@ class TimingChartState extends State<TimingChart>
   }
 }
 
-/// Custom painter for rendering the timing chart content.
+/// タイミングチャートコンテンツをレンダリングするカスタムペインター
 /// 
-/// Handles drawing of grid lines, signal waveforms, annotations, selections,
-/// and omission marks. Delegates to specialized manager classes for different
-/// aspects of rendering (grid, signals, annotations).
+/// グリッド線、信号波形、アノテーション、選択範囲、省略マークの描画を処理します。
+/// レンダリングの異なる側面（グリッド、信号、アノテーション）について、
+/// 専門化されたマネージャークラスに委譲します。
 class _StepTimingChartPainter extends CustomPainter {
   _StepTimingChartPainter({
     required this.signals,
@@ -4195,10 +4181,10 @@ class _StepTimingChartPainter extends CustomPainter {
   }
 }
 
-/// Custom painter for rendering signal labels overlay.
+/// 信号ラベルオーバーレイをレンダリングするカスタムペインター
 /// 
-/// Draws the signal name labels in the left margin area, including
-/// IO port numbers, prefixes, and highlighting for selected rows.
+/// 左マージン領域に信号名ラベルを描画します。
+/// IOポート番号、プレフィックス、選択された行のハイライトを含みます。
 class _LabelsOverlayPainter extends CustomPainter {
   _LabelsOverlayPainter({
     required this.signalNames,

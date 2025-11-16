@@ -266,6 +266,8 @@ class FileUtils {
     required List<String> outputNames,
     required List<String> hwTriggerNames,
     required List<SignalData> chartSignals,
+    List<TimingChartAnnotation> chartAnnotations = const [],
+    List<int> omissionIndices = const [],
     String? customFileName,
   }) async {
     try {
@@ -408,6 +410,143 @@ class FileUtils {
         }
       }
 
+      // 3. コメント情報の記載（別シート）
+      if (chartAnnotations.isNotEmpty) {
+        final annotationsSheet = excelFile['Annotations'];
+        annotationsSheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0))
+            .value = excel.TextCellValue('ID');
+        annotationsSheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 0))
+            .value = excel.TextCellValue('Start Index');
+        annotationsSheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: 0))
+            .value = excel.TextCellValue('End Index');
+        annotationsSheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: 0))
+            .value = excel.TextCellValue('Comment');
+        annotationsSheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: 0))
+            .value = excel.TextCellValue('Offset X');
+        annotationsSheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: 0))
+            .value = excel.TextCellValue('Offset Y');
+        annotationsSheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 6, rowIndex: 0))
+            .value = excel.TextCellValue('Arrow Tip Y');
+        annotationsSheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 7, rowIndex: 0))
+            .value = excel.TextCellValue('Arrow Horizontal');
+
+        for (int i = 0; i < chartAnnotations.length; i++) {
+          final ann = chartAnnotations[i];
+          final rowIndex = i + 1;
+
+          annotationsSheet
+              .cell(
+                excel.CellIndex.indexByColumnRow(
+                  columnIndex: 0,
+                  rowIndex: rowIndex,
+                ),
+              )
+              .value = excel.TextCellValue(ann.id);
+
+          annotationsSheet
+              .cell(
+                excel.CellIndex.indexByColumnRow(
+                  columnIndex: 1,
+                  rowIndex: rowIndex,
+                ),
+              )
+              .value = excel.IntCellValue(ann.startTimeIndex);
+
+          if (ann.endTimeIndex != null) {
+            annotationsSheet
+                .cell(
+                  excel.CellIndex.indexByColumnRow(
+                    columnIndex: 2,
+                    rowIndex: rowIndex,
+                  ),
+                )
+                .value = excel.IntCellValue(ann.endTimeIndex!);
+          }
+
+          annotationsSheet
+              .cell(
+                excel.CellIndex.indexByColumnRow(
+                  columnIndex: 3,
+                  rowIndex: rowIndex,
+                ),
+              )
+              .value = excel.TextCellValue(ann.text);
+
+          if (ann.offsetX != null) {
+            annotationsSheet
+                .cell(
+                  excel.CellIndex.indexByColumnRow(
+                    columnIndex: 4,
+                    rowIndex: rowIndex,
+                  ),
+                )
+                .value = excel.TextCellValue(ann.offsetX!.toString());
+          }
+
+          if (ann.offsetY != null) {
+            annotationsSheet
+                .cell(
+                  excel.CellIndex.indexByColumnRow(
+                    columnIndex: 5,
+                    rowIndex: rowIndex,
+                  ),
+                )
+                .value = excel.TextCellValue(ann.offsetY!.toString());
+          }
+
+          if (ann.arrowTipY != null) {
+            annotationsSheet
+                .cell(
+                  excel.CellIndex.indexByColumnRow(
+                    columnIndex: 6,
+                    rowIndex: rowIndex,
+                  ),
+                )
+                .value = excel.TextCellValue(ann.arrowTipY!.toString());
+          }
+
+          if (ann.arrowHorizontal != null) {
+            annotationsSheet
+                .cell(
+                  excel.CellIndex.indexByColumnRow(
+                    columnIndex: 7,
+                    rowIndex: rowIndex,
+                  ),
+                )
+                .value = excel.TextCellValue(
+              ann.arrowHorizontal! ? 'true' : 'false',
+            );
+          }
+        }
+      }
+
+      // 4. 省略記号（省略区間）の記載（別シート）
+      if (omissionIndices.isNotEmpty) {
+        final omissionSheet = excelFile['Omissions'];
+        omissionSheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0))
+            .value = excel.TextCellValue('Time Index');
+
+        for (int i = 0; i < omissionIndices.length; i++) {
+          omissionSheet
+              .cell(
+                excel.CellIndex.indexByColumnRow(
+                  columnIndex: 0,
+                  rowIndex: i + 1,
+                ),
+              )
+              .value = excel.IntCellValue(omissionIndices[i]);
+        }
+      }
+
       // ファイル保存ダイアログを表示
       String? outputFile = await FilePicker.platform.saveFile(
         dialogTitle: 'XLSXファイルの保存先を選択',
@@ -439,6 +578,7 @@ class FileUtils {
       return false;
     }
   }
+
   /// `.ziq` ファイルを選択し、一時ディレクトリに拡張子だけ `.zip` にした
   /// コピーを作成してそのパスを返す（キャンセル時は null）。
   static Future<String?> pickZiqAndConvertToZipPath() async {
@@ -479,7 +619,9 @@ class FileUtils {
   ///   - 'DioMonitorLog.csv' => viscotech/Support/DioMonitorLog.csv の内容（テキスト）
   ///   - 'Plc_DioMonitorLog.csv' => viscotech/Support/Plc_DioMonitorLog.csv の内容（テキスト）
   ///   - 'FNL_DioMonitorLog.csv' => viscotech/Support/FNL_DioMonitorLog.csv の内容（テキスト）
-  static Future<Map<String, String>> readRequiredFilesFromZip(String zipPath) async {
+  static Future<Map<String, String>> readRequiredFilesFromZip(
+    String zipPath,
+  ) async {
     final result = <String, String>{};
     try {
       final file = File(zipPath);
@@ -506,14 +648,16 @@ class FileUtils {
       // サブフォルダ構成の差異に強いフォールバック: ベースファイル名での検索
       String? readByFileNameFallback(String fileName) {
         final lower = fileName.toLowerCase();
-        final lowerStem = lower.endsWith('.csv') || lower.endsWith('.ini')
-            ? lower.substring(0, lower.lastIndexOf('.'))
-            : lower;
+        final lowerStem =
+            lower.endsWith('.csv') || lower.endsWith('.ini')
+                ? lower.substring(0, lower.lastIndexOf('.'))
+                : lower;
         for (final entry in archive) {
           if (!entry.isFile) continue;
           final normalized = entry.name.replaceAll('\\', '/');
           final lastSlash = normalized.lastIndexOf('/');
-          final base = lastSlash >= 0 ? normalized.substring(lastSlash + 1) : normalized;
+          final base =
+              lastSlash >= 0 ? normalized.substring(lastSlash + 1) : normalized;
           final baseLower = base.toLowerCase();
           // 完全一致 or ベース名の前方一致（例: DioMonitorLog_20250101.csv）
           if (baseLower == lower || baseLower.startsWith(lowerStem)) {
@@ -537,38 +681,26 @@ class FileUtils {
         return readByFileNameFallback(baseName);
       }
 
-      final ini = readWithFallback(
-        [
-          'viscotech/bin/vxVisMgr.ini',
-          'bin/vxVisMgr.ini',
-          'vxVisMgr.ini',
-        ],
+      final ini = readWithFallback([
+        'viscotech/bin/vxVisMgr.ini',
+        'bin/vxVisMgr.ini',
         'vxVisMgr.ini',
-      );
-      final dio = readWithFallback(
-        [
-          'viscotech/Support/DioMonitorLog.csv',
-          'Support/DioMonitorLog.csv',
-          'DioMonitorLog.csv',
-        ],
+      ], 'vxVisMgr.ini');
+      final dio = readWithFallback([
+        'viscotech/Support/DioMonitorLog.csv',
+        'Support/DioMonitorLog.csv',
         'DioMonitorLog.csv',
-      );
-      final plc = readWithFallback(
-        [
-          'viscotech/Support/Plc_DioMonitorLog.csv',
-          'Support/Plc_DioMonitorLog.csv',
-          'Plc_DioMonitorLog.csv',
-        ],
+      ], 'DioMonitorLog.csv');
+      final plc = readWithFallback([
+        'viscotech/Support/Plc_DioMonitorLog.csv',
+        'Support/Plc_DioMonitorLog.csv',
         'Plc_DioMonitorLog.csv',
-      );
-      final fnl = readWithFallback(
-        [
-          'viscotech/Support/FNL_DioMonitorLog.csv',
-          'Support/FNL_DioMonitorLog.csv',
-          'FNL_DioMonitorLog.csv',
-        ],
+      ], 'Plc_DioMonitorLog.csv');
+      final fnl = readWithFallback([
+        'viscotech/Support/FNL_DioMonitorLog.csv',
+        'Support/FNL_DioMonitorLog.csv',
         'FNL_DioMonitorLog.csv',
-      );
+      ], 'FNL_DioMonitorLog.csv');
 
       if (ini != null) result['vxVisMgr.ini'] = ini;
       if (dio != null) result['DioMonitorLog.csv'] = dio;

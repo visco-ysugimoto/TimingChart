@@ -74,8 +74,7 @@ class ExportService {
       hwTriggerVisibility: hwTriggerVisibility,
       rowModes: rowModes,
       annotations: chartAnnotations,
-      omissionIndices:
-          timingChartState?.getOmissionTimeIndices() ?? const [],
+      omissionIndices: timingChartState?.getOmissionTimeIndices() ?? const [],
       timeUnitIsMs: timeUnitIsMs,
       msPerStep: msPerStep,
       stepDurationsMs: stepDurationsMs,
@@ -248,6 +247,8 @@ class ExportService {
     required List<TextEditingController> hwTriggerControllers,
     FormTabState? formTabState,
     TimingChartState? timingChartState,
+    required List<TimingChartAnnotation> chartAnnotations,
+    List<int>? omissionIndices,
   }) async {
     try {
       // チャートデータをフォームに同期
@@ -353,6 +354,11 @@ class ExportService {
         outputNames: outputNames,
         hwTriggerNames: hwTriggerNames,
         chartSignals: signalData,
+        chartAnnotations: chartAnnotations,
+        omissionIndices:
+            omissionIndices ??
+            timingChartState?.getOmissionTimeIndices() ??
+            const [],
       );
 
       return success;
@@ -362,4 +368,3 @@ class ExportService {
     }
   }
 }
-

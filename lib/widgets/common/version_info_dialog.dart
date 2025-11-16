@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 
 class VersionInfoDialog extends StatelessWidget {
   const VersionInfoDialog({
@@ -20,24 +21,124 @@ class VersionInfoDialog extends StatelessWidget {
     final String versionText = version ?? 'vX.Y.Z';
     final String changelogText = changelog ?? 'ここに変更点の概要を記述します。';
 
+    final theme = Theme.of(context);
+    final textTheme = theme.textTheme;
+    final isDark = theme.brightness == Brightness.dark;
+
     return AlertDialog(
-      title: Text(dialogTitle),
+      title: Text(
+        dialogTitle,
+        style: textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+              fontSize: 22,
+            ) ?? const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 22,
+            ),
+      ),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(versionLabel, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 4),
-            SelectableText(versionText),
-            const SizedBox(height: 16),
-            Text(changesLabel, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 4),
+            // バージョン情報セクション
+            Text(
+              versionLabel,
+              style: textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ) ?? const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
+            ),
+            const SizedBox(height: 6),
+            SelectableText(
+              versionText,
+              style: textTheme.titleMedium?.copyWith(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ) ?? const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ),
+            ),
+            const SizedBox(height: 20),
+            // バージョン情報と変更点の間の区切り線
+            Divider(
+              thickness: 1.5,
+              height: 1,
+              color: theme.dividerColor,
+            ),
+            const SizedBox(height: 20),
+            // 変更点セクション
+            Text(
+              changesLabel,
+              style: textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ) ?? const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
+            ),
+            const SizedBox(height: 6),
             ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 260),
               child: SingleChildScrollView(
-                child: SelectableText(changelogText, textAlign: TextAlign.left),
+                child: MarkdownBody(
+                  data: changelogText,
+                  styleSheet: MarkdownStyleSheet(
+                    p: textTheme.bodyMedium?.copyWith(
+                          fontSize: 14,
+                        ) ?? const TextStyle(fontSize: 14),
+                    h1: textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 20,
+                        ) ?? const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 20,
+                        ),
+                    h2: textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ) ?? const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                    h3: textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ) ?? const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                    listBullet: textTheme.bodyMedium?.copyWith(
+                          fontSize: 14,
+                        ) ?? const TextStyle(fontSize: 14),
+                    code: textTheme.bodyMedium?.copyWith(
+                          fontSize: 13,
+                          fontFamily: 'monospace',
+                          backgroundColor: isDark
+                              ? Colors.grey[800]
+                              : Colors.grey[200],
+                        ) ?? TextStyle(
+                          fontSize: 13,
+                          fontFamily: 'monospace',
+                          backgroundColor: isDark
+                              ? Colors.grey[800]
+                              : Colors.grey[200],
+                        ),
+                    codeblockDecoration: BoxDecoration(
+                      color: isDark
+                          ? Colors.grey[800]
+                          : Colors.grey[200],
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  selectable: true,
+                ),
               ),
             ),
           ],

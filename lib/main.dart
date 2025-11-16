@@ -1,7 +1,9 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 import 'dart:async';
+import 'dart:convert';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:io' as io;
@@ -33,12 +35,18 @@ import 'models/ziq/output_assignment.dart';
 import 'services/chart_update_service.dart';
 import 'services/export_service.dart';
 
+/// ZIQインポートテストモードの有効/無効を制御する環境変数
 const bool kZiqImportTest = bool.fromEnvironment(
   'ZIQ_IMPORT_TEST',
   defaultValue: false,
 );
+/// ZIQファイルのパスを指定する環境変数
 const String kZiqPath = String.fromEnvironment('ZIQ_PATH', defaultValue: '');
 
+/// アプリケーションのエントリーポイント
+/// 
+/// テストモードが有効な場合はZIQインポートテストを実行し、
+/// 通常モードの場合はProviderで状態管理を初期化してアプリを起動します。
 Future<void> main() async {
   if (kZiqImportTest) {
     WidgetsFlutterBinding.ensureInitialized();
@@ -59,6 +67,10 @@ Future<void> main() async {
   );
 }
 
+/// ZIQインポートテストモードを実行します
+/// 
+/// ZIQファイルから必要なファイルを読み込み、解析結果をコンソールに出力します。
+/// テスト用の関数で、通常のアプリ実行時には呼び出されません。
 Future<void> _runZiqImportTestMode() async {
   try {
     final String path =
@@ -224,6 +236,10 @@ Future<void> _runZiqImportTestMode() async {
   }
 }
 
+/// アプリケーションのルートウィジェット
+/// 
+/// テーマ設定、ローカライゼーション、言語設定を管理し、
+/// MaterialAppを構築してアプリ全体の設定を行います。
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -325,6 +341,7 @@ class _MyHomePageState extends State<MyHomePage>
 
   bool _isImportingZiq = false;
 
+  /// PLC/EIPオプションが無効な場合、関連するコントローラーをクリアします
   void _clearPlcEipControllersIfDisabled() {
     if (_plcEipOption == 'None') {
       for (final controller in _plcEipOutputControllers) {
@@ -344,6 +361,10 @@ class _MyHomePageState extends State<MyHomePage>
   TimingFormState get _formState =>
       Provider.of<FormStateNotifier>(context, listen: false).state;
 
+  /// フォーム状態の更新を次のフレーム後にスケジュールします
+  /// 
+  /// ウィジェットのビルド中に状態を更新するのを避けるため、
+  /// フレーム終了後に実行されるようにスケジュールします。
   void _scheduleFormUpdate(void Function(FormStateNotifier) edit) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) edit(_formNotifier);
@@ -361,6 +382,10 @@ class _MyHomePageState extends State<MyHomePage>
   List<TextEditingController> get _hwTriggerControllers =>
       _controllersNotifier.hwTriggerControllers;
 
+  /// DIO入力とPLC/EIP入力を交換します
+  /// 
+  /// 入力フィールドの値を交換し、対応するチャート信号の値も更新します。
+  /// チャートとフォームの両方の状態を同期させます。
   Future<void> _transferInputs(
     List<TextEditingController> dioControllers,
     List<TextEditingController> plcControllers,
@@ -434,6 +459,10 @@ class _MyHomePageState extends State<MyHomePage>
     }
   }
 
+  /// DIO出力とPLC/EIP出力を交換します
+  /// 
+  /// 出力フィールドの値を交換し、対応するチャート信号の値も更新します。
+  /// チャートとフォームの両方の状態を同期させます。
   Future<void> _transferOutputs(
     List<TextEditingController> dioControllers,
     List<TextEditingController> plcControllers,
@@ -499,6 +528,10 @@ class _MyHomePageState extends State<MyHomePage>
     }
   }
 
+  /// チャートの信号が変更された際の処理を行います
+  /// 
+  /// チャートから信号名、値、タイプが変更された際に呼び出されます。
+  /// 既存の信号データを更新し、フォームの状態も同期させます。
   void _handleChartSignalsChanged(
     List<String> names,
     List<List<int>> values,
@@ -527,6 +560,10 @@ class _MyHomePageState extends State<MyHomePage>
     });
   }
 
+  /// PLC/EIPオプションに基づいてデフォルトの入力名を生成します
+  /// 
+  /// [option]が'PLC'の場合は'PLI{index+1}'、'EIP'の場合は'ESI{index+1}'を返します。
+  /// それ以外の場合は空文字列を返します。
   String _defaultPlcInputName(String? option, int index) {
     if (option == 'PLC') {
       return 'PLI${index + 1}';
@@ -537,6 +574,10 @@ class _MyHomePageState extends State<MyHomePage>
     return '';
   }
 
+  /// ウィジェットの初期化処理を行います
+  /// 
+  /// タブコントローラー、フォーム状態、チャートコントローラーを初期化し、
+  /// 初期値を設定します。
   @override
   void initState() {
     super.initState();
@@ -578,6 +619,10 @@ class _MyHomePageState extends State<MyHomePage>
     });
   }
 
+  /// タブが変更された際の処理を行います
+  /// 
+  /// チャートタブからフォームタブに戻る際はアノテーションを保存し、
+  /// フォームタブからチャートタブに移動する際は信号データを更新します。
   void _handleTabChange() {
     if (_tabController.previousIndex == 1 && _tabController.index == 0) {
       if (_timingChartKey.currentState != null) {
@@ -604,6 +649,9 @@ class _MyHomePageState extends State<MyHomePage>
     }
   }
 
+  /// 入力ポート数を更新します
+  /// 
+  /// フォーム状態とコントローラーの数を更新します。
   void _updateInputCount(int inputPorts) {
     _scheduleFormUpdate((n) {
       n.update(ioPort: inputPorts, inputCount: inputPorts);
@@ -611,6 +659,9 @@ class _MyHomePageState extends State<MyHomePage>
     _controllersNotifier.setInputCount(inputPorts);
   }
 
+  /// 出力ポート数を更新します
+  /// 
+  /// フォーム状態とコントローラーの数を更新します。
   void _updateOutputCount(int outputPorts) {
     _scheduleFormUpdate((n) {
       n.update(outputCount: outputPorts);
@@ -618,11 +669,17 @@ class _MyHomePageState extends State<MyHomePage>
     _controllersNotifier.setOutputCount(outputPorts);
   }
 
+  /// ハードウェアトリガーコントローラーの数を更新します
+  /// 
+  /// [desiredCount]が指定されていない場合は現在のフォーム状態の値を使用します。
   void _updateHwTriggerControllers([int? desiredCount]) {
     final target = desiredCount ?? _formState.hwPort;
     _controllersNotifier.setHwTriggerCount(target);
   }
 
+  /// すべてのテキストフィールドとチャートデータをクリアします
+  /// 
+  /// フォームの入力フィールド、チャート信号、アノテーションをすべて初期状態に戻します。
   void _clearAllTextFields() {
     _controllersNotifier.clearAllTexts();
 
@@ -658,12 +715,20 @@ class _MyHomePageState extends State<MyHomePage>
     _controllersNotifier.setHwTriggerCount(0);
   }
 
+  /// PLC/EIPオプションに基づいてIOチャネルソースを解決します
+  /// 
+  /// [allowUnknown]がtrueの場合、オプションが'None'のときはunknownを返します。
+  /// falseの場合はdioを返します。
   IoChannelSource _resolvePlcEipSource({bool allowUnknown = false}) {
     if (_plcEipOption == 'PLC') return IoChannelSource.plc;
     if (_plcEipOption == 'EIP') return IoChannelSource.eip;
     return allowUnknown ? IoChannelSource.unknown : IoChannelSource.dio;
   }
 
+  /// ラベルからプレフィックスを抽出します
+  /// 
+  /// コロン(:)またはスペースで区切られた最初の部分を返します。
+  /// 区切り文字がない場合はラベル全体を返します。
   String _extractLabelPrefix(String label) {
     final trimmed = label.trim();
     if (trimmed.isEmpty) return '';
@@ -678,6 +743,10 @@ class _MyHomePageState extends State<MyHomePage>
     return trimmed;
   }
 
+  /// ラベルに一致するコントローラーのインデックスを検索します
+  /// 
+  /// 完全一致を最初に試し、コロン(:)で区切られた場合の後半部分でも検索します。
+  /// 見つからない場合は-1を返します。
   int _findControllerIndexByLabel(
     String label,
     List<TextEditingController> controllers,
@@ -702,6 +771,10 @@ class _MyHomePageState extends State<MyHomePage>
     return -1;
   }
 
+  /// プレフィックス文字列からIOチャネルソースを判定します
+  /// 
+  /// プレフィックスの先頭文字列（PLI/PLO/ESI/ESO/INPUT/OUTPUTなど）に基づいて
+  /// 適切なIOチャネルソースを返します。
   IoChannelSource _sourceFromPrefix(String prefixUpper, SignalType type) {
     if (prefixUpper.startsWith('PLIN') ||
         prefixUpper.startsWith('PLI') ||
@@ -724,6 +797,10 @@ class _MyHomePageState extends State<MyHomePage>
     return IoChannelSource.unknown;
   }
 
+  /// ラベルと信号タイプからIOチャネルソースを検出します
+  /// 
+  /// まずプレフィックスから判定を試み、それでも不明な場合は
+  /// コントローラーのリストを検索して判定します。
   IoChannelSource _detectIoSourceFor(String label, SignalType type) {
     if (type != SignalType.input && type != SignalType.output) {
       return IoChannelSource.unknown;
@@ -757,6 +834,10 @@ class _MyHomePageState extends State<MyHomePage>
     return IoChannelSource.unknown;
   }
 
+  /// アプリケーション設定をJSONファイルとしてエクスポートします
+  /// 
+  /// フォーム状態、チャートデータ、アノテーションなどの設定を
+  /// すべてJSON形式でファイルに保存します。
   Future<void> _exportConfig() async {
     // チャートアノテーションを更新
     _chartAnnotations = List.from(_chartController.annotations);
@@ -790,6 +871,10 @@ class _MyHomePageState extends State<MyHomePage>
     );
   }
 
+  /// JSONファイルからアプリケーション設定をインポートします
+  /// 
+  /// 保存された設定ファイルを読み込み、フォーム状態、チャートデータ、
+  /// アノテーションなどを復元します。
   Future<void> _importConfig() async {
     final config = await FileUtils.importAppConfig();
 
@@ -864,6 +949,9 @@ class _MyHomePageState extends State<MyHomePage>
     );
   }
 
+  /// チャートをJPEG画像としてエクスポートします
+  /// 
+  /// 現在表示されているタイミングチャートを画像ファイルとして保存します。
   Future<void> _exportChartImageJpeg() async {
     final success = await ExportService.exportChartImageJpeg(
       context: context,
@@ -879,6 +967,9 @@ class _MyHomePageState extends State<MyHomePage>
     );
   }
 
+  /// チャートデータをXLSX形式でエクスポートします
+  /// 
+  /// 信号データ、アノテーション、省略情報などをExcel形式で保存します。
   Future<void> _exportXlsx() async {
     final success = await ExportService.exportXlsx(
       context: context,
@@ -889,6 +980,9 @@ class _MyHomePageState extends State<MyHomePage>
       hwTriggerControllers: _hwTriggerControllers,
       formTabState: _formTabKey.currentState,
       timingChartState: _timingChartKey.currentState,
+      chartAnnotations: _chartAnnotations,
+      omissionIndices:
+          _timingChartKey.currentState?.getOmissionTimeIndices() ?? [],
     );
 
     if (!mounted) return;
@@ -900,6 +994,62 @@ class _MyHomePageState extends State<MyHomePage>
     );
   }
 
+  /// バージョン情報を読み込みます
+  /// 
+  /// assetsフォルダからVERSION.jsonファイルを読み込み、タイトルとバージョン番号を返します。
+  /// 読み込みに失敗した場合はデフォルト値を返します。
+  Future<Map<String, String>> _loadVersionInfo() async {
+    try {
+      final versionJson = await rootBundle.loadString('assets/VERSION.json');
+      final versionData = json.decode(versionJson) as Map<String, dynamic>;
+      return {
+        'title': versionData['title'] as String? ?? 'バージョン情報',
+        'version': versionData['version'] as String? ?? 'vX.Y.Z',
+      };
+    } catch (e) {
+      debugPrint('VERSION.jsonファイルの読み込みに失敗しました: $e');
+      return {
+        'title': 'バージョン情報',
+        'version': 'vX.Y.Z',
+      };
+    }
+  }
+
+  /// CHANGELOGファイルを読み込みます
+  /// 
+  /// assetsフォルダからCHANGELOG.mdファイルを読み込み、内容を返します。
+  /// 読み込みに失敗した場合はデフォルトのメッセージを返します。
+  Future<String> _loadChangelog() async {
+    try {
+      final changelog = await rootBundle.loadString('assets/CHANGELOG.md');
+      return changelog;
+    } catch (e) {
+      debugPrint('CHANGELOGファイルの読み込みに失敗しました: $e');
+      return '変更点の読み込みに失敗しました。';
+    }
+  }
+
+  /// バージョン情報ダイアログを表示します
+  /// 
+  /// VERSION.jsonとCHANGELOG.mdファイルを読み込んでからVersionInfoDialogを表示します。
+  Future<void> _showVersionInfoDialog(BuildContext context) async {
+    final versionInfo = await _loadVersionInfo();
+    final changelog = await _loadChangelog();
+    if (!mounted) return;
+    
+    showDialog(
+      context: context,
+      builder: (ctx) => VersionInfoDialog(
+        title: versionInfo['title']!,
+        version: versionInfo['version']!,
+        changelog: changelog,
+      ),
+    );
+  }
+
+  /// ウィジェットの破棄処理を行います
+  /// 
+  /// タブコントローラーとすべてのテキストコントローラーを破棄します。
   @override
   void dispose() {
     _tabController.removeListener(_handleTabChange);
@@ -916,6 +1066,10 @@ class _MyHomePageState extends State<MyHomePage>
     super.dispose();
   }
 
+  /// ウィジェットツリーを構築します
+  /// 
+  /// アプリバー、ドロワー、タブビューを含むメインUIを構築します。
+  /// ZIQインポート中はローディングオーバーレイを表示します。
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
@@ -1323,19 +1477,9 @@ class _MyHomePageState extends State<MyHomePage>
             ListTile(
               leading: Icon(Icons.info),
               title: Text(s.menu_item_about),
-              onTap: () {
+              onTap: () async {
                 Navigator.pop(context);
-                showDialog(
-                  context: context,
-                  builder:
-                      (ctx) => const VersionInfoDialog(
-                        // 後で実値に置き換えてください
-                        title: 'バージョン情報',
-                        version: 'v1.3',
-                        changelog:
-                            '#入力フォーム画面\n・\n\n#チャート画面\n・選択した範囲に倍率をフィットする機能を追加\n   (右上の「Fit sel」ボタン)\n\n#エクスポート機能\n・JPEG画像の解像度を向上\n\n#インポート機能\n・',
-                      ),
-                );
+                await _showVersionInfoDialog(context);
               },
             ),
           ],

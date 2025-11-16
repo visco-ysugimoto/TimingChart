@@ -134,7 +134,7 @@ class _SuggestionTextFieldState extends State<SuggestionTextField> {
       }
     }
 
-    debugPrint('重複チェック - 使用済み値: $usedValues');
+    //debugPrint('重複チェック - 使用済み値: $usedValues');
     return usedValues;
   }
 
@@ -148,12 +148,12 @@ class _SuggestionTextFieldState extends State<SuggestionTextField> {
     final filtered =
         suggestions.where((item) => !usedValues.contains(item.id)).toList();
 
-    debugPrint(
+    /*debugPrint(
       '候補フィルタリング - 元の候補数: ${suggestions.length}, フィルタ後: ${filtered.length}',
     );
     debugPrint(
       '除外された候補: ${suggestions.where((item) => usedValues.contains(item.id)).map((e) => e.label).toList()}',
-    );
+    );*/
 
     return filtered;
   }
@@ -169,7 +169,7 @@ class _SuggestionTextFieldState extends State<SuggestionTextField> {
     final usedValues = _getUsedValues();
     final isDuplicate = usedValues.contains(inputId);
 
-    debugPrint('重複チェック - 入力: "$labelValue", ID: "$inputId", 重複: $isDuplicate');
+    //debugPrint('重複チェック - 入力: "$labelValue", ID: "$inputId", 重複: $isDuplicate');
 
     return isDuplicate;
   }

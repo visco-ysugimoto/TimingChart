@@ -54,6 +54,8 @@ dependencies:
   excel: ^4.0.6
   image: ^4.1.7
   archive: ^3.6.1
+  # マークダウン表示用
+  flutter_markdown: ^0.6.18
 
 dev_dependencies:
   flutter_test:
@@ -80,6 +82,9 @@ flutter:
     - assets/chart_rules/
     # vxVisMgr.ini 対応表
     - assets/mappings/
+    # バージョン情報
+    - assets/CHANGELOG.md
+    - assets/VERSION.json
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.
