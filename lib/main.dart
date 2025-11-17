@@ -6,6 +6,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io' as io;
 
 import 'generated/l10n.dart';
@@ -48,8 +49,9 @@ const String kZiqPath = String.fromEnvironment('ZIQ_PATH', defaultValue: '');
 /// テストモードが有効な場合はZIQインポートテストを実行し、
 /// 通常モードの場合はProviderで状態管理を初期化してアプリを起動します。
 Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
   if (kZiqImportTest) {
-    WidgetsFlutterBinding.ensureInitialized();
     await _runZiqImportTestMode();
     return;
   }
@@ -314,6 +316,7 @@ class _MyHomePageState extends State<MyHomePage>
   late TabController _tabController;
 
   bool _showIoNumbers = true;
+  SharedPreferences? _prefs;
 
   late FormControllersNotifier _controllersNotifier;
 
@@ -583,11 +586,17 @@ class _MyHomePageState extends State<MyHomePage>
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
 
-    final initial = const TimingFormState(
+    // SettingsNotifier からデフォルトカメラ数を取得
+    final settings = Provider.of<SettingsNotifier>(
+      context,
+      listen: false,
+    );
+
+    final initial = TimingFormState(
       triggerOption: 'Single Trigger',
       ioPort: 32,
       hwPort: 0,
-      camera: 1,
+      camera: settings.defaultCameraCount,
       inputCount: 32,
       outputCount: 32,
     );
@@ -617,6 +626,26 @@ class _MyHomePageState extends State<MyHomePage>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _formNotifier.replace(_formState);
     });
+
+    _initPrefs();
+
+    // SharedPreferences から設定が読み込まれたあとで、フォームのカメラ数も更新
+    settings.initialized.then((_) {
+      if (!mounted) return;
+      _scheduleFormUpdate((n) {
+        n.update(camera: settings.defaultCameraCount);
+      });
+    });
+  }
+
+  Future<void> _initPrefs() async {
+    _prefs = await SharedPreferences.getInstance();
+    final saved = _prefs?.getBool('showIoNumbers');
+    if (saved != null) {
+      setState(() {
+        _showIoNumbers = saved;
+      });
+    }
   }
 
   /// タブが変更された際の処理を行います
@@ -698,12 +727,16 @@ class _MyHomePageState extends State<MyHomePage>
     }
 
     _scheduleFormUpdate((n) {
+      final settings = Provider.of<SettingsNotifier>(
+        context,
+        listen: false,
+      );
       n.replace(
-        const TimingFormState(
+        TimingFormState(
           triggerOption: 'Single Trigger',
           ioPort: 32,
           hwPort: 0,
-          camera: 1,
+          camera: settings.defaultCameraCount,
           inputCount: 32,
           outputCount: 32,
         ),
@@ -1461,6 +1494,7 @@ class _MyHomePageState extends State<MyHomePage>
                           showIoNumbers: _showIoNumbers,
                           onShowIoNumbersChanged: (val) {
                             setState(() => _showIoNumbers = val);
+                            _prefs?.setBool('showIoNumbers', val);
                           },
                         ),
                   ),

@@ -43,6 +43,7 @@ dependencies:
   provider: ^6.1.4
   dotted_line: ^3.2.3
   uuid: ^4.5.1
+  shared_preferences: ^2.2.2
   # ファイル操作関連のパッケージ
   path_provider: ^2.1.2
   file_picker: ^6.1.1
