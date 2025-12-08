@@ -241,6 +241,7 @@ class ExportService {
   static Future<bool> exportXlsx({
     required BuildContext context,
     required List<SignalData> chartSignals,
+    required List<int> chartPortNumbers,
     required TimingChartController chartController,
     required List<TextEditingController> inputControllers,
     required List<TextEditingController> outputControllers,
@@ -304,10 +305,19 @@ class ExportService {
 
       // 信号データの変換
       List<SignalData> signalData = [];
+      // ポート番号（信号型と並び順に対応）
+      List<int> signalPorts = [];
 
       if (timingChartState != null) {
         final orderedNames = chartController.signalNames;
         final mapByName = {for (var s in chartSignals) s.name: s};
+        final Map<String, List<int>> portsByName = {};
+        for (int i = 0;
+            i < chartSignals.length && i < chartPortNumbers.length;
+            i++) {
+          final name = chartSignals[i].name;
+          portsByName.putIfAbsent(name, () => []).add(chartPortNumbers[i]);
+        }
 
         debugPrint('=== XLSX Export: ID to Label conversion ===');
         debugPrint('Ordered signal IDs: $orderedNames');
@@ -319,6 +329,13 @@ class ExportService {
             debugPrint('Converting: $signalId -> $labelName');
             final modifiedSignal = originalSignal.copyWith(name: labelName);
             signalData.add(modifiedSignal);
+
+            final list = portsByName[signalId];
+            if (list != null && list.isNotEmpty) {
+              signalPorts.add(list.removeAt(0));
+            } else {
+              signalPorts.add(0);
+            }
           }
         }
 
@@ -330,6 +347,13 @@ class ExportService {
             );
             final modifiedSignal = signal.copyWith(name: labelName);
             signalData.add(modifiedSignal);
+
+            final list = portsByName[signal.name];
+            if (list != null && list.isNotEmpty) {
+              signalPorts.add(list.removeAt(0));
+            } else {
+              signalPorts.add(0);
+            }
           }
         }
 
@@ -338,13 +362,17 @@ class ExportService {
         );
         debugPrint('=== End conversion ===');
       } else {
-        for (var signal in chartSignals) {
+        for (int i = 0; i < chartSignals.length; i++) {
+          final signal = chartSignals[i];
           final labelName = await labelOfId(signal.name);
           debugPrint(
             'Converting from _chartSignals: ${signal.name} -> $labelName',
           );
           final modifiedSignal = signal.copyWith(name: labelName);
           signalData.add(modifiedSignal);
+          final port =
+              (i < chartPortNumbers.length) ? chartPortNumbers[i] : 0;
+          signalPorts.add(port);
         }
       }
 
@@ -354,6 +382,7 @@ class ExportService {
         outputNames: outputNames,
         hwTriggerNames: hwTriggerNames,
         chartSignals: signalData,
+        chartPorts: signalPorts,
         chartAnnotations: chartAnnotations,
         omissionIndices:
             omissionIndices ??

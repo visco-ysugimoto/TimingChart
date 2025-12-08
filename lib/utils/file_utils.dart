@@ -9,6 +9,7 @@ import 'package:excel/excel.dart' as excel;
 import '../models/backup/app_config.dart';
 import '../models/chart/timing_chart_annotation.dart';
 import '../models/chart/signal_data.dart';
+import '../models/chart/signal_type.dart';
 import 'wavedrom_converter.dart';
 import 'dart:typed_data';
 import 'package:archive/archive_io.dart';
@@ -266,6 +267,7 @@ class FileUtils {
     required List<String> outputNames,
     required List<String> hwTriggerNames,
     required List<SignalData> chartSignals,
+    required List<int> chartPorts,
     List<TimingChartAnnotation> chartAnnotations = const [],
     List<int> omissionIndices = const [],
     String? customFileName,
@@ -360,25 +362,71 @@ class FileUtils {
 
       // 2. チャート情報の記載（10列目以降）
       if (chartSignals.isNotEmpty) {
-        // 信号名をJ列（10列目）に記載
+        // チャート用の開始行（データ1行目）
+        const int chartRowStart = 1;
+
+        // 信号名と種別＋ポート情報をI,J列に記載（各信号の間に1行空ける）
         for (int i = 0; i < chartSignals.length; i++) {
+          final signal = chartSignals[i];
+          final int rowIndex = chartRowStart + i * 2; // 1行おきに配置
+
+          // 左セル（I列）: 種別＋ポート (例: Input1, Output10, HW Trigger1)
+          final int port = (i < chartPorts.length) ? chartPorts[i] : 0;
+          String typeLabel;
+          switch (signal.signalType) {
+            case SignalType.input:
+              typeLabel = 'Input';
+              break;
+            case SignalType.output:
+              typeLabel = 'Output';
+              break;
+            case SignalType.hwTrigger:
+              typeLabel = 'HW Trigger';
+              break;
+            case SignalType.control:
+              typeLabel = 'Control';
+              break;
+            case SignalType.group:
+              typeLabel = 'Group';
+              break;
+            case SignalType.task:
+              typeLabel = 'Task';
+              break;
+          }
+          final String typePortText = port > 0 ? '$typeLabel$port' : typeLabel;
+
+          sheet
+              .cell(
+                excel.CellIndex.indexByColumnRow(
+                  columnIndex: chartStartCol - 1, // I列
+                  rowIndex: rowIndex,
+                ),
+              )
+              .value = excel.TextCellValue(typePortText);
+
+          // 信号名をJ列（10列目）に記載
           sheet
               .cell(
                 excel.CellIndex.indexByColumnRow(
                   columnIndex: chartStartCol,
-                  rowIndex: i + 1,
+                  rowIndex: rowIndex,
                 ),
               )
-              .value = excel.TextCellValue(chartSignals[i].name);
+              .value = excel.TextCellValue(signal.name);
         }
 
-        // 各信号の波形をK列（11列目）以降に描画
-        int maxSignalLength =
+        // 各信号の波形をK列（11列目）以降に描画（信号ごとに1行分の空白行を挿入）
+        final int maxSignalLength =
             chartSignals.isNotEmpty
                 ? chartSignals
                     .map((s) => s.values.length)
                     .reduce((a, b) => a > b ? a : b)
                 : 0;
+
+        // 罫線で波形を表現するための共通ボーダースタイル
+        final excel.Border waveBorder = excel.Border(
+          borderStyle: excel.BorderStyle.Thin,
+        );
 
         for (
           int signalIndex = 0;
@@ -386,26 +434,51 @@ class FileUtils {
           signalIndex++
         ) {
           final signal = chartSignals[signalIndex];
-          int rowIndex = signalIndex + 1;
+          final List<int> values = signal.values;
+          final int rowIndex = chartRowStart + signalIndex * 2;
 
           for (int timeIndex = 0; timeIndex < maxSignalLength; timeIndex++) {
-            int colIndex = chartStartCol + 1 + timeIndex; // K列から開始
+            final int colIndex = chartStartCol + 1 + timeIndex; // K列から開始
 
-            bool isHigh = false;
-            if (timeIndex < signal.values.length) {
-              isHigh = signal.values[timeIndex] != 0;
-            }
+            final bool isHigh =
+                (timeIndex < values.length) ? values[timeIndex] != 0 : false;
+            final bool prevHigh =
+                (timeIndex > 0 && timeIndex - 1 < values.length)
+                    ? values[timeIndex - 1] != 0
+                    : isHigh;
+            final bool nextHigh =
+                (timeIndex + 1 < values.length)
+                    ? values[timeIndex + 1] != 0
+                    : isHigh;
 
-            // セルの値を設定（1=High, 0=Low）
             final cellIndex = excel.CellIndex.indexByColumnRow(
               columnIndex: colIndex,
               rowIndex: rowIndex,
             );
-            sheet.cell(cellIndex).value = excel.IntCellValue(isHigh ? 1 : 0);
+            final cell = sheet.cell(cellIndex);
 
-            // セルの背景色でHigh/Lowを表現（スタイル設定は複雑なため、基本的な値のみ設定）
-            // High=1, Low=0として値を設定することで、Excelでユーザが条件付き書式を適用可能
-            // 必要に応じて後でスタイル設定を追加可能
+            // 値自体は 0/1 を残しておく（必要に応じて空にしてもよい）
+            cell.value = excel.IntCellValue(isHigh ? 1 : 0);
+
+            // 既存スタイルを維持しつつ罫線だけ追加
+            final style = cell.cellStyle ?? excel.CellStyle();
+
+            // 水平線: High -> 上線, Low -> 下線
+            if (isHigh) {
+              style.topBorder = waveBorder;
+            } else {
+              style.bottomBorder = waveBorder;
+            }
+
+            // 垂直線: 隣との値が変わる境界で左/右に線を引く
+            if (timeIndex > 0 && prevHigh != isHigh) {
+              style.leftBorder = waveBorder;
+            }
+            if (timeIndex + 1 < maxSignalLength && isHigh != nextHigh) {
+              style.rightBorder = waveBorder;
+            }
+
+            cell.cellStyle = style;
           }
         }
       }

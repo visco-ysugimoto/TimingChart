@@ -23,51 +23,77 @@ import '../../providers/timing_chart_controller.dart';
 
 // 翻訳サポート用
 
+/// 自動コメント生成で使用する HWトリガ立ち上がりイベント（内部専用）
+class _HwTriggerEdge {
+  final int rowIndex;
+  final int timeIndex;
+  final String name;
+
+  const _HwTriggerEdge({
+    required this.rowIndex,
+    required this.timeIndex,
+    required this.name,
+  });
+}
+
+/// 自動コメント生成で使用する 出力信号立ち上がりイベント（内部専用）
+class _OutputEdge {
+  final int rowIndex;
+  final int timeIndex;
+  final String name;
+
+  const _OutputEdge({
+    required this.rowIndex,
+    required this.timeIndex,
+    required this.name,
+  });
+}
+
 /// タイミングチャートのレンダリングに必要なレイアウト計算データ構造
-/// 
+///
 /// このクラスは、タイミングチャートをレンダリングするために必要なすべての計算済みレイアウト値を保持します。
 /// セルの寸法、ズーム係数、表示可能な信号インデックスなどが含まれます。
 /// これらの値はレイアウトパスごとに一度計算され、レンダリング全体で再利用されます。
 class _ChartLayoutData {
   /// 信号タイプでフィルタリング後の表示可能な信号行インデックスのリスト
   final List<int> visibleIndexes;
-  
+
   /// 時間ステップの総数（ミリ秒単位を使用する場合は小数になる可能性がある）
   final double totalSteps;
-  
+
   /// ズームが適用される前の基本セル幅
   final double baseCellWidth;
-  
+
   /// ビューポート内のすべてのコンテンツを表示するために必要な最小セル幅
   final double minCellWidthForFullView;
-  
+
   /// ズーム制約に基づく最大許可セル幅
   final double maxCellWidthAllowed;
-  
+
   /// 現在のビューで許可される最小ズーム係数
   final double minZoomFactorForView;
-  
+
   /// 現在のビューで許可される最大ズーム係数
   final double maxZoomFactorForView;
-  
+
   /// 最小/最大境界にクランプされた後の実効ズーム係数
   final double effectiveZoomFactor;
-  
+
   /// レンダリングに使用される実際のセル幅（baseCellWidth * effectiveZoomFactor）
   final double cellWidth;
-  
+
   /// 各信号行セルの高さ
   final double cellHeight;
-  
+
   /// チャートコンテンツ領域の総幅
   final double totalWidth;
-  
+
   /// コメント領域を含むチャートコンテンツ領域の総高さ
   final double totalHeight;
-  
+
   /// 下部に予約されているアノテーションコメント領域の高さ
   final double commentAreaHeight;
-  
+
   /// すべての信号配列の最大長（最長の信号）
   final int maxLen;
 
@@ -90,19 +116,19 @@ class _ChartLayoutData {
 }
 
 /// タイミングチャートでの時間位置計算用のヘルパークラス
-/// 
+///
 /// ピクセル位置と時間ステップインデックス間の変換を行う静的ユーティリティメソッドを提供します。
 /// ステップベースとミリ秒ベースの両方の時間単位を処理します。
 class _TimePositionCalculator {
   /// 時間単位変換用の累積ステップ位置配列を計算します
-  /// 
+  ///
   /// ミリ秒単位を使用する場合、各ステップの継続時間が異なる可能性があります。
   /// このメソッドは、正規化されたステップ単位（1.0 = 1つの基本ステップ継続時間）で
   /// 各ステップ境界の累積位置を計算します。
-  /// 
+  ///
   /// 長さmaxLen + 1の配列を返します。pos[i]はステップiの開始時の累積位置で、
   /// pos[maxLen]は総位置です。
-  /// 
+  ///
   /// [settings] - msPerStepと時間単位設定を含む設定
   /// [maxLen] - 時間ステップの最大数
   /// [stepDurationsMs] - 各ステップの継続時間（ミリ秒）の配列
@@ -124,10 +150,10 @@ class _TimePositionCalculator {
   }
 
   /// ピクセル単位の相対X位置から時間ステップインデックスを取得します
-  /// 
+  ///
   /// ピクセル位置（波形領域の開始位置からの相対位置）を対応する時間ステップインデックスに変換します。
   /// ステップベースとミリ秒ベースの両方の時間単位を正しく処理します。
-  /// 
+  ///
   /// [relX] - 波形領域の開始位置からの相対X位置（ピクセル）
   /// [cellWidth] - 1つのセルの幅（ピクセル）
   /// [settings] - 時間単位設定を含む設定
@@ -157,44 +183,44 @@ class _TimePositionCalculator {
 }
 
 /// インタラクティブなタイミング図チャートを表示するStatefulWidget
-/// 
+///
 /// このウィジェットは、時間経過に伴う信号波形を表示するタイミングチャートをレンダリングします。
 /// ズーム、パン、編集、アノテーション、およびさまざまな表示モードをサポートします。
 /// ステップベースとミリ秒ベースの両方の時間単位を処理します。
 class TimingChart extends StatefulWidget {
   /// 各信号行の初期信号名（ID）
   final List<String> initialSignalNames;
-  
+
   /// 初期信号データ：信号行のリスト。各行は時間経過に伴う0/1値のリスト
   final List<List<int>> initialSignals;
-  
+
   /// チャートに表示する初期アノテーション（コメント）
   final List<TimingChartAnnotation> initialAnnotations;
-  
+
   /// 各信号行の信号タイプ（入力、出力、制御など）
   final List<SignalType> signalTypes;
-  
+
   /// チャート状態とアンドゥ/リドゥを管理するオプションのコントローラー
   final TimingChartController? controller;
-  
+
   /// チャートを画面サイズに自動的にフィットするかどうか
   final bool fitToScreen;
 
   /// 制御/グループ/タスク信号を含むすべての信号タイプを表示するかどうか
   final bool showAllSignalTypes;
-  
+
   /// 信号ラベルにIOポート番号を表示するかどうか
   final bool showIoNumbers;
-  
+
   /// 各信号のポート番号（showIoNumbersがtrueの場合に使用）
   final List<int> portNumbers;
-  
+
   /// 各信号のIOチャネルソース（PLC、EIPなど）
   final List<IoChannelSource> ioSources;
-  
+
   /// PLC/EIPモード設定（'PLC'、'EIP'、または'None'）
   final String plcEipMode;
-  
+
   /// ユーザー操作によって信号値が変更されたときに呼び出されるコールバック
   final void Function(
     List<String> names,
@@ -224,20 +250,20 @@ class TimingChart extends StatefulWidget {
 }
 
 /// TimingChartウィジェットのStateクラス
-/// 
+///
 /// 信号、アノテーション、ズーム、選択、ユーザー操作を含むすべてのチャート状態を管理します。
 /// AutomaticKeepAliveClientMixinを使用して、ウィジェットが表示されていないときに状態を保持します。
 class TimingChartState extends State<TimingChart>
     with AutomaticKeepAliveClientMixin {
   /// チャート状態とアンドゥ/リドゥ操作を管理するコントローラー
   TimingChartController? _controller;
-  
+
   /// コントローラーの状態変更用のコールバックリスナー
   late final VoidCallback _controllerListener;
-  
+
   /// 元のID形式の信号名（翻訳前）
   late List<String> _idSignalNames;
-  
+
   /// 言語変更用のコールバックリスナー（信号名の翻訳用）
   late final VoidCallback _langListener;
 
@@ -246,103 +272,142 @@ class TimingChartState extends State<TimingChart>
 
   /// 信号データ：行のリスト。各行には各時間ステップの0/1値が含まれます
   late List<List<int>> signals;
-  
+
   /// 信号の表示名（IDから翻訳された可能性がある）
   late List<String> signalNames;
-  
+
   /// チャートに表示されるアノテーション（コメント）
   late List<TimingChartAnnotation> annotations;
-  
+
   /// 特別な視覚的スタイリングでハイライトする時間ステップインデックス
   List<int> _highlightTimeIndices = [];
-  
+
   /// 省略マーク（波線）を描画する時間ステップインデックス
   List<int> _omissionTimeIndices = [];
-  
+
   /// 現在表示されている信号行インデックスのリスト（フィルタリング後）
   List<int> _visibleIndexes = [];
 
   /// ユーザーが現在信号ラベルをドラッグして行を並べ替えているかどうか
   bool _isLabelDrag = false;
-  
+
   /// ラベルをドラッグする際の開始行インデックス
   int? _labelDragStartRow;
-  
+
   /// ラベルドラッグ操作中の現在の行インデックス
   int? _labelDragCurrentRow;
 
   /// 各時間ステップセルの幅（ピクセル）
   double _cellWidth = 40;
-  
+
   /// 各信号行セルの高さ（ピクセル）
   double _cellHeight = 40;
-  
+
   /// 水平ズーム係数（1.0 = ズームなし、>1.0 = ズームイン）
   double _zoomFactor = 1.0;
-  
+
   /// 最小/最大境界にクランプされた後の実効ズーム係数
   double _effectiveZoomFactor = 1.0;
-  
+
   /// 現在のビューで許可される最小ズーム係数
   double _minZoomFactorForView = 1.0;
-  
+
   /// 現在のビューで許可される最大ズーム係数
   double _maxZoomFactorForView = 10.0;
-  
+
   /// 絶対最小ズーム係数（ハードリミット）
   static const double _minZoom = 0.1;
-  
+
   /// ズームイン/アウト操作のステップサイズ
   static const double _zoomStep = 0.25;
-  
+
   /// 許可される最小セル幅（ピクセル）
   static const double _minZoomCellWidth = 2.0;
-  
+
   /// 許可される最大セル幅（ピクセル）
   static const double _maxZoomCellWidth = 20000.0;
-  
+
   /// チャートエクスポート/キャプチャ用のデフォルトピクセル比
   static const double _defaultExportPixelRatio = 3.0;
-  
+
   /// チャートエクスポート/キャプチャ用の最大ピクセル比
   static const double _maxExportPixelRatio = 6.0;
 
   /// 修飾キー（Ctrl/Cmd）が現在押されているかどうか
   bool _isModifierPressed = false;
-  
+
   /// 左側の信号ラベル領域の幅
   final double labelWidth = 200.0;
-  
+
   /// 下部のコメント領域の最小高さ
   static const double _minCommentAreaHeight = 100.0;
 
   /// コメントがない場合の下部マージン
   static const double _noCommentBottomMargin = 40.0;
 
+  /// 自動生成コメント用の連番（ID重複防止）
+  int _autoCommentSerial = 0;
+
+  /// 描画結果から計測したコメント領域の高さ（null の場合は未計測）
+  double? _measuredCommentAreaHeight;
+
   /// 高度なタイミング制御を表示するかどうか（現在は常にfalse）
   bool get _showAdvancedTimingControls => false;
 
   /// チャート下部のコメント領域に必要な高さを計算します
-  /// 
+  ///
   /// 高さはアノテーションの数に基づいており、可読性を確保するための最小高さがあります。
   /// アノテーションがない場合は固定マージンを返します。
-  /// 
+  ///
   /// 計算された高さ（ピクセル）を返します
   double _calculateCommentAreaHeight() {
-    if (annotations.isEmpty) return _noCommentBottomMargin;
+    // コメントが無ければ固定の下マージンのみ
+    if (annotations.isEmpty) {
+      _measuredCommentAreaHeight = null;
+      return _noCommentBottomMargin;
+    }
 
+    // 描画結果から実際のコメントの最下端を計測できていれば優先して使用
+    if (_measuredCommentAreaHeight != null &&
+        _measuredCommentAreaHeight!.isFinite &&
+        _measuredCommentAreaHeight! > 0) {
+      return _measuredCommentAreaHeight!;
+    }
+
+    // 初回など、まだ実測値がない場合は従来どおり件数ベースで概算
     const double baseHeight = 40.0;
     const double stepHeight = 20.0;
     final int layers = annotations.length - 1;
     final double estimated = baseHeight + stepHeight * layers;
-
     final double expanded = estimated * 1.5;
 
     return math.max(_minCommentAreaHeight, expanded);
   }
 
+  /// ペインター側で計測したコメント領域の高さを受け取る
+  void _onCommentAreaMeasured(double height) {
+    if (!mounted) return;
+    if (!height.isFinite || height <= 0) return;
+
+    final double normalized =
+        height < _noCommentBottomMargin ? _noCommentBottomMargin : height;
+
+    // ほぼ同じなら再ビルド不要
+    if (_measuredCommentAreaHeight != null &&
+        (_measuredCommentAreaHeight! - normalized).abs() < 0.5) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        _measuredCommentAreaHeight = normalized;
+      });
+    });
+  }
+
   /// チャートを現在選択されている時間範囲にフィットするようにズームします
-  /// 
+  ///
   /// 選択された時間範囲がビューポートを埋めるように適切なズーム係数を計算し、
   /// その後、選択範囲が見えるようにスクロール位置を調整します。
   /// 有効な選択がある場合にのみ機能します。
@@ -442,13 +507,13 @@ class TimingChartState extends State<TimingChart>
 
   /// 選択の開始信号行インデックス（表示インデックス空間内）
   int? _startSignalIndex;
-  
+
   /// 選択の終了信号行インデックス（表示インデックス空間内）
   int? _endSignalIndex;
-  
+
   /// 選択の開始時間ステップインデックス
   int? _startTimeIndex;
-  
+
   /// 選択の終了時間ステップインデックス
   int? _endTimeIndex;
 
@@ -460,13 +525,13 @@ class TimingChartState extends State<TimingChart>
 
   /// アノテーションIDからそのヒットテスト矩形へのマップ
   Map<String, Rect> _annotationHitRects = {};
-  
+
   /// 現在ドラッグされているアノテーションのID
   String? _draggingAnnotationId;
-  
+
   /// アノテーションドラッグが開始されたローカル位置
   Offset? _draggingStartLocal;
-  
+
   /// ドラッグ開始時のアノテーションボックスの初期左上位置
   Offset? _draggingInitialBoxTopLeft;
 
@@ -475,27 +540,27 @@ class TimingChartState extends State<TimingChart>
 
   /// チャートをレンダリングするCustomPaintウィジェットのキー
   final GlobalKey _customPaintKey = GlobalKey();
-  
+
   /// チャートコンテンツ周辺のRepaintBoundaryのキー
   final GlobalKey _repaintBoundaryKey = GlobalKey();
-  
+
   /// ビューポート周辺のRepaintBoundaryのキー
   final GlobalKey _viewportBoundaryKey = GlobalKey();
-  
+
   /// チャートコンテンツの水平スクロールコントローラー
   final ScrollController _hScrollController = ScrollController();
-  
+
   /// チャートコンテンツの垂直スクロールコントローラー
   final ScrollController _vScrollController = ScrollController();
 
   /// ステップ継続時間編集モードがアクティブかどうか
   bool _isEditingSteps = false;
-  
+
   /// 現在編集中のステップ境界のインデックス（編集モードがオンの場合）
   int? _activeStepIndex;
 
   /// ウィジェットが最初に作成されたときに状態を初期化します
-  /// 
+  ///
   /// 信号名、翻訳、キーボードハンドラー、コントローラーを設定します。
   /// 言語変更とコントローラー更新のリスナーを登録します。
   @override
@@ -573,7 +638,7 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// ズーム、選択、スクロール位置を含むすべてのグリッド調整をリセットします
-  /// 
+  ///
   /// コントローラーからグリッドがリセットされたときに呼び出されます。
   /// ズームを1.0にリセットし、選択とハイライトをクリアし、左上にスクロールします。
   void resetGridAdjustments() {
@@ -600,7 +665,7 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 外部ソースから信号データを更新します
-  /// 
+  ///
   /// [newSignals] - 現在の信号を置き換える新しい信号データ
   void updateSignals(List<List<int>> newSignals) {
     setState(() {
@@ -611,7 +676,7 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 親ウィジェットに信号が変更されたことを通知します
-  /// 
+  ///
   /// 提供されている場合はonSignalsChangedコールバックを呼び出します。
   void _notifySignalsChanged() {
     final callback = widget.onSignalsChanged;
@@ -625,7 +690,7 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// チャート編集からの信号変更をコントローラーにコミットし、親に通知します
-  /// 
+  ///
   /// ユーザーがチャート上で直接信号を編集した後に呼び出されます。
   void _commitSignalsFromChartEdit() {
     _controller?.setSignals(signals);
@@ -633,7 +698,7 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 外部ソースからアノテーションを更新します
-  /// 
+  ///
   /// [newAnnotations] - 現在のアノテーションを置き換える新しいアノテーション
   void updateAnnotations(List<TimingChartAnnotation> newAnnotations) {
     setState(() {
@@ -644,7 +709,7 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 外部ソースから信号名を更新します
-  /// 
+  ///
   /// [newIdNames] - 現在の信号名を置き換える新しい信号ID名
   void updateSignalNames(List<String> newIdNames) {
     if (listEquals(_idSignalNames, newIdNames)) {
@@ -659,7 +724,7 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 現在の言語に基づいて信号名をIDから表示名に翻訳します
-  /// 
+  ///
   /// すべての信号名の翻訳を非同期で読み込み、表示名を更新します。
   /// コロンプレフィックス付きの名前（例：「Type: id」）を処理します。
   void _translateNames() async {
@@ -753,11 +818,11 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 有効な選択範囲があるかどうかを確認します
-  /// 
+  ///
   /// 4つのインデックスがすべて設定され、範囲内にある場合、選択は有効です：
   /// - 信号インデックスは表示信号範囲内である必要があります
   /// - 時間インデックスは信号データ範囲内である必要があります
-  /// 
+  ///
   /// 選択が有効な場合はtrueを返し、それ以外の場合はfalseを返します
   bool get _hasValidSelection {
     if (_startSignalIndex == null ||
@@ -787,10 +852,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// ウィジェット座標のX座標（dx）から時間ステップインデックスを取得します
-  /// 
+  ///
   /// ピクセル位置を時間ステップインデックスに変換します。
   /// スクロールオフセットとラベル領域の幅を考慮します。ステップとミリ秒の両方の時間単位を処理します。
-  /// 
+  ///
   /// [dx] - ウィジェットローカル座標のX座標
   /// 時間ステップインデックスを返します。無効な場合は-1を返します
   int _getTimeIndexFromDx(double dx) {
@@ -817,10 +882,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// ウィジェット座標のY座標（dy）から信号行インデックスを取得します
-  /// 
+  ///
   /// ピクセル位置を信号行インデックスに変換します。
   /// スクロールオフセットとチャートマージンを考慮します。表示信号インデックスを返します。
-  /// 
+  ///
   /// [dy] - ウィジェットローカル座標のY座標
   /// 表示信号行インデックスを返します。無効な場合は-1を返します
   int _getSignalIndexFromDy(double dy) {
@@ -837,7 +902,7 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 現在の選択範囲をクリアします
-  /// 
+  ///
   /// すべての選択インデックス（信号と時間）をnullにリセットします。
   /// アクティブな選択があった場合にのみ状態を更新します。
   void _clearSelection() {
@@ -856,12 +921,12 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// チャート上のタップジェスチャーを処理します
-  /// 
+  ///
   /// タップイベントを処理して、アノテーション選択、信号行選択、信号値の切り替えを行います。
   /// ラベル領域をタップすると、行全体が選択されます。
   /// 信号セルをタップすると、その値が切り替わります。
   /// 既存の選択範囲内をタップすると、その選択範囲内のすべての信号が切り替わります。
-  /// 
+  ///
   /// [details] - タップ位置を含むタップジェスチャーの詳細
   void _handleTap(TapUpDetails details) {
     final chartLocalPos = details.localPosition;
@@ -994,10 +1059,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 指定された位置の単一信号値を切り替えます
-  /// 
+  ///
   /// 指定された表示行と時間ステップインデックスで信号値を反転します（0から1、または1から0）。
   /// チャート状態を更新し、変更をコミットします。
-  /// 
+  ///
   /// [visibleRow] - 表示信号行インデックス
   /// [time] - 時間ステップインデックス
   void _toggleSingleSignal(int visibleRow, int time) {
@@ -1016,10 +1081,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// パンジェスチャーの開始を処理します
-  /// 
+  ///
   /// アノテーション、信号行の並べ替え、または選択範囲のドラッグ操作を開始します。
   /// 開始位置（アノテーション、ラベル領域、またはチャート領域）に基づいてドラッグのタイプを決定します。
-  /// 
+  ///
   /// [details] - 初期位置を含むパンジェスチャー開始の詳細
   void _onPanStart(DragStartDetails details) {
     final box = context.findRenderObject() as RenderBox?;
@@ -1089,10 +1154,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// パンジェスチャーの更新を処理します
-  /// 
+  ///
   /// 現在のドラッグ操作を更新します。アクティブなドラッグタイプに基づいて、
   /// アノテーションのドラッグ、信号行の並べ替え、または選択範囲の拡張を処理します。
-  /// 
+  ///
   /// [details] - 現在の位置を含むパンジェスチャー更新の詳細
   void _onPanUpdate(DragUpdateDetails details) {
     if (_draggingAnnotationId != null &&
@@ -1170,11 +1235,11 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// パンジェスチャーの終了を処理します
-  /// 
+  ///
   /// ドラッグ操作を完了します。アノテーションのドラッグの場合、位置を確定します。
   /// 信号行の並べ替えの場合、有効であれば並べ替えを適用します。
   /// 選択の場合、単一点の場合は選択をクリアします。
-  /// 
+  ///
   /// [details] - パンジェスチャー終了の詳細
   void _onPanEnd(DragEndDetails details) {
     if (_draggingAnnotationId != null) {
@@ -1218,12 +1283,12 @@ class TimingChartState extends State<TimingChart>
   }
 
   // =====ステップ継続時間編集=====
-  
+
   /// ステップ継続時間編集モード用のパンジェスチャー開始を処理します
-  /// 
+  ///
   /// ステップ継続時間を編集する際、開始位置に最も近いステップ境界を見つけ、
   /// それをドラッグ用のアクティブなステップインデックスとして設定します。
-  /// 
+  ///
   /// [details] - 初期位置を含むパンジェスチャー開始の詳細
   void _onPanStartEditSteps(DragStartDetails details) {
     if (!_isEditingSteps) return;
@@ -1262,10 +1327,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// ステップ継続時間編集モード用のパンジェスチャー更新を処理します
-  /// 
+  ///
   /// 現在のドラッグ位置に基づいてアクティブなステップ境界の継続時間を更新します。
   /// ミリ秒単位で新しい継続時間を計算し、設定を更新します。
-  /// 
+  ///
   /// [details] - 現在の位置を含むパンジェスチャー更新の詳細
   void _onPanUpdateEditSteps(DragUpdateDetails details) {
     if (!_isEditingSteps || _activeStepIndex == null) return;
@@ -1307,10 +1372,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// ステップ継続時間編集モード用のパンジェスチャー終了を処理します
-  /// 
+  ///
   /// ステップ継続時間編集モードを終了し、アクティブなステップインデックスをクリアします。
   /// 再計算をトリガーするためにステップ継続時間リストをリセットします。
-  /// 
+  ///
   /// [details] - パンジェスチャー終了の詳細
   void _onPanEndEditSteps(DragEndDetails details) {
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
@@ -1322,11 +1387,11 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// スナップ距離を考慮して相対X位置から最も近いステップインデックスを見つけます
-  /// 
+  ///
   /// 指定されたX位置に最も近い時間ステップ境界を計算します。
   /// スナップ距離内にある場合は、その境界インデックスを返します。
   /// それ以外の場合は、その位置を含むステップインデックスを返します。
-  /// 
+  ///
   /// [relX] - 相対X位置（ピクセル、ラベル領域の開始位置から）
   /// [settings] - 時間単位設定を含む設定
   /// [maxLen] - 時間ステップの最大数
@@ -1373,10 +1438,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// ステップ継続時間編集モードでのタップジェスチャーを処理します
-  /// 
+  ///
   /// 編集モードでタップすると、近くのステップ境界にスナップするか、
   /// タップされたステップの継続時間を手動で入力するダイアログを開きます。
-  /// 
+  ///
   /// [details] - タップ位置を含むタップジェスチャーの詳細
   void _onTapUpEditSteps(TapUpDetails details) {
     if (!_isEditingSteps) return;
@@ -1469,10 +1534,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 長押しジェスチャーの開始を処理します
-  /// 
+  ///
   /// アノテーションを長押しすると、アノテーションのドラッグを開始します。
   /// アノテーション用のドラッグ状態変数を設定します。
-  /// 
+  ///
   /// [details] - 初期位置を含む長押しジェスチャー開始の詳細
   void _onLongPressStart(LongPressStartDetails details) {
     final chartLocalPos = details.localPosition;
@@ -1499,10 +1564,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 長押しジェスチャーの移動更新を処理します
-  /// 
+  ///
   /// 長押しドラッグ中にアノテーションの位置を更新します。
   /// チャート領域の上にドラッグしないように移動をクランプします。
-  /// 
+  ///
   /// [details] - 現在の位置を含む長押しジェスチャー移動更新の詳細
   void _onLongPressMoveUpdate(LongPressMoveUpdateDetails details) {
     if (_draggingAnnotationId == null || _draggingStartLocal == null) return;
@@ -1544,9 +1609,9 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 長押しジェスチャーの終了を処理します
-  /// 
+  ///
   /// アノテーションのドラッグを完了し、ドラッグ状態変数をクリアします。
-  /// 
+  ///
   /// [details] - 長押しジェスチャー終了の詳細
   void _onLongPressEnd(LongPressEndDetails details) {
     if (_draggingAnnotationId != null) {
@@ -1560,12 +1625,12 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 指定された位置にコンテキストメニューを表示します
-  /// 
+  ///
   /// 右クリックされたものに基づいてアクションを含むコンテキストメニューを表示します：
   /// - アノテーションをクリックした場合：アノテーションの編集/削除オプション
   /// - チャート領域をクリックした場合：選択操作オプション
   /// メニュー項目の選択を処理し、対応するアクションを実行します。
-  /// 
+  ///
   /// [context] - メニューを表示するためのビルドコンテキスト
   /// [position] - メニューが表示されるグローバル位置
   void _showContextMenu(BuildContext context, Offset position) async {
@@ -1682,6 +1747,8 @@ class TimingChartState extends State<TimingChart>
             value: 'deleteColumns',
             child: Text(s.ctx_delete_columns),
           ),
+        // 波形から重要なイベントを検出してコメントを自動生成
+        const PopupMenuItem(value: 'autoComment', child: Text('波形からコメント自動生成')),
         PopupMenuItem(value: 'addComment', child: Text(s.ctx_add_comment)),
         PopupMenuItem(value: 'omit', child: Text(s.ctx_draw_omission)),
       ];
@@ -1749,6 +1816,9 @@ class TimingChartState extends State<TimingChart>
         case 'zoomSelection':
           _zoomToSelectionFit();
           break;
+        case 'autoComment':
+          await _autoGenerateCommentsForCurrentChart();
+          break;
         case 'addComment':
           if (_hasValidSelection) {
             _showAddRangeCommentDialog();
@@ -1764,7 +1834,7 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 新しい単一点アノテーションを追加するダイアログを表示します
-  /// 
+  ///
   /// 最後の右クリック位置でダイアログを開き、ユーザーが特定の時間ステップで
   /// 新しいアノテーションのテキストを入力できるようにします。
   Future<void> _showAddCommentDialog() async {
@@ -1832,8 +1902,347 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
+  /// 現在の波形情報から重要なイベントを検出し、コメントを自動生成して挿入します
+  ///
+  /// - 各信号の立ち上がり/立ち下がり
+  /// - 一定以上の長さのON期間
+  /// - HWトリガから出力信号までの遅延
+  ///
+  /// 既存の「自動生成コメント（末尾が '（自動）' のもの）」は一度削除してから再生成します。
+  Future<void> _autoGenerateCommentsForCurrentChart() async {
+    if (signals.isEmpty) return;
+
+    // 自動生成対象となるコメントを構築
+    final List<TimingChartAnnotation> autoComments =
+        _buildAutoGeneratedCommentsFromSignals();
+
+    if (autoComments.isEmpty) {
+      // 重要とみなせるイベントが見つからなかった場合は簡単なトーストのみ表示
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('自動で挿入できるコメントが見つかりませんでした'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+      return;
+    }
+
+    setState(() {
+      // 既存の自動生成コメント（IDが "auto" で始まるもの）を削除
+      annotations.removeWhere((a) => a.id.startsWith('auto'));
+
+      annotations.addAll(autoComments);
+      _forceRepaint();
+    });
+    _controller?.setAnnotations(annotations);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('自動コメントを ${autoComments.length} 件挿入しました'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  /// 波形からの自動コメント生成ロジック本体
+  ///
+  /// - 各可視信号ごとに最大数件のエッジ/長期ONを検出
+  /// - HWトリガと出力信号の組み合わせから簡易な遅延コメントを生成
+  List<TimingChartAnnotation> _buildAutoGeneratedCommentsFromSignals() {
+    final List<TimingChartAnnotation> result = [];
+    if (signals.isEmpty) return result;
+
+    // 解析対象の時間長
+    final int maxLen = signals
+        .map((e) => e.length)
+        .fold<int>(0, (prev, len) => math.max(prev, len));
+    if (maxLen <= 1) return result;
+
+    // 表示中の行のみを対象にする（なければ全行）
+    final List<int> targetRows =
+        _visibleIndexes.isNotEmpty
+            ? List<int>.from(_visibleIndexes)
+            : List<int>.generate(signals.length, (i) => i);
+
+    // 各信号あたり立ち上がり/立ち下がりは「初回のみ」コメントする
+    const int maxEdgesPerSignal = 1;
+    const int maxTotalAnnotations = 50;
+    const int longOnThresholdSteps = 5;
+    const int maxTriggerDelaySteps = 20;
+
+    // HWトリガの立ち上がりエッジを記録（後で出力信号との関連コメントに使う）
+    final List<_HwTriggerEdge> hwRisingEdges = [];
+    final List<_OutputEdge> outputRisingEdges = [];
+
+    for (final rowIndex in targetRows) {
+      if (rowIndex < 0 || rowIndex >= signals.length) continue;
+      final values = signals[rowIndex];
+      if (values.isEmpty) continue;
+
+      final String name =
+          (rowIndex < signalNames.length)
+              ? signalNames[rowIndex]
+              : 'Signal ${rowIndex + 1}';
+      final SignalType type =
+          (rowIndex < widget.signalTypes.length)
+              ? widget.signalTypes[rowIndex]
+              : SignalType.input;
+
+      int prev = values.first;
+      int runStart = 0;
+      int risingCount = 0;
+      int fallingCount = 0;
+
+      for (
+        int t = 1;
+        t < values.length && result.length < maxTotalAnnotations;
+        t++
+      ) {
+        final int v = values[t];
+        if (v == prev) continue;
+
+        // 直前までのラン区間 [runStart, t-1] を確定
+        if (prev == 1) {
+          final int runLength = t - runStart;
+          if (runLength >= longOnThresholdSteps &&
+              result.length < maxTotalAnnotations) {
+            result.add(
+              _createAutoAnnotation(
+                startTimeIndex: runStart,
+                endTimeIndex: t - 1,
+                text: _buildLongOnCommentText(name, type, runLength),
+              ),
+            );
+          }
+        }
+
+        // エッジ判定
+        if (prev == 0 && v == 1) {
+          // 立ち上がり
+          if (type == SignalType.hwTrigger) {
+            hwRisingEdges.add(
+              _HwTriggerEdge(rowIndex: rowIndex, timeIndex: t, name: name),
+            );
+          } else if (type == SignalType.output) {
+            outputRisingEdges.add(
+              _OutputEdge(rowIndex: rowIndex, timeIndex: t, name: name),
+            );
+          }
+
+          if (risingCount < maxEdgesPerSignal) {
+            result.add(
+              _createAutoAnnotation(
+                startTimeIndex: t,
+                text: _buildEdgeCommentText(name, type, true),
+              ),
+            );
+            risingCount++;
+          }
+        } else if (prev == 1 && v == 0) {
+          // 立ち下がり
+          if (fallingCount < maxEdgesPerSignal) {
+            result.add(
+              _createAutoAnnotation(
+                startTimeIndex: t,
+                text: _buildEdgeCommentText(name, type, false),
+              ),
+            );
+            fallingCount++;
+          }
+        }
+
+        runStart = t;
+        prev = v;
+      }
+
+      // 最後の区間も長いONならコメント
+      if (prev == 1) {
+        final int runLength = values.length - runStart;
+        if (runLength >= longOnThresholdSteps &&
+            result.length < maxTotalAnnotations) {
+          result.add(
+            _createAutoAnnotation(
+              startTimeIndex: runStart,
+              endTimeIndex: values.length - 1,
+              text: _buildLongOnCommentText(name, type, runLength),
+            ),
+          );
+        }
+      }
+
+      if (result.length >= maxTotalAnnotations) break;
+    }
+
+    // HWトリガ → 出力の遅延コメント（簡易版）
+    for (final outEdge in outputRisingEdges) {
+      if (result.length >= maxTotalAnnotations) break;
+      _HwTriggerEdge? bestTrigger;
+      int bestDt = maxTriggerDelaySteps + 1;
+
+      for (final trig in hwRisingEdges) {
+        if (trig.timeIndex > outEdge.timeIndex) continue;
+        final int dt = outEdge.timeIndex - trig.timeIndex;
+        if (dt >= 0 && dt <= maxTriggerDelaySteps && dt < bestDt) {
+          bestDt = dt;
+          bestTrigger = trig;
+        }
+      }
+
+      if (bestTrigger != null) {
+        result.add(
+          _createAutoAnnotation(
+            startTimeIndex: bestTrigger.timeIndex,
+            endTimeIndex: outEdge.timeIndex,
+            text: _buildDelayCommentText(
+              bestTrigger.name,
+              outEdge.name,
+              bestDt,
+            ),
+          ),
+        );
+      }
+    }
+
+    return result;
+  }
+
+  /// エッジ（立ち上がり/立ち下がり）用のコメント文を組み立て
+  String _buildEdgeCommentText(String name, SignalType type, bool rising) {
+    // 1) まずドメイン固有のルールを優先（役割に沿った短いコメント）
+    final String? domainText = _buildDomainSpecificEdgeComment(
+      name,
+      type,
+      rising,
+    );
+    if (domainText != null) {
+      return domainText;
+    }
+
+    // 2) 汎用ルールはシンプルな形式に統一
+    final String dir = rising ? 'ON' : 'OFF';
+    // できるだけ短く：「信号名 ON/OFF」
+    return '$name $dir';
+  }
+
+  /// 長時間ONが続いた区間用のコメント文を組み立て
+  String _buildLongOnCommentText(String name, SignalType type, int steps) {
+    // 一部の信号は長時間ONにドメイン固有コメントを割り当て可能
+    final String? domainText = _buildDomainSpecificLongOnComment(
+      name,
+      type,
+      steps,
+    );
+    if (domainText != null) {
+      return domainText;
+    }
+
+    // 汎用コメントはステップ数を出さず、意味だけを簡潔に
+    return '$name 長時間ON';
+  }
+
+  /// HWトリガから出力までの遅延コメント文を組み立て
+  String _buildDelayCommentText(
+    String triggerName,
+    String outputName,
+    int steps,
+  ) {
+    // 役割に沿った特別なパターン（例: 一括露光終了 → ワーク搬送）
+    final String? domainText = _buildDomainSpecificDelayComment(
+      triggerName,
+      outputName,
+      steps,
+    );
+    if (domainText != null) {
+      return domainText;
+    }
+
+    // 汎用コメントもシンプルに
+    return '$triggerName → $outputName 遅延 $steps ステップ';
+  }
+
+  /// エッジ用のドメイン固有コメント（役割に沿った説明）
+  ///
+  /// 例) 「一括露光中」がOFFになったタイミングで「ワーク搬送可」など。
+  String? _buildDomainSpecificEdgeComment(
+    String name,
+    SignalType type,
+    bool rising,
+  ) {
+    final normalized = name.replaceAll(' ', '');
+
+    // 一括露光中: OFF になったらワーク搬送が可能
+    if (normalized.contains('一括露光中')) {
+      if (!rising) {
+        return '一括露光終了 → ワーク搬送可';
+      } else {
+        return '一括露光開始';
+      }
+    }
+
+    // ここに他のルールを追加可能
+    // 例:
+    // if (normalized.contains('搬送許可') && rising) {
+    //   return 'ワーク搬送開始可（自動）';
+    // }
+
+    return null;
+  }
+
+  /// 長時間ON用のドメイン固有コメント
+  String? _buildDomainSpecificLongOnComment(
+    String name,
+    SignalType type,
+    int steps,
+  ) {
+    final normalized = name.replaceAll(' ', '');
+
+    // 一括露光中 が長く続いている場合
+    if (normalized.contains('一括露光中')) {
+      return '一括露光継続中';
+    }
+
+    return null;
+  }
+
+  /// トリガ→出力の遅延用ドメイン固有コメント
+  String? _buildDomainSpecificDelayComment(
+    String triggerName,
+    String outputName,
+    int steps,
+  ) {
+    final trig = triggerName.replaceAll(' ', '');
+    final out = outputName.replaceAll(' ', '');
+
+    // 例: 一括露光トリガ → ワーク搬送用出力 などに合わせて拡張可能
+    if (trig.contains('一括露光') && out.contains('搬送')) {
+      return '一括露光完了から搬送開始までの遅延 $steps ステップ';
+    }
+
+    return null;
+  }
+
+  /// 自動コメント用アノテーションインスタンスを生成
+  TimingChartAnnotation _createAutoAnnotation({
+    required int startTimeIndex,
+    int? endTimeIndex,
+    required String text,
+  }) {
+    final String id =
+        'auto${DateTime.now().millisecondsSinceEpoch}_${_autoCommentSerial++}';
+    return TimingChartAnnotation(
+      id: id,
+      startTimeIndex: startTimeIndex,
+      endTimeIndex: endTimeIndex,
+      text: text,
+    );
+  }
+
   /// 新しい範囲アノテーションを追加するダイアログを表示します
-  /// 
+  ///
   /// 現在選択されている時間範囲にまたがる新しいアノテーションのテキストを
   /// ユーザーが入力できるダイアログを開きます。
   Future<void> _showAddRangeCommentDialog() async {
@@ -1896,10 +2305,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 既存のアノテーションのテキストを編集します
-  /// 
+  ///
   /// 指定されたIDのアノテーションのテキストをユーザーが変更できるダイアログを開きます。
   /// テキストが変更された場合はアノテーションを更新します。
-  /// 
+  ///
   /// [annId] - 編集するアノテーションのID
   void _editComment(String annId) async {
     final ann = annotations.firstWhereOrNull((a) => a.id == annId);
@@ -1955,10 +2364,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// アノテーションを削除します
-  /// 
+  ///
   /// 指定されたIDのアノテーションをチャートから削除します。
   /// このアノテーションが選択されていた場合は、選択もクリアします。
-  /// 
+  ///
   /// [annId] - 削除するアノテーションのID
   void _deleteComment(String annId) {
     final index = annotations.indexWhere((a) => a.id == annId);
@@ -1974,7 +2383,7 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 現在の選択範囲内のすべての信号値を切り替えます
-  /// 
+  ///
   /// 選択されたすべての信号行について、選択範囲内のすべての信号値を反転します（0から1、または1から0）。
   /// 変更をコントローラーにコミットします。
   void _toggleSignalsInSelection() {
@@ -2002,7 +2411,7 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 選択範囲にゼロ値を挿入します
-  /// 
+  ///
   /// 選択されたすべての信号行について、選択範囲の開始位置に選択幅に等しい数のゼロ値を挿入します。
   /// これにより、既存の値が右にシフトされます。
   void _insertZerosToSelection() {
@@ -2030,17 +2439,21 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 指定された範囲の時間列を削除します
-  /// 
+  ///
   /// 指定された時間範囲内のすべての信号から時間ステップを削除します。
   /// 削除を反映するために、ステップ継続時間、省略インデックス、アノテーションも更新します。
   /// これは列全体を削除する際に使用されます。
-  /// 
+  ///
   /// [stTime] - 開始時間インデックス（含む）
   /// [edTime] - 終了時間インデックス（含む）
   void _deleteColumnsAtRange(int stTime, int edTime) {
     debugPrint('deleteColumnsAtRange: stTime=$stTime, edTime=$edTime');
-    debugPrint('deleteColumnsAtRange: signals=${signals.map((e) => e.length).toList()}');
-    debugPrint('deleteColumnsAtRange: _visibleIndexes=${_visibleIndexes.map((e) => e).toList()}');
+    debugPrint(
+      'deleteColumnsAtRange: signals=${signals.map((e) => e.length).toList()}',
+    );
+    debugPrint(
+      'deleteColumnsAtRange: _visibleIndexes=${_visibleIndexes.map((e) => e).toList()}',
+    );
     debugPrint('deleteColumnsAtRange: _startSignalIndex=$_startSignalIndex');
     debugPrint('deleteColumnsAtRange: _endSignalIndex=$_endSignalIndex');
     debugPrint('deleteColumnsAtRange: _startTimeIndex=$_startTimeIndex');
@@ -2138,7 +2551,7 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 信号から選択範囲を削除します
-  /// 
+  ///
   /// 選択された信号行から選択された時間範囲を削除します。
   /// すべての表示信号が選択されている場合、列削除に委譲します。
   /// それ以外の場合は、選択された行からのみ削除します。
@@ -2184,12 +2597,12 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 選択された時間範囲の列を削除します
-  /// 
+  ///
   /// 選択された時間範囲について、時間列全体（すべての信号にわたる）を削除します。
   /// より寛容：時間インデックスの存在のみを確認し、その後安全に範囲をクランプして処理します。
   void _deleteColumns() {
     // More tolerant: only verify time index existence, then safely clamp and process range
-    if (_startTimeIndex == null || _endTimeIndex == null){
+    if (_startTimeIndex == null || _endTimeIndex == null) {
       debugPrint('deleteColumns: _startTimeIndex=$_startTimeIndex');
       debugPrint('deleteColumns: _endTimeIndex=$_endTimeIndex');
       return;
@@ -2197,8 +2610,12 @@ class TimingChartState extends State<TimingChart>
     final stTime = math.min(_startTimeIndex!, _endTimeIndex!);
     final edTime = math.max(_startTimeIndex!, _endTimeIndex!);
     debugPrint('deleteColumns: stTime=$stTime, edTime=$edTime');
-    debugPrint('deleteColumns: signals=${signals.map((e) => e.length).toList()}');
-    debugPrint('deleteColumns: _visibleIndexes=${_visibleIndexes.map((e) => e).toList()}');
+    debugPrint(
+      'deleteColumns: signals=${signals.map((e) => e.length).toList()}',
+    );
+    debugPrint(
+      'deleteColumns: _visibleIndexes=${_visibleIndexes.map((e) => e).toList()}',
+    );
     debugPrint('deleteColumns: _startSignalIndex=$_startSignalIndex');
     debugPrint('deleteColumns: _endSignalIndex=$_endSignalIndex');
     debugPrint('deleteColumns: _startTimeIndex=$_startTimeIndex');
@@ -2207,7 +2624,7 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 選択範囲を信号の末尾に複製します
-  /// 
+  ///
   /// 選択された信号と時間範囲をコピーし、各選択信号行の末尾に追加します。
   /// 選択範囲内にあるアノテーションと省略マークも複製します。
   /// ミリ秒単位を使用している場合は、ステップ継続時間を更新します。
@@ -2330,7 +2747,7 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// すべての信号の長さを最長の信号に合わせて正規化します
-  /// 
+  ///
   /// 短い信号にゼロ値をパディングして、すべての信号が同じ長さになるようにします。
   /// これにより、すべての信号行間で一貫した時間ステップ数が確保されます。
   void _normalizeSignalLengths() {
@@ -2352,10 +2769,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 指定された時間インデックスで省略マークを切り替えます
-  /// 
+  ///
   /// 指定された時間ステップで波線（省略マーク）を追加または削除します。
   /// 省略マークは、時間ステップがスキップまたは省略されていることを示します。
-  /// 
+  ///
   /// [timeIndex] - 省略マークを切り替える時間ステップインデックス
   void _toggleOmissionTime(int timeIndex) {
     if (timeIndex < 0) return;
@@ -2371,7 +2788,7 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 1ステップズームインします
-  /// 
+  ///
   /// ズーム係数を_zoomStepだけ増やし、最大許可ズームにクランプします。
   void _zoomIn() {
     final double current = math.max(_zoomFactor, _minZoomFactorForView);
@@ -2383,7 +2800,7 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 1ステップズームアウトします
-  /// 
+  ///
   /// ズーム係数を_zoomStepだけ減らし、最小許可ズームにクランプします。
   void _zoomOut() {
     final double current = math.max(_zoomFactor, _minZoomFactorForView);
@@ -2395,7 +2812,7 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 可能であればズームをデフォルト（1.0）にリセットし、それ以外の場合は最小値にリセットします
-  /// 
+  ///
   /// ズームを1.0に設定しようとしますが、1.0が許可範囲外の場合は最小ズームにフォールバックします。
   void _resetZoom() {
     final double preferred = 1.0;
@@ -2411,9 +2828,9 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 波形表示に使用可能なビューポートの幅を取得します
-  /// 
+  ///
   /// マージンとラベル幅を総ウィジェット幅から減算して使用可能な幅を計算します。
-  /// 
+  ///
   /// ビューポート幅（ピクセル）を返します
   double _getViewportWaveWidth() {
     final double widgetWidth = MediaQuery.of(context).size.width;
@@ -2422,10 +2839,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 信号タイプフィルタリングに基づいて表示可能な信号行インデックスのリストを計算します
-  /// 
+  ///
   /// showAllSignalTypesがtrueでない限り、制御、グループ、タスク信号をフィルタリングします。
   /// チャートに表示されるべき信号のインデックスを返します。
-  /// 
+  ///
   /// 表示可能な信号行インデックスのリストを返します
   List<int> _calculateVisibleIndexes() {
     final visibleIndexes = <int>[];
@@ -2446,10 +2863,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 時間ステップの総数を計算します（ミリ秒単位の場合は小数になる可能性がある）
-  /// 
+  ///
   /// ミリ秒単位を使用する場合、すべてのステップの正規化された継続時間を合計します。
   /// ステップ単位を使用する場合、ステップ数を返します。
-  /// 
+  ///
   /// [settings] - 時間単位設定を含む設定
   /// [maxLen] - 時間ステップの最大数
   /// [durationsForLayout] - ステップ継続時間（ミリ秒）の配列
@@ -2505,10 +2922,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// チャートレンダリングに必要なすべてのレイアウトデータを計算します
-  /// 
+  ///
   /// これは、現在の制約、信号データ、設定に基づいてセル寸法、ズーム係数、
   /// 表示インデックス、総チャート寸法を計算する主要なレイアウト計算メソッドです。
-  /// 
+  ///
   /// [constraints] - 親ウィジェットからのボックス制約
   /// [settings] - 時間単位と表示設定を含む設定
   /// 計算されたすべてのレイアウト値を含む_ChartLayoutDataを返します
@@ -2687,10 +3104,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// すべての信号にわたる総時間ステップ単位を計算します
-  /// 
+  ///
   /// 総正規化ステップ単位を計算します。ミリ秒単位の場合、正規化された継続時間を合計します。
   /// ステップ単位の場合、最大信号長を返します。
-  /// 
+  ///
   /// 総ステップ単位をdoubleとして返します
   double _computeTotalStepUnits() {
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
@@ -2713,10 +3130,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// ズーム後にアンカーポイントを維持するためにスクロール補正を適用します
-  /// 
+  ///
   /// ズーム後、anchorXInWaveのポイントが同じ視覚的位置に残るようにスクロール位置を調整します。
   /// stepsUnitsBeforeを使用して新しいスクロールオフセットを計算します。
-  /// 
+  ///
   /// [anchorXInWave] - 固定を維持する波形領域内のX位置
   /// [stepsUnitsBefore] - アンカーポイントより前のステップ単位
   void _applyAnchorScrollCorrection({
@@ -2739,7 +3156,7 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// ビューポートの中心をアンカーポイントとして維持しながらズームインします
-  /// 
+  ///
   /// 1ステップズームインし、ビューポートの中心が同じ視覚的位置に残るようにスクロールを調整します。
   void _zoomInWithAnchorAtCenter() {
     final double viewportWaveWidth = _getViewportWaveWidth();
@@ -2758,7 +3175,7 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// ビューポートの中心をアンカーポイントとして維持しながらズームアウトします
-  /// 
+  ///
   /// 1ステップズームアウトし、ビューポートの中心が同じ視覚的位置に残るようにスクロールを調整します。
   void _zoomOutWithAnchorAtCenter() {
     final double viewportWaveWidth = _getViewportWaveWidth();
@@ -2777,10 +3194,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// ポインター信号イベント（マウスホイールスクロール）を処理します
-  /// 
+  ///
   /// Ctrl/Cmdが押されている場合、スクロールホイールを使用してズームイン/アウトします。
   /// カーソル位置をズームのアンカーポイントとして維持します。
-  /// 
+  ///
   /// [event] - ポインター信号イベント（通常はスクロールホイール）
   void _handlePointerSignal(PointerSignalEvent event) {
     if (event is! PointerScrollEvent) return;
@@ -3047,6 +3464,7 @@ class TimingChartState extends State<TimingChart>
                                 Provider.of<SettingsNotifier>(
                                   context,
                                 ).signalColors,
+                            onCommentAreaMeasured: _onCommentAreaMeasured,
                             draggingStartRow:
                                 isEditingMode ? null : _labelDragStartRow,
                             draggingCurrentRow:
@@ -3262,10 +3680,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 現在の選択範囲の総継続時間（ミリ秒）を計算します
-  /// 
+  ///
   /// 選択範囲内のすべての時間ステップのステップ継続時間を合計します。
   /// 有効な選択がない場合は0.0を返します。
-  /// 
+  ///
   /// [settings] - ステップ継続時間設定を含む設定
   /// 総継続時間（ミリ秒）を返します
   double _computeSelectionDurationMs(SettingsNotifier settings) {
@@ -3288,10 +3706,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 現在の選択範囲内の時間ステップ数を計算します
-  /// 
+  ///
   /// 時間ステップ単位で選択範囲の幅を計算します。
   /// 有効な選択がない場合は0を返します。
-  /// 
+  ///
   /// 選択範囲内のステップ数を返します
   int _computeSelectionSteps() {
     if (!_hasValidSelection) return 0;
@@ -3301,10 +3719,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 現在の選択範囲を説明するラベル文字列を構築します
-  /// 
+  ///
   /// 現在の時間単位設定に応じて、ミリ秒単位の継続時間またはステップ数を示す
   /// フォーマットされた文字列を返します。
-  /// 
+  ///
   /// [settings] - 時間単位設定を含む設定
   /// フォーマットされた選択ラベル文字列を返します
   String _buildSelectionLabel(SettingsNotifier settings) {
@@ -3319,10 +3737,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 単位切り替えとコントロールパネルウィジェットを構築します
-  /// 
+  ///
   /// 時間単位（ms/step）と下部ラベルのスイッチ、ズームコントロール、選択情報を含む
   /// コンテナを作成します。有効な場合は高度なタイミング制御を含む場合があります。
-  /// 
+  ///
   /// [context] - ビルドコンテキスト
   /// 単位切り替えウィジェットを返します
   Widget _buildUnitToggle(BuildContext context) {
@@ -3405,10 +3823,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// ステップあたりのミリ秒を編集するためのテキストフィールドを構築します
-  /// 
+  ///
   /// 時間単位変換に使用される基本のステップあたりのミリ秒値をユーザーが設定できる
   /// 小さなテキスト入力フィールドを作成します。
-  /// 
+  ///
   /// ms/step入力フィールドウィジェットを返します
   Widget _buildMsPerStepField() {
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
@@ -3438,10 +3856,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// ステップ継続時間を一括編集するためのボタンを構築します
-  /// 
+  ///
   /// カンマ区切りの値を使用してすべてのステップ継続時間を一度に編集できる
   /// ダイアログを開くボタンを作成します。
-  /// 
+  ///
   /// ステップ継続時間編集ボタンウィジェットを返します
   Widget _buildEditStepDurationsButton() {
     return OutlinedButton.icon(
@@ -3505,7 +3923,7 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// チャートのCustomPaintウィジェットの再描画を強制します
-  /// 
+  ///
   /// CustomPaintレンダーオブジェクトにペイントが必要であることをマークして
   /// 手動で再描画をトリガーします。状態変更が自動的に再描画をトリガーしない場合に使用されます。
   void _forceRepaint() {
@@ -3516,10 +3934,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// チャートをPNG画像としてキャプチャします
-  /// 
+  ///
   /// RepaintBoundaryを使用してチャートコンテンツを画像にレンダリングし、
   /// PNGバイトを返します。より良い品質のために高いピクセル比を使用します。
-  /// 
+  ///
   /// [pixelRatio] - オプションのピクセル比（デフォルトはデバイス比または3.0）
   /// PNG画像バイトを返します。キャプチャに失敗した場合はnullを返します
   Future<Uint8List?> captureChartPng({double? pixelRatio}) async {
@@ -3545,10 +3963,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// チャートをJPEG画像としてキャプチャします
-  /// 
+  ///
   /// チャートコンテンツを画像にレンダリングし、JPEG形式に変換します。
   /// 背景色とのアルファチャネル合成を処理します。
-  /// 
+  ///
   /// [pixelRatio] - オプションのピクセル比（デフォルトはデバイス比または3.0）
   /// [backgroundColor] - アルファ合成用の背景色（デフォルトはテーマ）
   /// [quality] - JPEG品質0-100（デフォルトは90）
@@ -3638,10 +4056,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// アノテーションの矢印の先端を特定の信号行に向けるように設定します
-  /// 
+  ///
   /// アノテーションの矢印の先端の垂直位置を更新して、
   /// 指定された表示信号行の中心を指すようにします。
-  /// 
+  ///
   /// [annId] - 更新するアノテーションのID
   /// [visibleRowIndex] - 指す表示信号行インデックス
   void _setAnnotationArrowToSignal(String annId, int visibleRowIndex) {
@@ -3672,10 +4090,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 修飾キー（Ctrl/Cmd）の押下/解放イベントを処理します
-  /// 
+  ///
   /// CtrlまたはCmdキーが押されたり解放されたりしたときに_isModifierPressed状態を更新します。
   /// 特定のインタラクションモードを有効/無効にするために使用されます。
-  /// 
+  ///
   /// [event] - キーボードイベント
   /// イベント伝播を許可するためにfalseを返します
   bool _handleModifierKeyEvent(KeyEvent event) {
@@ -3691,13 +4109,13 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// チャート操作のキーボードイベントを処理します
-  /// 
+  ///
   /// キーボードショートカットを処理します：
   /// - Ctrl/Cmd+Z: アンドゥ
   /// - Ctrl/Cmd+Y: リドゥ
   /// - Ctrl/Cmd+A: すべての信号を選択
   /// - 0/1キー: 選択範囲の信号値を0または1に設定
-  /// 
+  ///
   /// [event] - キーボードイベント
   void _onKeyEvent(KeyEvent event) {
     if (event is! KeyDownEvent) return;
@@ -3740,7 +4158,7 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// すべての時間ステップにわたってすべての表示信号を選択します
-  /// 
+  ///
   /// 選択範囲を時間0から最大時間ステップまでのすべての表示信号行をカバーするように設定します。
   /// チャート状態を更新して選択範囲をハイライトします。
   void _selectAllSignals() {
@@ -3755,10 +4173,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 選択範囲内のすべての信号値を指定された値に設定します
-  /// 
+  ///
   /// 選択範囲内のすべての信号値を0または1に設定します。
   /// キーボードショートカット（0/1キー）で信号状態を設定するために使用されます。
-  /// 
+  ///
   /// [value] - 設定する値（0または1）
   void _setSignalsInSelection(int value) {
     if (!_hasValidSelection) return;
@@ -3786,10 +4204,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 隣接する行と交換して信号行を上下に移動します
-  /// 
+  ///
   /// 指定された表示インデックスの信号を（visibleIndex + direction）の信号と交換します。
   /// 関連する名前、タイプ、ポート番号、IOソース、ID名も交換します。
-  /// 
+  ///
   /// [visibleIndex] - 移動する表示信号行インデックス
   /// [direction] - 移動方向（-1は上、+1は下）
   void _moveSignal(int visibleIndex, int direction) {
@@ -3835,10 +4253,10 @@ class TimingChartState extends State<TimingChart>
   }
 
   /// 1つの行を新しい位置に移動して信号行を並べ替えます
-  /// 
+  ///
   /// fromVisibleからtoVisibleへ信号行を移動します。これは隣接する行を繰り返し交換することで行われます。
   /// 信号ラベルをドラッグして並べ替える際に使用されます。
-  /// 
+  ///
   /// [fromVisible] - ソース表示行インデックス
   /// [toVisible] - 宛先表示行インデックス
   void _reorderSignalRows(int fromVisible, int toVisible) {
@@ -3857,7 +4275,7 @@ class TimingChartState extends State<TimingChart>
 }
 
 /// タイミングチャートコンテンツをレンダリングするカスタムペインター
-/// 
+///
 /// グリッド線、信号波形、アノテーション、選択範囲、省略マークの描画を処理します。
 /// レンダリングの異なる側面（グリッド、信号、アノテーション）について、
 /// 専門化されたマネージャークラスに委譲します。
@@ -3895,6 +4313,7 @@ class _StepTimingChartPainter extends CustomPainter {
     required this.arrowColor,
     required this.signalColors,
     required this.showBottomUnitLabels,
+    required this.onCommentAreaMeasured,
     this.draggingStartRow,
     this.draggingCurrentRow,
   }) {
@@ -3985,6 +4404,9 @@ class _StepTimingChartPainter extends CustomPainter {
 
   final int? draggingStartRow;
   final int? draggingCurrentRow;
+
+  /// 描画済みアノテーションからコメント領域の必要高さを親にフィードバックするコールバック
+  final void Function(double) onCommentAreaMeasured;
 
   late final ChartAnnotationsManager _annotationsManager;
   late final ChartGridManager _gridManager;
@@ -4088,6 +4510,23 @@ class _StepTimingChartPainter extends CustomPainter {
     _annotationsManager.drawAnnotations(canvas, size, rowCount);
     canvas.restore();
 
+    // --- コメント領域の実際の必要高さを計測してStateに通知 ---
+    try {
+      final double chartBottomY = rowCount * cellHeight;
+      double maxBottom = chartBottomY;
+      for (final rect in _annotationsManager.annotationRects.values) {
+        if (rect.bottom > maxBottom) {
+          maxBottom = rect.bottom;
+        }
+      }
+      final double extra = math.max(0.0, maxBottom - chartBottomY);
+      // コメントボックスの下に少し余白（20px）を付ける
+      final double measuredHeight = math.max(40.0, extra + 20.0);
+      onCommentAreaMeasured(measuredHeight);
+    } catch (_) {
+      // 計測に失敗しても描画自体には影響させない
+    }
+
     _gridManager.drawTimeLabels(canvas, size, rowCount, maxTimeSteps);
 
     annotationRects.clear();
@@ -4182,7 +4621,7 @@ class _StepTimingChartPainter extends CustomPainter {
 }
 
 /// 信号ラベルオーバーレイをレンダリングするカスタムペインター
-/// 
+///
 /// 左マージン領域に信号名ラベルを描画します。
 /// IOポート番号、プレフィックス、選択された行のハイライトを含みます。
 class _LabelsOverlayPainter extends CustomPainter {

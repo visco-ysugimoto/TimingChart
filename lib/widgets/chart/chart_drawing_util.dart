@@ -100,30 +100,41 @@ void drawCommentBox(
 ) {
   final bool isSelected = selectedAnnotationId == annId;
 
-  // 1. 白のベースを先に塗り arrow 等を完全に隠す
+  // カード風に見せるために角丸＋影付きで描画
+  final RRect rrect = RRect.fromRectAndRadius(rect, const Radius.circular(8));
+
+  // 1. さりげないドロップシャドウ
+  final RRect shadowRRect = rrect.shift(const Offset(0, 2));
+  final Paint shadowPaint =
+      Paint()
+        ..color = Colors.black.withOpacity(0.18)
+        ..style = PaintingStyle.fill;
+  canvas.drawRRect(shadowRRect, shadowPaint);
+
+  // 2. ベース色（選択時と通常時で変える）
+  final Color baseColor =
+      isSelected
+          ? const Color(0xFFFFF3CD) // 選択時: 少し強めのアクセント（淡いイエロー）
+          : const Color(0xFFFDFDFD); // 通常時: ほぼ白のカード色
+
   final Paint paintBase =
       Paint()
-        ..color = Colors.white
+        ..color = baseColor
         ..style = PaintingStyle.fill;
-  canvas.drawRect(rect, paintBase);
+  canvas.drawRRect(rrect, paintBase);
 
-  // 2. 選択時はその上にハイライト用の半透明色を重ねる
-  if (isSelected) {
-    final Paint paintHighlight =
-        Paint()
-          ..color = const Color.fromARGB(255, 201, 192, 119)
-          ..style = PaintingStyle.fill;
-    canvas.drawRect(rect, paintHighlight);
-  }
-
-  // 3. 枠線
+  // 3. 枠線（選択時はアクセントカラー＋太め）
   final Paint paintBorder =
       Paint()
-        ..color = Colors.black
+        ..color = isSelected ? const Color(0xFFF0AD4E) : Colors.grey.shade600
         ..style = PaintingStyle.stroke
         ..strokeWidth = isSelected ? 2.0 : 1.0;
-  canvas.drawRect(rect, paintBorder);
-  textPainter.paint(canvas, rect.topLeft.translate(4, 4));
+  canvas.drawRRect(rrect, paintBorder);
+
+  // 4. テキストをボックス内で縦横中央揃えで配置
+  final double textX = rect.left + (rect.width - textPainter.width) / 2;
+  final double textY = rect.top + (rect.height - textPainter.height) / 2;
+  textPainter.paint(canvas, Offset(textX, textY));
 }
 
 /// 矢印を描画
