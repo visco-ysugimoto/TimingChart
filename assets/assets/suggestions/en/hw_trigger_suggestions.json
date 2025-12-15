@@ -1,0 +1,10 @@
+[
+    { "id": "HW_TRIGGER1",   "label": "HW Trigger 1" },
+    { "id": "HW_TRIGGER2",   "label": "HW Trigger 2" },
+    { "id": "HW_TRIGGER3",   "label": "HW Trigger 3" },
+    { "id": "HW_TRIGGER4",   "label": "HW Trigger 4" },
+    { "id": "HW_TRIGGER5",   "label": "HW Trigger 5" },
+    { "id": "HW_TRIGGER6",   "label": "HW Trigger 6" },
+    { "id": "HW_TRIGGER7",   "label": "HW Trigger 7" },
+    { "id": "HW_TRIGGER8",   "label": "HW Trigger 8" }
+]

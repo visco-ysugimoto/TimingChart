@@ -1,0 +1,89 @@
+# vxVisMgr.ini ⇔ suggestions ID 対応表テンプレート
+#
+# 用途:
+# - vxVisMgr.ini の [StatusSignalSetting] セクション内に現れる信号名 (例: CamExp1)
+#   を、アプリの suggestions における ID (例: CAMERA_1_IMAGE_EXPOSURE) に
+#   マッピングするための表です。
+#
+# 注意:
+# - キーは vxVisMgr.ini 側の信号名 (大文字小文字は無視して処理予定)
+# - 値は assets/suggestions/* に定義される id 文字列
+# - コメント行は無視されます
+# - 未確定のものは空文字のまま残して後で埋めてください
+
+version: 1
+source: vxVisMgr.ini
+section: StatusSignalSetting
+normalize:
+  case_insensitive: true
+  trim_whitespace: true
+
+mappings:
+  # 例: vxVisMgr.ini の CamExp1 → suggestions の CAMERA_1_IMAGE_EXPOSURE
+  CamExp1: CAMERA_1_IMAGE_EXPOSURE
+  
+  # 以下、Enable=0/1 を問わず [StatusSignalSetting] に登場する全シグナル
+  Busy: "BUSY"
+  InspectionBusy: "INSPECTION_BUSY"
+  Auto: "AUTO_MODE"
+  ResValid: "ENABLE_RESULT_SIGNAL"
+  ExtFileOutValid: "EXT_FILE_OUT_VALID"
+  Error: "ERROR"
+  Normal: "NORMAL"
+  PcCtl: "PC_CONTROL"
+  TrigReady: "ACQ_TRIGGER_WAITING"
+  TrigReadyCP: "ACQ_TRIGGER_WAITING_CONTACT_INPUT"
+  TrigReadyHW: "ACQ_TRIGGER_WAITING_HARDWARE_TRIGGER"
+  BatchExp: "BATCH_EXPOSURE"
+  MoveReady: "BATCH_EXPOSURE_COMPLETE"
+  ImgQueuing: "IMG_QUEUING"
+  LotBusy: "LOT_BUSY"
+  AsyncReady: "ASYNC_READY"
+  MemoryUsageWarning: "MEMORY_USAGE_WARNING"
+  Recovery: "RECOVERY"
+  MaintTestMatch: "MAINTENANCE_TEST_ALL_MATCH"
+  MaintTestUnmatch: "MAINTENANCE_TEST_MISMATCH"
+  CamAcq1: "CAMERA_1_IMAGE_ACQUISITION"
+  CamAcq2: "CAMERA_2_IMAGE_ACQUISITION"
+  CamAcq3: "CAMERA_3_IMAGE_ACQUISITION"
+  CamAcq4: "CAMERA_4_IMAGE_ACQUISITION"
+  CamAcq5: "CAMERA_5_IMAGE_ACQUISITION"
+  CamAcq6: "CAMERA_6_IMAGE_ACQUISITION"
+  CamAcq7: "CAMERA_7_IMAGE_ACQUISITION"
+  CamAcq8: "CAMERA_8_IMAGE_ACQUISITION"
+  CamExp2: "CAMERA_2_IMAGE_EXPOSURE"
+  CamExp3: "CAMERA_3_IMAGE_EXPOSURE"
+  CamExp4: "CAMERA_4_IMAGE_EXPOSURE"
+  CamExp5: "CAMERA_5_IMAGE_EXPOSURE"
+  CamExp6: "CAMERA_6_IMAGE_EXPOSURE"
+  CamExp7: "CAMERA_7_IMAGE_EXPOSURE"
+  CamExp8: "CAMERA_8_IMAGE_EXPOSURE"
+  AsyncBusy1: "ASYNC_BUSY_1"
+  AsyncResReady1: "ASYNC_RES_READY_1"
+  AsyncTrgReady1: "ASYNC_TRIGGER_WAITING_1"
+  AsyncTrgReady1CP: "ASYNC_TRIGGER_WAITING_1_CP"
+  AsyncTrgReady1HW: "ASYNC_TRIGGER_WAITING_1_HW"
+  AsyncBatchExp1: "ASYNC_BATCH_EXP_1"
+  AsyncMovReady1: "ASYNC_MOV_READY_1"
+  AsyncBusy2: "ASYNC_BUSY_2"
+  AsyncResReady2: "ASYNC_RES_READY_2"
+  AsyncTrgReady2: "ASYNC_TRIGGER_WAITING_2"
+  AsyncTrgReady2CP: "ASYNC_TRIGGER_WAITING_2_CP"
+  AsyncTrgReady2HW: "ASYNC_TRIGGER_WAITING_2_HW"
+  AsyncBatchExp2: "ASYNC_BATCH_EXP_2"
+  AsyncMovReady2: "ASYNC_MOV_READY_2"
+  AsyncBusy3: "ASYNC_BUSY_3"
+  AsyncResReady3: "ASYNC_RES_READY_3"
+  AsyncTrgReady3: "ASYNC_TRIGGER_WAITING_3"
+  AsyncTrgReady3CP: "ASYNC_TRIGGER_WAITING_3_CP"
+  AsyncTrgReady3HW: "ASYNC_TRIGGER_WAITING_3_HW"
+  AsyncBatchExp3: "ASYNC_BATCH_EXP_3"
+  AsyncMovReady3: "ASYNC_MOV_READY_3"
+  AsyncBusy4: "ASYNC_BUSY_4"
+  AsyncResReady4: "ASYNC_RES_READY_4"
+  AsyncTrgReady4: "ASYNC_TRIGGER_WAITING_4"
+  AsyncTrgReady4CP: "ASYNC_TRIGGER_WAITING_4_CP"
+  AsyncTrgReady4HW: "ASYNC_TRIGGER_WAITING_4_HW"
+  AsyncBatchExp4: "ASYNC_BATCH_EXP_4"
+  AsyncMovReady4: "ASYNC_MOV_READY_4"
+
