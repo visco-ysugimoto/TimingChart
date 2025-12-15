@@ -7,7 +7,6 @@ import '../models/chart/signal_data.dart';
 import '../models/chart/signal_type.dart';
 import '../models/chart/io_channel_source.dart';
 import '../models/form/form_state.dart';
-import '../utils/file_utils.dart';
 import '../utils/vxvismgr_parser.dart';
 import '../utils/vxvismgr_mapping_loader.dart';
 import '../utils/csv_io_log_parser.dart';
@@ -19,7 +18,7 @@ import '../widgets/form/form_tab.dart';
 class ZiqImportService {
   /// ZIQファイルをインポートして結果を返す
   ///
-  /// [zipPath] ZIQファイルのパス
+  /// [files] ZIQ(zip) から抽出した必要ファイル群
   /// [currentFormState] 現在のフォーム状態
   /// [controllersNotifier] コントローラーの管理
   /// [chartController] チャートコントローラー
@@ -27,14 +26,12 @@ class ZiqImportService {
   ///
   /// 戻り値: インポート結果
   static Future<ZiqImportResult> importZiq({
-    required String zipPath,
+    required Map<String, String> files,
     required TimingFormState currentFormState,
     required FormControllersNotifier controllersNotifier,
     required TimingChartController chartController,
     FormTabState? formTabState,
   }) async {
-    // ZIPファイルから必要なファイルを読み込む
-    final files = await FileUtils.readRequiredFilesFromZip(zipPath);
     final mapping = await VxVisMgrMappingLoader.loadMapping();
 
     final iniContent = files['vxVisMgr.ini'];

@@ -76,22 +76,81 @@ Future<void> main() async {
 /// テスト用の関数で、通常のアプリ実行時には呼び出されません。
 Future<void> _runZiqImportTestMode() async {
   try {
-    final String path =
-        kZiqPath.isNotEmpty
-            ? kZiqPath
-            : (await FileUtils.pickZiqAndConvertToZipPath() ?? '');
-    if (path.isEmpty) {
+    if (kZiqPath.isNotEmpty) {
+      final files = await FileUtils.readRequiredFilesFromZip(kZiqPath);
+      final ini = files['vxVisMgr.ini'];
+      final dio = files['DioMonitorLog.csv'];
+      final plc = files['Plc_DioMonitorLog.csv'];
+      final fnl = files['FNL_DioMonitorLog.csv'];
+
+      print('ZIQ_IMPORT_TEST: "$kZiqPath" ziqファイルパス');
+      print(' - vxVisMgr.ini: ${ini != null ? 'OK' : 'MISSING'}');
+      print(' - DioMonitorLog.csv: ${dio != null ? 'OK' : 'MISSING'}');
+      print(' - Plc_DioMonitorLog.csv: ${plc != null ? 'OK' : 'MISSING'}');
+      print(' - FNL_DioMonitorLog.csv: ${fnl != null ? 'OK' : 'MISSING'}');
+
+      if (ini != null) {
+        final ioActive = VxVisMgrParser.parseIOActive(ini);
+        final ioSetting = VxVisMgrParser.parseIOSetting(ini);
+        final enabled =
+            VxVisMgrParser.parseStatusSignalSettings(
+              ini,
+            ).where((s) => s.enabled).toList();
+
+        if (ioActive != null) {
+          print(
+            ' IOActive: pinPorts=${ioActive.pinPorts}, poutPorts=${ioActive.poutPorts}',
+          );
+        }
+        if (ioSetting != null) {
+          final trigger =
+              (ioSetting.plcCommandEnabled ||
+                      ioSetting.ethernetIpCommandEnabled)
+                  ? 'Command Trigger'
+                  : (ioSetting.triggerMode == 0
+                      ? 'Code Trigger'
+                      : 'Single Trigger');
+          final plcEip =
+              ioSetting.plcLinkEnabled
+                  ? 'PLC'
+                  : (ioSetting.ethernetIpEnabled ? 'EIP' : 'None');
+          print(' IOSetting: trigger=$trigger, PLC/EIP=$plcEip');
+        }
+        print(' Enabled signals: ${enabled.length}');
+      }
+
+      final csvPairs = <MapEntry<String, String>>[];
+      if (dio != null && dio.isNotEmpty) csvPairs.add(MapEntry('DIO', dio));
+      if (plc != null && plc.isNotEmpty) csvPairs.add(MapEntry('PLC', plc));
+      if (fnl != null && fnl.isNotEmpty) csvPairs.add(MapEntry('EIP', fnl));
+      if (csvPairs.isNotEmpty) {
+        final timeline = CsvIoLogParser.parseTimelineMulti(csvPairs);
+        final active = ActivePortDetector.detectActivePorts(csvPairs);
+        final activeIn = ActivePortDetector.detectActiveInputPorts(csvPairs);
+        final activePrintable = <String, List<int>>{
+          for (final e in active.entries) e.key: (e.value.toList()..sort()),
+        };
+        print(' Active output ports: $activePrintable');
+        print(
+          ' Active input ports: ${{for (final e in activeIn.entries) e.key: (e.value.toList()..sort())}}',
+        );
+        print(' Timeline entries: ${timeline.entries.length}');
+      }
+      io.exit(0);
+    }
+
+    final pickedFiles = await FileUtils.pickZiqAndReadRequiredFiles();
+    if (pickedFiles == null) {
       debugPrint('ZIQ_IMPORT_TEST: ziqファイルが選択されていません');
       io.exit(2);
     }
 
-    final files = await FileUtils.readRequiredFilesFromZip(path);
-    final ini = files['vxVisMgr.ini'];
-    final dio = files['DioMonitorLog.csv'];
-    final plc = files['Plc_DioMonitorLog.csv'];
-    final fnl = files['FNL_DioMonitorLog.csv'];
+    final ini = pickedFiles['vxVisMgr.ini'];
+    final dio = pickedFiles['DioMonitorLog.csv'];
+    final plc = pickedFiles['Plc_DioMonitorLog.csv'];
+    final fnl = pickedFiles['FNL_DioMonitorLog.csv'];
 
-    print('ZIQ_IMPORT_TEST: "$path" ziqファイルパス');
+    print('ZIQ_IMPORT_TEST: ziqファイル選択');
     print(' - vxVisMgr.ini: ${ini != null ? 'OK' : 'MISSING'}');
     print(' - DioMonitorLog.csv: ${dio != null ? 'OK' : 'MISSING'}');
     print(' - Plc_DioMonitorLog.csv: ${plc != null ? 'OK' : 'MISSING'}');
@@ -1180,9 +1239,9 @@ class _MyHomePageState extends State<MyHomePage>
               title: Text(s.drawer_import_ziq),
               onTap: () async {
                 Navigator.pop(context);
-                final zipPath = await FileUtils.pickZiqAndConvertToZipPath();
+                final files = await FileUtils.pickZiqAndReadRequiredFiles();
                 if (!mounted) return;
-                if (zipPath == null) {
+                if (files == null) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(s.drawer_import_ziq_cancelled),
@@ -1199,7 +1258,7 @@ class _MyHomePageState extends State<MyHomePage>
                 try {
                   // ZIQインポートサービスの使用
                   final result = await ZiqImportService.importZiq(
-                    zipPath: zipPath,
+                    files: files,
                     currentFormState: _formState,
                     controllersNotifier: _controllersNotifier,
                     chartController: _chartController,

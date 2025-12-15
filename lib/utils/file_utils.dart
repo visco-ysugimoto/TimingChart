@@ -13,6 +13,9 @@ import '../models/chart/signal_type.dart';
 import 'wavedrom_converter.dart';
 import 'dart:typed_data';
 import 'package:archive/archive_io.dart';
+import 'dart:convert';
+
+import 'web_download.dart' as web;
 
 /// ファイル操作ユーティリティクラス
 class FileUtils {
@@ -31,6 +34,13 @@ class FileUtils {
 
       // JSONデータの取得
       final jsonString = config.toJsonString();
+
+      // Web はブラウザダウンロード
+      if (kIsWeb) {
+        final bytes = Uint8List.fromList(utf8.encode(jsonString));
+        web.downloadBytes(bytes, fileName, mimeType: 'application/json');
+        return true;
+      }
 
       // ファイル保存ダイアログを表示して保存先を選択
       String? outputFile = await FilePicker.platform.saveFile(
@@ -66,6 +76,11 @@ class FileUtils {
     String? customFileName,
   }) async {
     try {
+      // Web は share_plus が制約されやすいのでダウンロードに寄せる
+      if (kIsWeb) {
+        return exportAppConfig(config, customFileName: customFileName);
+      }
+
       // ファイル名の生成（現在の日時を使用）
       final now = DateTime.now();
       final formattedDate =
@@ -105,6 +120,7 @@ class FileUtils {
         type: FileType.custom,
         allowedExtensions: ['json'],
         allowMultiple: false,
+        withData: kIsWeb,
       );
 
       if (result == null || result.files.isEmpty) {
@@ -112,14 +128,17 @@ class FileUtils {
       }
 
       // 選択されたファイルパスを取得
-      final filePath = result.files.first.path;
-      if (filePath == null) {
-        return null;
+      String jsonString;
+      final picked = result.files.first;
+      final bytes = picked.bytes;
+      if (bytes != null) {
+        jsonString = utf8.decode(bytes);
+      } else {
+        final filePath = picked.path;
+        if (filePath == null) return null;
+        final file = File(filePath);
+        jsonString = await file.readAsString();
       }
-
-      // ファイルからJSONを読み込み
-      final file = File(filePath);
-      final jsonString = await file.readAsString();
 
       // JSONからAppConfigを生成
       try {
@@ -166,6 +185,13 @@ class FileUtils {
         omissionIndices: omissionIndices,
       );
 
+      // Web はブラウザダウンロード
+      if (kIsWeb) {
+        final bytes = Uint8List.fromList(utf8.encode(wavedromJson));
+        web.downloadBytes(bytes, fileName, mimeType: 'application/json');
+        return true;
+      }
+
       // 保存先選択
       String? outputFile = await FilePicker.platform.saveFile(
         dialogTitle: 'WaveDrom JSON の保存先を選択',
@@ -206,6 +232,11 @@ class FileUtils {
       final defaultFileName = 'timing_chart_$formattedDate.png';
       final fileName = customFileName ?? defaultFileName;
 
+      if (kIsWeb) {
+        web.downloadBytes(bytes, fileName, mimeType: 'image/png');
+        return true;
+      }
+
       String? outputFile = await FilePicker.platform.saveFile(
         dialogTitle: 'チャート画像 (PNG) の保存先を選択',
         fileName: fileName,
@@ -238,6 +269,11 @@ class FileUtils {
           '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}';
       final defaultFileName = 'timing_chart_$formattedDate.jpg';
       final fileName = customFileName ?? defaultFileName;
+
+      if (kIsWeb) {
+        web.downloadBytes(bytes, fileName, mimeType: 'image/jpeg');
+        return true;
+      }
 
       String? outputFile = await FilePicker.platform.saveFile(
         dialogTitle: 'チャート画像 (JPEG) の保存先を選択',
@@ -620,26 +656,36 @@ class FileUtils {
         }
       }
 
-      // ファイル保存ダイアログを表示
-      String? outputFile = await FilePicker.platform.saveFile(
-        dialogTitle: 'XLSXファイルの保存先を選択',
-        fileName: fileName,
-        allowedExtensions: ['xlsx'],
-        type: FileType.custom,
-      );
-
-      if (outputFile == null) {
-        return false; // ユーザーがキャンセルした場合
-      }
-
-      // 拡張子の確認と追加
-      if (!outputFile.toLowerCase().endsWith('.xlsx')) {
-        outputFile += '.xlsx';
-      }
-
       // ファイルへの書き込み
       final fileBytes = excelFile.save();
       if (fileBytes != null) {
+        if (kIsWeb) {
+          web.downloadBytes(
+            Uint8List.fromList(fileBytes),
+            fileName,
+            mimeType:
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          );
+          return true;
+        }
+
+        // 非Web: ファイル保存ダイアログを表示
+        String? outputFile = await FilePicker.platform.saveFile(
+          dialogTitle: 'XLSXファイルの保存先を選択',
+          fileName: fileName,
+          allowedExtensions: ['xlsx'],
+          type: FileType.custom,
+        );
+
+        if (outputFile == null) {
+          return false; // ユーザーがキャンセルした場合
+        }
+
+        // 拡張子の確認と追加
+        if (!outputFile.toLowerCase().endsWith('.xlsx')) {
+          outputFile += '.xlsx';
+        }
+
         final file = File(outputFile);
         await file.writeAsBytes(fileBytes);
         return true;
@@ -652,36 +698,35 @@ class FileUtils {
     }
   }
 
-  /// `.ziq` ファイルを選択し、一時ディレクトリに拡張子だけ `.zip` にした
-  /// コピーを作成してそのパスを返す（キャンセル時は null）。
-  static Future<String?> pickZiqAndConvertToZipPath() async {
+  /// `.ziq` ファイルを選択し、ZIP として必要ファイルを読み込んで返す。
+  /// Web/デスクトップ共通で動くように bytes ベースで処理する。
+  static Future<Map<String, String>?> pickZiqAndReadRequiredFiles() async {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['ziq'],
         allowMultiple: false,
+        withData: kIsWeb,
       );
 
       if (result == null || result.files.isEmpty) return null;
+      final picked = result.files.first;
 
-      final sourcePath = result.files.first.path;
-      if (sourcePath == null) return null;
+      Uint8List zipBytes;
+      final bytes = picked.bytes;
+      if (bytes != null) {
+        zipBytes = bytes;
+      } else {
+        final sourcePath = picked.path;
+        if (sourcePath == null) return null;
+        final sourceFile = File(sourcePath);
+        if (!await sourceFile.exists()) return null;
+        zipBytes = await sourceFile.readAsBytes();
+      }
 
-      final sourceFile = File(sourcePath);
-      if (!await sourceFile.exists()) return null;
-
-      final baseName = sourceFile.uri.pathSegments.last;
-      final dotIndex = baseName.lastIndexOf('.');
-      final stem = dotIndex >= 0 ? baseName.substring(0, dotIndex) : baseName;
-
-      final tempDir = await getTemporaryDirectory();
-      final destPath = '${tempDir.path}/$stem.zip';
-      final destFile = File(destPath);
-
-      await destFile.writeAsBytes(await sourceFile.readAsBytes());
-      return destPath;
+      return readRequiredFilesFromZipBytes(zipBytes);
     } catch (e) {
-      debugPrint('Error picking ziq and converting to zip: $e');
+      debugPrint('Error picking ziq and reading required files: $e');
       return null;
     }
   }
@@ -701,6 +746,17 @@ class FileUtils {
       if (!await file.exists()) return result;
 
       final bytes = await file.readAsBytes();
+      return readRequiredFilesFromZipBytes(bytes);
+    } catch (e) {
+      debugPrint('Error reading required files from zip: $e');
+      return result;
+    }
+  }
+
+  /// ZIPバイト列から、目的のファイルを読み込んで返す
+  static Map<String, String> readRequiredFilesFromZipBytes(Uint8List bytes) {
+    final result = <String, String>{};
+    try {
       final archive = ZipDecoder().decodeBytes(bytes, verify: true);
 
       String? readTextFromArchive(String targetPath) {
