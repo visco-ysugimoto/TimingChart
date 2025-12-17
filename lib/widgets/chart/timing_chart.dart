@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'dart:ui' as ui;
 import 'dart:typed_data';
 import 'package:image/image.dart' as img;
+import '../../utils/web_jpeg.dart' as web_jpeg;
 import '../../models/chart/timing_chart_annotation.dart';
 import '../../models/chart/signal_type.dart';
 import '../../models/chart/io_channel_source.dart';
@@ -3950,9 +3951,12 @@ class TimingChartState extends State<TimingChart>
               as RenderRepaintBoundary?;
       if (boundary == null) return null;
       final double devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
+      final double defaultRatio =
+          kIsWeb ? 2.0 : _defaultExportPixelRatio; // Webは負荷が高いので控えめに
       final double targetRatio =
-          pixelRatio ?? math.max(devicePixelRatio, _defaultExportPixelRatio);
-      final double pr = targetRatio.clamp(1.0, _maxExportPixelRatio).toDouble();
+          pixelRatio ?? math.max(devicePixelRatio, defaultRatio);
+      final double maxRatio = kIsWeb ? 3.0 : _maxExportPixelRatio;
+      final double pr = targetRatio.clamp(1.0, maxRatio).toDouble();
       final ui.Image image = await boundary.toImage(pixelRatio: pr);
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       return byteData?.buffer.asUint8List();
@@ -3985,25 +3989,42 @@ class TimingChartState extends State<TimingChart>
               as RenderRepaintBoundary?;
       if (boundary == null) return null;
       final double devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
+      final double defaultRatio =
+          kIsWeb ? 2.0 : _defaultExportPixelRatio; // Webは負荷が高いので控えめに
       final double targetRatio =
-          pixelRatio ?? math.max(devicePixelRatio, _defaultExportPixelRatio);
-      final double pr = targetRatio.clamp(1.0, _maxExportPixelRatio).toDouble();
+          pixelRatio ?? math.max(devicePixelRatio, defaultRatio);
+      final double maxRatio = kIsWeb ? 3.0 : _maxExportPixelRatio;
+      final double pr = targetRatio.clamp(1.0, maxRatio).toDouble();
 
       final ui.Image image = await boundary.toImage(pixelRatio: pr);
+
+      final width = image.width;
+      final height = image.height;
+
+      final theme = Theme.of(context);
+      final Color bg =
+          backgroundColor ??
+          (theme.brightness == Brightness.dark ? Colors.black : Colors.white);
+
+      // WebではDart側のJPEGエンコード（package:image）が非常に重いので、
+      // ブラウザネイティブのCanvasエンコードに逃がす。
+      if (kIsWeb) {
+        final pngData = await image.toByteData(format: ui.ImageByteFormat.png);
+        if (pngData == null) return null;
+        final jpeg = await web_jpeg.pngToJpegBytes(
+          pngData.buffer.asUint8List(),
+          quality: quality,
+          backgroundColorValue: bg.value,
+        );
+        return jpeg;
+      }
 
       final byteData = await image.toByteData(
         format: ui.ImageByteFormat.rawRgba,
       );
       if (byteData == null) return null;
 
-      final width = image.width;
-      final height = image.height;
       final rgbaBytes = byteData.buffer.asUint8List();
-
-      final theme = Theme.of(context);
-      final Color bg =
-          backgroundColor ??
-          (theme.brightness == Brightness.dark ? Colors.black : Colors.white);
 
       final int rBg = (bg.r * 255).round();
       final int gBg = (bg.g * 255).round();
