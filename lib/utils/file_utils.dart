@@ -517,6 +517,27 @@ class FileUtils {
             cell.cellStyle = style;
           }
         }
+
+        // 2-1. 波形セルの列幅・行高を調整して、できるだけ正方形に近づける
+        //
+        // Excel の列幅と行の高さは単位が異なるため完全な正方形にはなりませんが、
+        // ここである程度見やすい比率に揃えておきます。
+        const double waveformColumnWidth = 2.0; // 時間方向の1ステップの幅（列幅）
+        const double waveformRowHeight = 15.0; // 1信号行の高さ
+
+        // 時間軸側の列幅（K列以降）を揃える
+        for (int timeIndex = 0; timeIndex < maxSignalLength; timeIndex++) {
+          final int colIndex = chartStartCol + 1 + timeIndex; // K列から開始
+          sheet.setColumnWidth(colIndex, waveformColumnWidth);
+        }
+
+        // 各信号行（波形を描画している行）の高さを揃える
+        for (int signalIndex = 0;
+            signalIndex < chartSignals.length;
+            signalIndex++) {
+          final int rowIndex = chartRowStart + signalIndex * 2;
+          sheet.setRowHeight(rowIndex, waveformRowHeight);
+        }
       }
 
       // 3. コメント情報の記載（別シート）
@@ -656,8 +677,11 @@ class FileUtils {
         }
       }
 
-      // ファイルへの書き込み
-      final fileBytes = excelFile.save();
+      // ファイルへの書き込み用にバイト列へエンコード
+      // excelFile.save() を引数なしで呼び出すと、ライブラリのデフォルト名
+      // （FlutterExcel.xlsx）でファイルを書き出してしまうため、
+      // ここでは encode() を使ってバイト列のみ取得し、自前で保存する。
+      final fileBytes = excelFile.encode();
       if (fileBytes != null) {
         if (kIsWeb) {
           web.downloadBytes(
