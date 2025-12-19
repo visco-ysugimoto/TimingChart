@@ -56,6 +56,9 @@ windows/build/
 .vscode/
 Thumbs.db
 
+# Release / distribution artifacts
+dist/
+
 # Signing / Secrets
 **/*.keystore
 **/*.jks

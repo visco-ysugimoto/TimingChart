@@ -165,6 +165,7 @@ class FormTab extends StatefulWidget {
   final List<TextEditingController> hwTriggerControllers;
   final FormControllersNotifier controllersNotifier;
   final ValueChanged<String?> onTriggerOptionChanged;
+  final ValueChanged<String?> onPlcEipOptionChanged;
   final ValueChanged<int?> onInputPortChanged;
   final ValueChanged<int?> onOutputPortChanged;
   final ValueChanged<int?> onHwPortChanged;
@@ -201,6 +202,7 @@ class FormTab extends StatefulWidget {
     required this.hwTriggerControllers,
     required this.controllersNotifier,
     required this.onTriggerOptionChanged,
+    required this.onPlcEipOptionChanged,
     required this.onInputPortChanged,
     required this.onOutputPortChanged,
     required this.onHwPortChanged,
@@ -3109,6 +3111,7 @@ class FormTabState extends State<FormTab>
                         setState(() {
                           _plcEipOption = newValue;
                         });
+                        widget.onPlcEipOptionChanged(newValue);
                         _ensureOutputTabController();
                         _ensureInputTabController();
                       },

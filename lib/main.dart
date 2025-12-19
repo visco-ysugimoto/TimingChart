@@ -1592,6 +1592,11 @@ class _MyHomePageState extends State<MyHomePage>
                     );
                   }
                 },
+                onPlcEipOptionChanged: (String? newValue) {
+                  if (newValue == null) return;
+                  setState(() => _plcEipOption = newValue);
+                  _clearPlcEipControllersIfDisabled();
+                },
 
                 onInputPortChanged: (int? newValue) {
                   if (newValue != null && newValue != _formState.inputCount) {

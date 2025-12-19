@@ -41,6 +41,48 @@ flutter build ios       # iOS (macOS 環境)
 flutter build macos     # macOS
 ```
 
+---
+
+## Windows（exe）として配布する
+
+Flutter の Windows アプリは **exe 単体では動きません**。通常は以下を **同じフォルダ構成のまま** 配布します。
+
+- `TimingChartGenerator.exe`
+- `flutter_windows.dll`
+- `data/`（`icudtl.dat`, `flutter_assets/`, `app.so` など）
+- `*.dll`（プラグインDLL: `share_plus_plugin.dll` など）
+
+### Release exe を生成する
+
+```
+flutter build windows --release
+```
+
+生成先（例）:
+- `build/windows/x64/runner/Release/TimingChartGenerator.exe`
+
+### 配布用ZIPを作る（推奨）
+
+Release フォルダ一式を ZIP にまとめます（`dist/` に出力）。
+
+```
+powershell -ExecutionPolicy Bypass -File tools/windows/package_release.ps1 -Build
+```
+
+既にビルド済みなら（ZIP化のみ）:
+
+```
+powershell -ExecutionPolicy Bypass -File tools/windows/package_release.ps1
+```
+
+### 署名（任意）
+
+`tools/windows/sign_exe.ps1` で exe に署名できます（開発用の自己署名証明書を作成して署名します）。
+
+```
+powershell -ExecutionPolicy Bypass -File tools/windows/sign_exe.ps1 -ExePath build/windows/x64/runner/Release/TimingChartGenerator.exe
+```
+
 ### 動作確認環境
 - Dart SDK: `^3.7.2`（`pubspec.yaml` 参照）
 - 主要パッケージ: `provider`, `google_fonts`, `excel`, `image`, `archive`, `file_picker`, `share_plus` ほか
