@@ -1,6 +1,7 @@
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:html' as html;
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 Future<Uint8List> pngToJpegBytes(
@@ -52,13 +53,29 @@ Future<Uint8List> pngToJpegBytes(
     ctx.fillRect(0, 0, width, height);
     ctx.drawImageScaled(imgEl, 0, 0, width, height);
 
-    final jpegBlob = await canvas.toBlob('image/jpeg', q);
+    // Prefer Canvas.toBlob (fast, no base64 overhead). Some browsers/environments can fail here;
+    // fall back to toDataUrl + base64 decode in that case.
+    late final html.Blob jpegBlob;
+    try {
+      jpegBlob = await canvas.toBlob('image/jpeg', q);
+    } catch (_) {
+      final dataUrl = canvas.toDataUrl('image/jpeg', q);
+      final comma = dataUrl.indexOf(',');
+      if (comma < 0) {
+        throw StateError('Invalid data URL returned from canvas.toDataUrl()');
+      }
+      final b64 = dataUrl.substring(comma + 1);
+      return Uint8List.fromList(base64Decode(b64));
+    }
+
     final reader = html.FileReader();
     final readCompleter = Completer<Uint8List>();
     reader.onLoad.listen((_) {
       final result = reader.result;
       if (result is ByteBuffer) {
         readCompleter.complete(Uint8List.view(result));
+      } else if (result is Uint8List) {
+        readCompleter.complete(result);
       } else {
         readCompleter.completeError(
           StateError('Unexpected FileReader result type: ${result.runtimeType}'),
