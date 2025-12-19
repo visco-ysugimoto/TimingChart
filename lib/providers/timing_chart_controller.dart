@@ -153,6 +153,25 @@ class TimingChartController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// signals と signalNames を「1操作」として同時に更新します（Undo/Redoの粒度を保つため）
+  void setSignalsAndNames({
+    required List<List<int>> signals,
+    required List<String> signalNames,
+  }) {
+    final bool signalsChanged = !_areSignalsEqual(_signals, signals);
+    final bool namesChanged = !listEquals(_signalNames, signalNames);
+    if (!signalsChanged && !namesChanged) return;
+
+    // 変更前の状態を保存（変更されていない場合はスキップ）
+    if (!_isUndoRedoOperation) {
+      _saveSnapshot();
+    }
+
+    _signals = signals.map((e) => List<int>.from(e)).toList();
+    _signalNames = List<String>.from(signalNames);
+    notifyListeners();
+  }
+
   void setAnnotations(List<TimingChartAnnotation> newAnnotations) {
     // 変更前の状態を保存（変更されていない場合はスキップ）
     if (!_isUndoRedoOperation && !listEquals(_annotations, newAnnotations)) {

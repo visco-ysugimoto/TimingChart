@@ -353,7 +353,7 @@ class TimingChartState extends State<TimingChart>
   double? _measuredCommentAreaHeight;
 
   /// 高度なタイミング制御を表示するかどうか（現在は常にfalse）
-  bool get _showAdvancedTimingControls => false;
+  bool get _showAdvancedTimingControls => true;
 
   /// チャート下部のコメント領域に必要な高さを計算します
   ///
@@ -428,10 +428,7 @@ class TimingChartState extends State<TimingChart>
         signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
     if (maxLen <= 0) return;
 
-    final List<double> durationsForLayout =
-        (_controller?.stepDurationsMs.isNotEmpty ?? false)
-            ? _controller!.stepDurationsMs
-            : settings.stepDurationsMs;
+    final List<double> durationsForLayout = _durationsForLayout(settings);
 
     double totalStepsUnits = 0.0;
     if (isMs) {
@@ -560,6 +557,26 @@ class TimingChartState extends State<TimingChart>
   /// 現在編集中のステップ境界のインデックス（編集モードがオンの場合）
   int? _activeStepIndex;
 
+  /// stepDurationsMs を「この画面のUndo/Redo対象」として controller 側を優先するか。
+  ///
+  /// - まだ一度もこの画面で stepDurationsMs を controller にコミットしていない場合は false
+  ///   （= 既存仕様どおり settings の値を使う）
+  /// - 一度でもコミットした後は true（= controller の値が空でも controller を優先）
+  bool _useControllerStepDurations = false;
+
+  List<double> _durationsForLayout(SettingsNotifier settings) {
+    // Edit grid 中はドラッグ/タップで settings.stepDurationsMs がリアルタイムに変化する。
+    // ここで controller を優先すると、確定コミット（ドラッグ終了等）まで描画が更新されず
+    // 「離した瞬間にだけ目盛りが動く」挙動になってしまうため、編集中は settings を優先する。
+    if (_isEditingSteps) return settings.stepDurationsMs;
+
+    final c = _controller;
+    if (c == null) return settings.stepDurationsMs;
+    if (_useControllerStepDurations) return c.stepDurationsMs;
+    if (c.stepDurationsMs.isNotEmpty) return c.stepDurationsMs;
+    return settings.stepDurationsMs;
+  }
+
   /// ウィジェットが最初に作成されたときに状態を初期化します
   ///
   /// 信号名、翻訳、キーボードハンドラー、コントローラーを設定します。
@@ -592,6 +609,7 @@ class TimingChartState extends State<TimingChart>
         );
     signals = _controller!.signals.map((list) => List<int>.from(list)).toList();
     annotations = List.from(_controller!.annotations);
+    _useControllerStepDurations = _controller!.stepDurationsMs.isNotEmpty;
 
     _controllerListener = () {
       if (!mounted) return;
@@ -621,10 +639,25 @@ class TimingChartState extends State<TimingChart>
       final settingsRW = Provider.of<SettingsNotifier>(context, listen: false);
       final int maxLen =
           signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
-      if (settingsRW.stepDurationsMs.length != maxLen) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) settingsRW.ensureStepDurationsLength(maxLen);
-        });
+      // controller のUndo/Redoで stepDurationsMs が変わった場合、settingsにも同期して
+      // 描画/入力UIが同じ状態を指すようにする。
+      // ただし、まだ controller を使用していない場合は settings を尊重する。
+      if (_controller!.stepDurationsMs.isNotEmpty) {
+        _useControllerStepDurations = true;
+      }
+      if (_useControllerStepDurations && !_isEditingSteps) {
+        final desired = _controller!.stepDurationsMs;
+        if (!listEquals(settingsRW.stepDurationsMs, desired)) {
+          settingsRW.setStepDurationsMs(desired);
+        }
+      } else {
+        // 空配列は「均一（msPerStep）」の意味として扱うため、長さ強制はしない。
+        if (settingsRW.stepDurationsMs.isNotEmpty &&
+            settingsRW.stepDurationsMs.length != maxLen) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) settingsRW.ensureStepDurationsLength(maxLen);
+          });
+        }
       }
       if (_lastHandledGridResetNonce != _controller!.gridResetNonce) {
         _lastHandledGridResetNonce = _controller!.gridResetNonce;
@@ -1389,10 +1422,12 @@ class TimingChartState extends State<TimingChart>
   ///
   /// [details] - パンジェスチャー終了の詳細
   void _onPanEndEditSteps(DragEndDetails details) {
+    // ドラッグ編集は「編集モード自体」を終了させず、選択中境界だけ解除する。
+    // ここで stepDurationsMs を空にすると編集結果が消えてしまうため行わない。
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
-    settings.setStepDurationsMs([]);
+    _useControllerStepDurations = true;
+    _controller?.setStepDurationsMs(settings.stepDurationsMs);
     setState(() {
-      _isEditingSteps = false;
       _activeStepIndex = null;
     });
   }
@@ -1540,6 +1575,8 @@ class TimingChartState extends State<TimingChart>
       }
       list[idx] = v;
       settings.setStepDurationsMs(list);
+      _useControllerStepDurations = true;
+      _controller?.setStepDurationsMs(list);
       setState(() => _activeStepIndex = idx);
     });
   }
@@ -3278,10 +3315,7 @@ class TimingChartState extends State<TimingChart>
             : MediaQuery.of(context).size.width - chartMarginLeft - labelWidth;
 
     final bool isMs = settings.timeUnitIsMs;
-    final List<double> durationsForLayout =
-        (_controller?.stepDurationsMs.isNotEmpty ?? false)
-            ? _controller!.stepDurationsMs
-            : settings.stepDurationsMs;
+    final List<double> durationsForLayout = _durationsForLayout(settings);
 
     final totalSteps = _calculateTotalSteps(
       settings,
@@ -3747,7 +3781,7 @@ class TimingChartState extends State<TimingChart>
                             portNumbers: visiblePortNumbers,
                             timeUnitIsMs: settings.timeUnitIsMs,
                             msPerStep: settings.msPerStep,
-                            stepDurationsMs: settingsRW.stepDurationsMs,
+                            stepDurationsMs: _durationsForLayout(settingsRW),
                             activeStepIndex:
                                 (settings.timeUnitIsMs && isEditingMode)
                                     ? _activeStepIndex
@@ -3811,7 +3845,8 @@ class TimingChartState extends State<TimingChart>
                   ),
                 ),
                 Positioned(
-                  left: isEditingMode ? chartMarginLeft : 0,
+                  // ラベル領域は常に左端に固定する（編集モードでも位置/幅を変えない）
+                  left: 0,
                   top: 0,
                   child: IgnorePointer(
                     child: ClipRect(
@@ -3824,18 +3859,13 @@ class TimingChartState extends State<TimingChart>
                                   : 0.0),
                         ),
                         child: SizedBox(
-                          width:
-                              isEditingMode
-                                  ? labelWidth
-                                  : chartMarginLeft + labelWidth,
+                          width: chartMarginLeft + labelWidth,
                           height: layoutData.totalHeight,
                           child: CustomPaint(
                             isComplex: false,
                             willChange: true,
                             size: Size(
-                              isEditingMode
-                                  ? labelWidth
-                                  : chartMarginLeft + labelWidth,
+                              chartMarginLeft + labelWidth,
                               layoutData.totalHeight,
                             ),
                             painter: _LabelsOverlayPainter(
@@ -4128,11 +4158,11 @@ class TimingChartState extends State<TimingChart>
           ),
           const SizedBox(width: 12),
           if (_showAdvancedTimingControls && isMs) ...[
-            Text('ms/step'),
-            const SizedBox(width: 6),
-            _buildMsPerStepField(),
-            const SizedBox(width: 12),
-            _buildEditStepDurationsButton(),
+            //Text('ms/step'),
+            //const SizedBox(width: 6),
+            //_buildMsPerStepField(),
+            //const SizedBox(width: 12),
+            //_buildEditStepDurationsButton(),
             const SizedBox(width: 12),
             OutlinedButton.icon(
               icon: Icon(
@@ -4141,12 +4171,24 @@ class TimingChartState extends State<TimingChart>
               ),
               label: Text(_isEditingSteps ? 'Done' : 'Edit grid'),
               onPressed: () {
+                // 編集終了時に、現在の stepDurations をコントローラにも反映しておく
+                // （Undo/Redoや他処理との整合のため）
+                if (_isEditingSteps) {
+                  final settings = Provider.of<SettingsNotifier>(
+                    context,
+                    listen: false,
+                  );
+                  _useControllerStepDurations = true;
+                  _controller?.setStepDurationsMs(settings.stepDurationsMs);
+                }
                 setState(() {
                   _isEditingSteps = !_isEditingSteps;
                   _activeStepIndex = null;
                 });
               },
             ),
+            const SizedBox(width: 8),
+            const Text('（境界線をドラッグ/タップで調整）'),
           ],
           const SizedBox(width: 12),
           _buildZoomControls(),
@@ -4163,6 +4205,7 @@ class TimingChartState extends State<TimingChart>
   /// 小さなテキスト入力フィールドを作成します。
   ///
   /// ms/step入力フィールドウィジェットを返します
+  // ignore: unused_element
   Widget _buildMsPerStepField() {
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
     final controller = TextEditingController(
@@ -4196,6 +4239,7 @@ class TimingChartState extends State<TimingChart>
   /// ダイアログを開くボタンを作成します。
   ///
   /// ステップ継続時間編集ボタンウィジェットを返します
+  // ignore: unused_element
   Widget _buildEditStepDurationsButton() {
     return OutlinedButton.icon(
       icon: const Icon(Icons.tune, size: 16),
@@ -4252,6 +4296,8 @@ class TimingChartState extends State<TimingChart>
         }
         if (parsed.isNotEmpty) {
           settings.setStepDurationsMs(parsed);
+          _useControllerStepDurations = true;
+          _controller?.setStepDurationsMs(settings.stepDurationsMs);
         }
       },
     );
@@ -4629,6 +4675,15 @@ class TimingChartState extends State<TimingChart>
         _moveSignal(i, -1);
       }
     }
+
+    // 行入替は signals と signalNames の両方を更新する操作なので、
+    // コントローラへ順序も含めてコミットしないと、次の setSignals() で
+    // 「古い順序」が上書きされて並びが戻ってしまう。
+    _controller?.setSignalsAndNames(
+      signals: signals,
+      signalNames: _idSignalNames,
+    );
+    _notifySignalsChanged();
   }
 }
 

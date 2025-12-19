@@ -10,19 +10,20 @@ flowchart TD
     B --> C[Initialize _idSignalNames from widget.initialSignalNames]
     C --> D[Initialize signalNames from _idSignalNames]
     D --> E[Call _translateNames]
-    E --> F[Register Language Listener]
-    F --> G[Register Keyboard Handler]
-    G --> H{Controller Provided?}
-    H -->|Yes| I[Use Provided Controller]
-    H -->|No| J[Create New TimingChartController]
-    I --> K[Initialize signals from controller]
-    J --> K
-    K --> L[Initialize annotations from controller]
-    L --> M[Register Controller Listener]
-    M --> N[Widget Ready]
+    E --> F[Register Language Listener (suggestionLanguageVersion)]
+    F --> G[Register Keyboard Modifier Handler (HardwareKeyboard)]
+    G --> H[Initialize _isModifierPressed (Ctrl/Cmd state)]
+    H --> I{Controller Provided?}
+    I -->|Yes| J[Use Provided Controller]
+    I -->|No| K[Create TimingChartController.fromInitial(..., omissionTimeIndices)]
+    J --> L[Initialize signals from controller]
+    K --> L
+    L --> M[Initialize annotations from controller]
+    M --> N[Register Controller Listener]
+    N --> O[Widget Ready]
     
     style A fill:#e1f5ff
-    style N fill:#c8e6c9
+    style O fill:#c8e6c9
 ```
 
 ## 2. ビルド・レイアウト計算フロー
@@ -30,16 +31,16 @@ flowchart TD
 ```mermaid
 flowchart TD
     A[build Method Called] --> B{isEditingMode?}
-    B -->|Yes| C[Listener + LayoutBuilder]
-    B -->|No| D[KeyboardListener + Listener + LayoutBuilder]
+    B -->|Yes| C[Listener(onPointerSignal) + LayoutBuilder]
+    B -->|No| D[KeyboardListener + Listener(onPointerSignal) + LayoutBuilder]
     C --> E[Get Settings from Provider]
     D --> E
     E --> F[Call _calculateLayoutData]
     F --> G[Calculate maxLen from signals]
     G --> H[Calculate visibleIndexes]
     H --> I[Calculate availableWidth]
-    I --> J[Get durationsForLayout]
-    J --> K[Calculate totalSteps]
+    I --> J[Get durationsForLayout (controller overrides settings)]
+    J --> K[Calculate totalSteps (ms/step aware)]
     K --> L[Calculate baseCellWidth]
     L --> M[Calculate minCellWidthForFullView]
     M --> N[Calculate maxCellWidthAllowed]
@@ -47,12 +48,12 @@ flowchart TD
     O --> P[Calculate effectiveZoomFactor]
     P --> Q[Calculate cellWidth and cellHeight]
     Q --> R[Calculate totalWidth and totalHeight]
-    R --> S[Calculate commentAreaHeight]
+    R --> S[Calculate commentAreaHeight (measured height if available)]
     S --> T[Create _ChartLayoutData]
     T --> U[Call _buildChartContent]
-    U --> V[Update State Variables]
+    U --> V[Ensure stepDurations length (post frame)]
     V --> W[Build Visible Data Lists]
-    W --> X[Build Widget Tree]
+    W --> X[Build Widget Tree (UnitToggle + GestureDetector + ScrollViews + CustomPaint)]
     X --> Y[Render Chart]
     
     style A fill:#e1f5ff
@@ -103,34 +104,42 @@ flowchart TD
 ```mermaid
 flowchart TD
     A[User Starts Drag] --> B[_onPanStart Called]
-    B --> C[Get Local Position]
+    B --> C[GlobalToLocal + subtract _fixedHeaderHeight]
     C --> D{Annotation Hit?}
-    D -->|Yes| E[Set _draggingAnnotationId]
-    E --> F[Set Drag Start Position]
-    F --> Z[End - Annotation Drag]
+    D -->|Yes| E[Set _draggingAnnotationId + drag anchors]
+    E --> Z[End - Annotation Drag]
     D -->|No| G{In Label Area?}
     G -->|Yes| H[Set _isLabelDrag = true]
-    H --> I[Set _labelDragStartRow]
+    H --> I[Set _labelDragStartRow / _labelDragCurrentRow]
     I --> Z2[End - Label Drag]
-    G -->|No| J[Get Signal Index]
-    J --> K[Get Time Index]
+    G -->|No| J{Below Chart Area?}
+    J -->|Yes| Z3[End]
+    J -->|No| K[Get Signal Index + Time Index]
     K --> L{Valid Indices?}
     L -->|No| M[Clear Selection]
-    M --> Z3[End]
-    L -->|Yes| N[Set Selection Start]
+    M --> Z3
+    L -->|Yes| N[Set Selection Start + _dragStartGlobal]
     N --> O[_onPanUpdate Called]
-    O --> P[Get Current Signal Index]
-    P --> Q[Get Current Time Index]
-    Q --> R[Clamp Indices]
-    R --> S[Update Selection End]
-    S --> T{Still Dragging?}
-    T -->|Yes| O
-    T -->|No| U[_onPanEnd Called]
-    U --> V{Start == End?}
-    V -->|Yes| W[Clear Selection]
-    V -->|No| X[Keep Selection]
-    W --> Z3
-    X --> Z3
+    O --> P{Dragging Annotation?}
+    P -->|Yes| P1[Update annotation offsets (clamp Y>=0) + controller.setAnnotations]
+    P1 --> O
+    P -->|No| Q{Label Drag?}
+    Q -->|Yes| Q1[Update _labelDragCurrentRow]
+    Q1 --> O
+    Q -->|No| R[Update selection end (clamp sig/time)]
+    R --> O
+    O --> U[_onPanEnd Called]
+    U --> V{Annotation Drag End?}
+    V -->|Yes| V1[Clear drag state + _forceRepaint]
+    V1 --> Z3
+    V -->|No| W{Label Drag End?}
+    W -->|Yes| W1[_reorderSignalRows if moved + clear selection indices]
+    W1 --> Z3
+    W -->|No| X{Start == End?}
+    X -->|Yes| Y[Clear Selection]
+    X -->|No| Z4[Keep Selection]
+    Y --> Z3
+    Z4 --> Z3
     
     style A fill:#fff9c4
     style Z fill:#c8e6c9
@@ -212,41 +221,46 @@ flowchart TD
 ```mermaid
 flowchart TD
     A[Right Click] --> B[_showContextMenu Called]
-    B --> C[Calculate Click Position]
-    C --> D[Get Clicked Time Index]
-    D --> E[Get Clicked Signal Index]
-    E --> F{Annotation Hit?}
-    F -->|Yes| G[Build Annotation Menu]
-    G --> H[Show Menu]
-    H --> I{Menu Action?}
-    I -->|editComment| J[_editComment]
-    I -->|deleteComment| K[_deleteComment]
-    I -->|toggleArrowHorizontal| L[Toggle Arrow Direction]
-    I -->|setArrowTipToRow| M[_setAnnotationArrowToSignal]
-    F -->|No| N[Build Chart Menu]
-    N --> O[Show Menu]
-    O --> P{Menu Action?}
-    P -->|insert| Q[_insertZerosToSelection]
-    P -->|duplicate| R[_duplicateRange]
-    P -->|selectAll| S[_selectAllSignals]
-    P -->|delete| T[_deleteRange]
-    P -->|deleteColumns| U[_deleteColumns]
-    P -->|addComment| V{Has Selection?}
-    V -->|Yes| W[_showAddRangeCommentDialog]
-    V -->|No| X[_showAddCommentDialog]
-    P -->|omit| Y[_toggleOmissionTime]
-    J --> Z[End]
-    K --> Z
-    L --> Z
+    B --> C[Calculate local positions (fixed header aware)]
+    C --> D{timeUnitIsMs?}
+    D -->|Yes| E[_findNearestStepIndex (non-uniform axis)]
+    D -->|No| F[_getTimeIndexFromDx]
+    E --> G[Get Clicked Signal Index (Y)]
+    F --> G
+    G --> H{Annotation Hit?}
+    H -->|Yes| I[Build Annotation Menu]
+    I --> J[Show Menu]
+    J --> K{Menu Action?}
+    K -->|editComment| L[_editComment]
+    K -->|commentProperties| M[_editCommentProperties]
+    K -->|deleteComment| N[_deleteComment]
+    K -->|toggleArrowHorizontal| O[Toggle arrowHorizontal + controller.setAnnotations]
+    K -->|setArrowTipToRow| P[_setAnnotationArrowToSignal]
+    H -->|No| Q[Build Chart Menu (+ highlightTimeIndices)]
+    Q --> R[Show Menu]
+    R --> S{Menu Action?}
+    S -->|insert| T[_insertZerosToSelection]
+    S -->|duplicate| U[_duplicateRange]
+    S -->|selectAll| V[_selectAllSignals]
+    S -->|delete| W[_deleteRange]
+    S -->|deleteColumns| X[_deleteColumns]
+    S -->|addComment| Y{Has Selection?}
+    Y -->|Yes| Z1[_showAddRangeCommentDialog]
+    Y -->|No| Z2[_showAddCommentDialog]
+    S -->|omit| Z3[_toggleOmissionTime]
+    L --> Z[End]
     M --> Z
-    Q --> Z
-    R --> Z
-    S --> Z
+    N --> Z
+    O --> Z
+    P --> Z
     T --> Z
     U --> Z
+    V --> Z
     W --> Z
     X --> Z
-    Y --> Z
+    Z1 --> Z
+    Z2 --> Z
+    Z3 --> Z
     
     style A fill:#fff9c4
     style Z fill:#c8e6c9
@@ -258,25 +272,26 @@ flowchart TD
 flowchart TD
     A[paint Method Called] --> B[Save Canvas State]
     B --> C[Translate to Chart Margin]
-    C --> D[Draw Label Mask]
+    C --> D[Draw Label Mask (left area background)]
     D --> E{Dragging Label?}
-    E -->|Yes| F[Draw Drag Highlight]
+    E -->|Yes| F[Draw Drag Highlights (start/current row)]
     E -->|No| G[Continue]
     F --> G
     G --> H[_gridManager.drawGridLines]
     H --> I[_gridManager.drawHighlightedLines]
     I --> J[Clip to Wave Area]
     J --> K[_signalsManager.drawSignalWaveforms]
-    K --> L[_drawOmissionLines]
+    K --> L[_drawOmissionLines (double wavy)]
     L --> M[_signalsManager.drawSelectionHighlight]
-    M --> N[_annotationsManager.drawAnnotations]
-    N --> O[_gridManager.drawTimeLabels]
-    O --> P[Update _annotationHitRects]
-    P --> Q[Restore Canvas State]
-    Q --> R[Done]
+    M --> N[_gridManager.drawTimeLabels (bottom unit labels)]
+    N --> O[_annotationsManager.drawAnnotations]
+    O --> P[Measure needed comment height -> onCommentAreaMeasured]
+    P --> Q[Update annotationRects (hit test map)]
+    Q --> R[Restore Canvas State]
+    R --> S[Done]
     
     style A fill:#e1f5ff
-    style R fill:#c8e6c9
+    style S fill:#c8e6c9
 ```
 
 ## 9. コントローラー更新フロー
@@ -286,30 +301,22 @@ flowchart TD
     A[Controller State Changed] --> B[_controllerListener Called]
     B --> C{Mounted?}
     C -->|No| Z[End]
-    C -->|Yes| D[Get Controller Signals]
-    D --> E[Get Controller Names]
-    E --> F[Get Controller Annotations]
-    F --> G[Get Controller Omission Indices]
-    G --> H{Names Changed?}
-    H -->|Yes| I[Update _idSignalNames]
-    I --> J[Call _translateNames]
-    H -->|No| K[Continue]
-    J --> K
-    K --> L[setState]
-    L --> M[Update signals]
-    M --> N[Update annotations]
-    N --> O[Update _omissionTimeIndices]
-    O --> P[_forceRepaint]
-    P --> Q{Grid Reset?}
-    Q -->|Yes| R[resetGridAdjustments]
-    Q -->|No| S[Continue]
-    R --> S
-    S --> T{Grid Recompute?}
-    T -->|Yes| U[setState]
-    T -->|No| V[Continue]
-    U --> V
-    V --> W[Ensure Step Durations Length]
-    W --> Z
+    C -->|Yes| D[Get Controller Signals/Names/Annotations/Omission]
+    D --> E[Compute namesChanged]
+    E --> F[setState: update signals/_idSignalNames/annotations/_omissionTimeIndices + _forceRepaint]
+    F --> G{namesChanged?}
+    G -->|Yes| H[Call _translateNames]
+    G -->|No| I[Continue]
+    H --> I
+    I --> J[Ensure stepDurations length (post frame)]
+    J --> K{Grid Reset Nonce Changed?}
+    K -->|Yes| L[resetGridAdjustments]
+    K -->|No| M[Continue]
+    L --> M
+    M --> N{Grid Recompute Nonce Changed?}
+    N -->|Yes| O[setState (trigger rebuild)]
+    N -->|No| Z[End]
+    O --> Z
     
     style A fill:#fff9c4
     style Z fill:#c8e6c9
@@ -352,6 +359,51 @@ flowchart TD
     style A fill:#fff9c4
     style Z fill:#c8e6c9
 ```
+
+## 11. ステップ継続時間編集フロー（ms単位・非等間隔軸）
+
+`timeUnitIsMs == true` かつ編集モード（`_isEditingSteps`）のとき、通常のタップ/ドラッグは `*_EditSteps` 系に切り替わります。
+
+```mermaid
+flowchart TD
+    A[Edit Steps Mode ON] --> B{User Action?}
+    B -->|Tap| C[_onTapUpEditSteps]
+    B -->|Drag Start| D[_onPanStartEditSteps]
+    B -->|Drag Update| E[_onPanUpdateEditSteps]
+    B -->|Drag End| F[_onPanEndEditSteps]
+    
+    D --> G[Find nearest boundary index (0..maxLen)]
+    G --> H[setState: _activeStepIndex = nearest]
+    
+    C --> I{Near boundary (snap<=6px)?}
+    I -->|Yes| H
+    I -->|No| J[Find step index from relX]
+    J --> K[Open dialog: Set step duration (ms)]
+    K --> L{Apply?}
+    L -->|No| Z[End]
+    L -->|Yes| M[settings.setStepDurationsMs(updated list)]
+    M --> N[setState: _activeStepIndex = idx]
+    N --> Z
+    
+    E --> O{_activeStepIndex valid?}
+    O -->|No| Z
+    O -->|Yes| P[Compute new duration from boundary movement]
+    P --> Q[Clamp duration (min 0.1ms)]
+    Q --> R[settings.setStepDurationsMs(updated list)]
+    R --> Z
+    
+    F --> S[settings.setStepDurationsMs([])  ※再計算トリガ]
+    S --> T[setState: _isEditingSteps=false, _activeStepIndex=null]
+    T --> Z
+    
+    style A fill:#fff9c4
+    style Z fill:#c8e6c9
+```
+
+## 12. 長押しによるアノテーションドラッグ（補足）
+
+通常モードでは、アノテーション上の長押しでもドラッグ開始できます（`_onLongPressStart/_onLongPressMoveUpdate/_onLongPressEnd`）。
+パン（`_onPanStart/_onPanUpdate/_onPanEnd`）と同様に、コメントボックスのオフセットを更新し、`controller.setAnnotations(...)` に反映します。
 
 ## 凡例
 
