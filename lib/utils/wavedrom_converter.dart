@@ -311,7 +311,13 @@ class WaveDromConverter {
                 offsetX: (e['offsetX'] as num?)?.toDouble(),
                 offsetY: (e['offsetY'] as num?)?.toDouble(),
                 arrowTipY: (e['arrowTipY'] as num?)?.toDouble(),
+                arrowTipRowIndex: (e['arrowTipRowIndex'] as num?)?.toInt(),
                 arrowHorizontal: e['arrowHorizontal'] as bool?,
+                fontSize: (e['fontSize'] as num?)?.toDouble(),
+                isBold: e['isBold'] as bool?,
+                borderColorValue: (e['borderColorValue'] as num?)?.toInt(),
+                dashedLineColorValue: (e['dashedLineColorValue'] as num?)?.toInt(),
+                arrowColorValue: (e['arrowColorValue'] as num?)?.toInt(),
               ),
             )
             .toList();

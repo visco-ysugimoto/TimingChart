@@ -8,7 +8,3 @@ Future<Uint8List> pngToJpegBytes(
   throw UnsupportedError('pngToJpegBytes is only supported on web.');
 }
 
-
-
-
-

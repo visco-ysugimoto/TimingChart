@@ -28,6 +28,7 @@ class MessageLookup extends MessageLookupByLibrary {
     "chartNameLabel": MessageLookupByLibrary.simpleMessage("Chart Name"),
     "chartTabTitle": MessageLookupByLibrary.simpleMessage("Timing Chart"),
     "color_picker_title": MessageLookupByLibrary.simpleMessage("Select Color"),
+    "color_picker_selected": MessageLookupByLibrary.simpleMessage("Selected:"),
     "comment_add_range_title": MessageLookupByLibrary.simpleMessage(
       "Add range comment",
     ),
@@ -39,8 +40,26 @@ class MessageLookup extends MessageLookupByLibrary {
       "Comment dashed color",
     ),
     "comment_edit_title": MessageLookupByLibrary.simpleMessage("Edit comment"),
+    "comment_properties_title": MessageLookupByLibrary.simpleMessage(
+      "Comment properties",
+    ),
+    "comment_properties_font_size": MessageLookupByLibrary.simpleMessage(
+      "Font size",
+    ),
+    "comment_properties_bold": MessageLookupByLibrary.simpleMessage("Bold"),
+    "comment_properties_border_color": MessageLookupByLibrary.simpleMessage(
+      "Border color",
+    ),
+    "comment_properties_dashed_color": MessageLookupByLibrary.simpleMessage(
+      "Dashed line color",
+    ),
+    "comment_properties_arrow_color": MessageLookupByLibrary.simpleMessage(
+      "Arrow color",
+    ),
     "comment_input_hint": MessageLookupByLibrary.simpleMessage("Enter comment"),
     "common_cancel": MessageLookupByLibrary.simpleMessage("Cancel"),
+    "common_change": MessageLookupByLibrary.simpleMessage("Change"),
+    "common_default": MessageLookupByLibrary.simpleMessage("Default"),
     "common_ok": MessageLookupByLibrary.simpleMessage("OK"),
     "createTemplateButton": MessageLookupByLibrary.simpleMessage(
       "Create Template",
@@ -57,6 +76,9 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "ctx_delete_comment": MessageLookupByLibrary.simpleMessage(
       "Delete comment",
+    ),
+    "ctx_comment_properties": MessageLookupByLibrary.simpleMessage(
+      "Properties",
     ),
     "ctx_delete_selection": MessageLookupByLibrary.simpleMessage(
       "Delete selection",

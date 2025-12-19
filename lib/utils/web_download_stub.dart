@@ -8,5 +8,3 @@ void downloadBytes(
   throw UnsupportedError('downloadBytes is only supported on web.');
 }
 
-
-

@@ -97,6 +97,7 @@ void drawCommentBox(
   TextPainter textPainter,
   String annId,
   String? selectedAnnotationId, // Added to handle selection state
+  Color? borderColor, // コメントごとの枠線色（非選択時）
 ) {
   final bool isSelected = selectedAnnotationId == annId;
 
@@ -124,9 +125,10 @@ void drawCommentBox(
   canvas.drawRRect(rrect, paintBase);
 
   // 3. 枠線（選択時はアクセントカラー＋太め）
+  final Color effectiveBorderColor = borderColor ?? Colors.grey.shade600;
   final Paint paintBorder =
       Paint()
-        ..color = isSelected ? const Color(0xFFF0AD4E) : Colors.grey.shade600
+        ..color = isSelected ? const Color(0xFFF0AD4E) : effectiveBorderColor
         ..style = PaintingStyle.stroke
         ..strokeWidth = isSelected ? 2.0 : 1.0;
   canvas.drawRRect(rrect, paintBorder);

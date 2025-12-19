@@ -9,10 +9,12 @@ class _CommentBoxData {
   final Rect rect;
   final TextPainter painter;
   final String annId;
+  final Color borderColor;
   const _CommentBoxData({
     required this.rect,
     required this.painter,
     required this.annId,
+    required this.borderColor,
   });
 }
 
@@ -26,6 +28,8 @@ class ChartAnnotationsManager {
   final List<int> highlightTimeIndices;
   final Color dashedColor;
   final Color arrowColor;
+  // 下部時間ラベル（単位）を表示している場合、アノテーション（矢印/コメント）を下へ逃がす
+  final bool showBottomUnitLabels;
   // 時間軸（非等間隔）用
   final bool timeUnitIsMs;
   final double msPerStep;
@@ -47,6 +51,7 @@ class ChartAnnotationsManager {
     this.selectedAnnotationId,
     this.dashedColor = Colors.black,
     this.arrowColor = Colors.blue,
+    this.showBottomUnitLabels = true,
     this.timeUnitIsMs = false,
     this.msPerStep = 1.0,
     this.stepDurationsMs = const [],
@@ -60,7 +65,12 @@ class ChartAnnotationsManager {
 
     // ベース座標と必要な値を計算
     final chartBottomY = signalCount * cellHeight;
-    final double baseCommentY = chartBottomY + 20;
+    // ChartGridManager.drawTimeLabels が chartBottomY + 4 から fontSize=12 で描くため、
+    // ラベル表示時は余白を追加して被りを回避する
+    const double bottomLabelAvoidOffset = 20.0;
+    final double labelExtraY =
+        showBottomUnitLabels ? bottomLabelAvoidOffset : 0.0;
+    final double baseCommentY = chartBottomY + 20 + labelExtraY;
 
     if (annotations.isEmpty) {
       debugPrint('アノテーションが空のため描画しません');
@@ -96,9 +106,19 @@ class ChartAnnotationsManager {
       Rect commentRect;
       Rect? arrowRect;
 
+      final double fontSize =
+          (ann.fontSize != null && ann.fontSize!.isFinite)
+              ? ann.fontSize!.clamp(6.0, 72.0)
+              : 14.0;
+      final FontWeight fontWeight =
+          ann.isBold == true ? FontWeight.bold : FontWeight.normal;
       final textSpan = TextSpan(
         text: ann.text,
-        style: const TextStyle(color: Colors.black, fontSize: 14),
+        style: TextStyle(
+          color: Colors.black,
+          fontSize: fontSize,
+          fontWeight: fontWeight,
+        ),
       );
       final textPainter = TextPainter(
         text: textSpan,
@@ -115,7 +135,7 @@ class ChartAnnotationsManager {
 
       if (ann.endTimeIndex != null) {
         // 範囲コメントの場合
-        double arrowBaseY = chartBottomY + 10;
+        double arrowBaseY = chartBottomY + 10 + labelExtraY;
         // 直前の範囲の終端とこの範囲の開始が一致する場合、同じYを優先的に使用
         final int _startIdx = ann.startTimeIndex;
         final int _endIdx = ann.endTimeIndex!;
@@ -246,6 +266,12 @@ class ChartAnnotationsManager {
       // 先に境界線を描画
       // 単一点コメントの場合はセル中央に破線を置く
       double startX = _boundaryX(ann.startTimeIndex);
+      final double? resolvedArrowTipY =
+          (ann.arrowTipRowIndex != null &&
+                  ann.arrowTipRowIndex! >= 0 &&
+                  ann.arrowTipRowIndex! < signalCount)
+              ? (ann.arrowTipRowIndex! + 0.5) * cellHeight
+              : ann.arrowTipY;
       // 破線終点の見直し:
       // - 水平ON: コメントボックス中心Yまで常に延長（チャート外でも）
       // - 水平OFF: 先端がチャート内ならその先端Yまで、外ならチャート下端まで
@@ -253,16 +279,26 @@ class ChartAnnotationsManager {
       final double anchorYForDashed =
           useHorizontalForDashed
               ? commentRect.center.dy
-              : (ann.arrowTipY ?? commentRect.top);
+              : (resolvedArrowTipY ?? commentRect.top);
       // 破線は常にチャート下端までは描画。先端が下側に外れていればその先まで延長
       final double boundaryEndY = math.max(chartBottomY, anchorYForDashed);
 
       debugPrint('左境界線: x=$startX, y1=0, y2=$boundaryEndY');
 
+      // アノテーション個別の色（未指定なら全体デフォルト）
+      final Color perAnnDashedColor =
+          ann.dashedLineColorValue != null
+              ? Color(ann.dashedLineColorValue!)
+              : dashedColor;
+      final Color perAnnArrowColor =
+          ann.arrowColorValue != null
+              ? Color(ann.arrowColorValue!)
+              : arrowColor;
+
       // 境界線の色を設定
       final boundaryPaint =
           Paint()
-            ..color = dashedColor.withAlpha((0.5 * 255).round())
+            ..color = perAnnDashedColor.withAlpha((0.5 * 255).round())
             ..strokeWidth = 2.0
             ..style = PaintingStyle.stroke;
 
@@ -292,30 +328,42 @@ class ChartAnnotationsManager {
       }
 
       // コメントボックスは最後にまとめて描画するため記録のみ行う
+      final Color borderColor =
+          ann.borderColorValue != null
+              ? Color(ann.borderColorValue!)
+              : Colors.grey.shade600;
       _commentBoxDrawData.add(
-        _CommentBoxData(rect: commentRect, painter: textPainter, annId: ann.id),
+        _CommentBoxData(
+          rect: commentRect,
+          painter: textPainter,
+          annId: ann.id,
+          borderColor: borderColor,
+        ),
       );
 
       // 矢印の描画
       if (arrowRect != null) {
-        drawArrow(canvas, arrowRect, color: arrowColor);
+        drawArrow(canvas, arrowRect, color: perAnnArrowColor);
       }
 
       // X方向にコメントが移動している場合は、破線位置とコメントボックスを結ぶ矢印を追加
-      final double originalCommentCenterX = ann.endTimeIndex != null
-          ? (_boundaryX(ann.startTimeIndex) + _boundaryX(ann.endTimeIndex! + 1)) / 2
-          : _boundaryX(ann.startTimeIndex);
+      final double originalCommentCenterX =
+          ann.endTimeIndex != null
+              ? (_boundaryX(ann.startTimeIndex) +
+                      _boundaryX(ann.endTimeIndex! + 1)) /
+                  2
+              : _boundaryX(ann.startTimeIndex);
       final double movedCenterX = commentRect.center.dx;
       final bool movedInX = (movedCenterX - originalCommentCenterX).abs() > 1.0;
       if (movedInX) {
         final double dashedX = originalCommentCenterX;
         // 水平ON時はコメントボックス中心Yへ完全追従（チャート外でも追従）
-        // 水平OFF時は既存仕様（arrowTipY なければ boundaryEndY）
+        // 水平OFF時は既存仕様（arrowTipY/arrowTipRowIndex なければ boundaryEndY）
         final bool useHorizontal = ann.arrowHorizontal != false;
         final double anchorY =
             useHorizontal
                 ? commentRect.center.dy
-                : (ann.arrowTipY ?? boundaryEndY);
+                : (resolvedArrowTipY ?? boundaryEndY);
         final Offset end = Offset(dashedX, anchorY);
 
         final Offset start =
@@ -323,7 +371,13 @@ class ChartAnnotationsManager {
                 ? Offset(commentRect.right, anchorY)
                 : commentRect.topCenter;
 
-        drawArrowLine(canvas, start, end, color: arrowColor, strokeWidth: 2.0);
+        drawArrowLine(
+          canvas,
+          start,
+          end,
+          color: perAnnArrowColor,
+          strokeWidth: 2.0,
+        );
       }
     }
 
@@ -335,6 +389,7 @@ class ChartAnnotationsManager {
         data.painter,
         data.annId,
         selectedAnnotationId,
+        data.borderColor,
       );
     }
   }
@@ -346,9 +401,10 @@ class ChartAnnotationsManager {
     }
     double steps = 0.0;
     for (int t = 0; t < boundaryIndex; t++) {
-      final durSteps = (t < stepDurationsMs.length && msPerStep > 0)
-          ? stepDurationsMs[t] / msPerStep
-          : 1.0;
+      final durSteps =
+          (t < stepDurationsMs.length && msPerStep > 0)
+              ? stepDurationsMs[t] / msPerStep
+              : 1.0;
       steps += durSteps;
     }
     return labelWidth + steps * cellWidth;

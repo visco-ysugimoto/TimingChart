@@ -487,12 +487,42 @@ class S {
     );
   }
 
+  /// `Selected:`
+  String get color_picker_selected {
+    return Intl.message(
+      'Selected:',
+      name: 'color_picker_selected',
+      desc: 'Label for currently selected color',
+      args: [],
+    );
+  }
+
   /// `Cancel`
   String get common_cancel {
     return Intl.message(
       'Cancel',
       name: 'common_cancel',
       desc: 'Common button: Cancel',
+      args: [],
+    );
+  }
+
+  /// `Change`
+  String get common_change {
+    return Intl.message(
+      'Change',
+      name: 'common_change',
+      desc: 'Common button: Change',
+      args: [],
+    );
+  }
+
+  /// `Default`
+  String get common_default {
+    return Intl.message(
+      'Default',
+      name: 'common_default',
+      desc: 'Common button: Default',
       args: [],
     );
   }
@@ -743,6 +773,76 @@ class S {
       'Set arrow tip to this row',
       name: 'ctx_set_arrow_tip_to_row',
       desc: 'Context menu: Set arrow tip target row',
+      args: [],
+    );
+  }
+
+  /// `Properties`
+  String get ctx_comment_properties {
+    return Intl.message(
+      'Properties',
+      name: 'ctx_comment_properties',
+      desc: 'Context menu: Comment properties',
+      args: [],
+    );
+  }
+
+  /// `Comment properties`
+  String get comment_properties_title {
+    return Intl.message(
+      'Comment properties',
+      name: 'comment_properties_title',
+      desc: 'Dialog title: Comment properties',
+      args: [],
+    );
+  }
+
+  /// `Font size`
+  String get comment_properties_font_size {
+    return Intl.message(
+      'Font size',
+      name: 'comment_properties_font_size',
+      desc: 'Label: Comment font size',
+      args: [],
+    );
+  }
+
+  /// `Bold`
+  String get comment_properties_bold {
+    return Intl.message(
+      'Bold',
+      name: 'comment_properties_bold',
+      desc: 'Label: Bold text',
+      args: [],
+    );
+  }
+
+  /// `Border color`
+  String get comment_properties_border_color {
+    return Intl.message(
+      'Border color',
+      name: 'comment_properties_border_color',
+      desc: 'Label: Comment border color',
+      args: [],
+    );
+  }
+
+  /// `Dashed line color`
+  String get comment_properties_dashed_color {
+    return Intl.message(
+      'Dashed line color',
+      name: 'comment_properties_dashed_color',
+      desc: 'Label: Comment dashed line color',
+      args: [],
+    );
+  }
+
+  /// `Arrow color`
+  String get comment_properties_arrow_color {
+    return Intl.message(
+      'Arrow color',
+      name: 'comment_properties_arrow_color',
+      desc: 'Label: Comment arrow color',
       args: [],
     );
   }

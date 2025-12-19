@@ -811,7 +811,17 @@ class TimingChartState extends State<TimingChart>
       if (a[i].id != b[i].id ||
           a[i].startTimeIndex != b[i].startTimeIndex ||
           a[i].endTimeIndex != b[i].endTimeIndex ||
-          a[i].text != b[i].text) {
+          a[i].text != b[i].text ||
+          a[i].offsetX != b[i].offsetX ||
+          a[i].offsetY != b[i].offsetY ||
+          a[i].arrowTipY != b[i].arrowTipY ||
+          a[i].arrowTipRowIndex != b[i].arrowTipRowIndex ||
+          a[i].arrowHorizontal != b[i].arrowHorizontal ||
+          a[i].fontSize != b[i].fontSize ||
+          a[i].isBold != b[i].isBold ||
+          a[i].borderColorValue != b[i].borderColorValue ||
+          a[i].dashedLineColorValue != b[i].dashedLineColorValue ||
+          a[i].arrowColorValue != b[i].arrowColorValue) {
         return false;
       }
     }
@@ -1643,6 +1653,12 @@ class TimingChartState extends State<TimingChart>
     final RenderBox? rootBox = context.findRenderObject() as RenderBox?;
     final Offset rootLocalPos =
         rootBox != null ? rootBox.globalToLocal(position) : position;
+    // 他のジェスチャー処理（_onPanStart 等）と同じく、固定ヘッダ分を差し引いた座標系で扱う
+    // これを揃えないと「矢印の先端をこの行に設定」で行がずれて見える
+    final Offset gestureLocalPos = Offset(
+      rootLocalPos.dx,
+      rootLocalPos.dy - _fixedHeaderHeight,
+    );
 
     final RenderBox? paintBox =
         _customPaintKey.currentContext?.findRenderObject() as RenderBox?;
@@ -1681,7 +1697,7 @@ class TimingChartState extends State<TimingChart>
       clickedTimeIndex = _getTimeIndexFromDx(rootLocalPos.dx);
     }
 
-    final int clickedSig = _getSignalIndexFromDy(rootLocalPos.dy);
+    final int clickedSig = _getSignalIndexFromDy(gestureLocalPos.dy);
 
     String? hitAnnId;
     for (final entry in _annotationHitRects.entries) {
@@ -1703,6 +1719,7 @@ class TimingChartState extends State<TimingChart>
           value: 'deleteComment',
           child: Text(s.ctx_delete_comment),
         ),
+
         PopupMenuItem(
           value: 'toggleArrowHorizontal',
           child: Text(
@@ -1716,6 +1733,10 @@ class TimingChartState extends State<TimingChart>
             value: 'setArrowTipToRow',
             child: Text(s.ctx_set_arrow_tip_to_row),
           ),
+        PopupMenuItem(
+          value: 'commentProperties',
+          child: Text(s.ctx_comment_properties),
+        ),
       ];
     } else {
       setState(() {
@@ -1749,7 +1770,7 @@ class TimingChartState extends State<TimingChart>
             child: Text(s.ctx_delete_columns),
           ),
         // 波形から重要なイベントを検出してコメントを自動生成
-        const PopupMenuItem(value: 'autoComment', child: Text('波形からコメント自動生成')),
+        //const PopupMenuItem(value: 'autoComment', child: Text('波形からコメント自動生成')),
         PopupMenuItem(value: 'addComment', child: Text(s.ctx_add_comment)),
         PopupMenuItem(value: 'omit', child: Text(s.ctx_draw_omission)),
       ];
@@ -1772,6 +1793,9 @@ class TimingChartState extends State<TimingChart>
       switch (selectedValue) {
         case 'editComment':
           if (hitAnnId != null) _editComment(hitAnnId);
+          break;
+        case 'commentProperties':
+          if (hitAnnId != null) _editCommentProperties(hitAnnId);
           break;
         case 'deleteComment':
           if (hitAnnId != null) _deleteComment(hitAnnId);
@@ -1831,6 +1855,316 @@ class TimingChartState extends State<TimingChart>
           _toggleOmissionTime(clickedTimeIndex);
           break;
       }
+    }
+  }
+
+  Future<Color?> _showBorderColorPickerDialog(
+    BuildContext context, {
+    required String title,
+    required Color initial,
+  }) async {
+    Color selected = initial;
+    const List<Color> presets = [
+      Colors.black,
+      Color(0xFF616161), // grey 700
+      Colors.red,
+      Colors.orange,
+      Colors.green,
+      Colors.blue,
+      Colors.purple,
+      Colors.brown,
+    ];
+
+    return showDialog<Color>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text(title),
+          content: StatefulBuilder(
+            builder: (ctx, setLocalState) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children:
+                        presets.map((c) {
+                          final bool isSelected =
+                              c.toARGB32() == selected.toARGB32();
+                          return InkWell(
+                            onTap: () => setLocalState(() => selected = c),
+                            child: Container(
+                              width: 28,
+                              height: 28,
+                              decoration: BoxDecoration(
+                                color: c,
+                                border: Border.all(
+                                  color:
+                                      isSelected
+                                          ? Colors.black
+                                          : Colors.black26,
+                                  width: isSelected ? 2 : 1,
+                                ),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Text('${S.of(context).color_picker_selected} '),
+                      Container(
+                        width: 18,
+                        height: 18,
+                        decoration: BoxDecoration(
+                          color: selected,
+                          border: Border.all(color: Colors.black26),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '#${selected.toARGB32().toRadixString(16).padLeft(8, '0').toUpperCase()}',
+                      ),
+                    ],
+                  ),
+                ],
+              );
+            },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, null),
+              child: Text(S.of(context).common_cancel),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, selected),
+              child: Text(S.of(context).common_ok),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// コメントボックスの見た目（フォント/太字/罫線色）を編集します
+  void _editCommentProperties(String annId) async {
+    final int index = annotations.indexWhere((a) => a.id == annId);
+    if (index == -1) return;
+    final TimingChartAnnotation ann = annotations[index];
+
+    double fontSize =
+        (ann.fontSize != null && ann.fontSize!.isFinite) ? ann.fontSize! : 14.0;
+    bool isBold = ann.isBold == true;
+    int borderColorValue =
+        ann.borderColorValue ?? Colors.grey.shade600.toARGB32();
+    int dashedLineColorValue =
+        ann.dashedLineColorValue ?? Colors.black.toARGB32();
+    int arrowColorValue = ann.arrowColorValue ?? Colors.blue.toARGB32();
+
+    final bool prevCanRequest = _focusNode.canRequestFocus;
+    _focusNode.canRequestFocus = false;
+    FocusScope.of(context).unfocus();
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final s = S.of(context);
+        return StatefulBuilder(
+          builder: (ctx, setLocalState) {
+            return AlertDialog(
+              title: Text(s.comment_properties_title),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: 92,
+                          child: Text(s.comment_properties_font_size),
+                        ),
+                        Expanded(
+                          child: Slider(
+                            value: fontSize.clamp(8.0, 40.0),
+                            min: 8.0,
+                            max: 40.0,
+                            divisions: 32,
+                            label: fontSize.round().toString(),
+                            onChanged: (v) => setLocalState(() => fontSize = v),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 34,
+                          child: Text(
+                            fontSize.round().toString(),
+                            textAlign: TextAlign.right,
+                          ),
+                        ),
+                      ],
+                    ),
+                    CheckboxListTile(
+                      value: isBold,
+                      onChanged:
+                          (v) => setLocalState(() => isBold = v ?? false),
+                      title: Text(s.comment_properties_bold),
+                      controlAffinity: ListTileControlAffinity.leading,
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: 92,
+                          child: Text(s.comment_properties_border_color),
+                        ),
+                        Container(
+                          width: 18,
+                          height: 18,
+                          decoration: BoxDecoration(
+                            color: Color(borderColorValue),
+                            border: Border.all(color: Colors.black26),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        TextButton(
+                          onPressed: () async {
+                            final picked = await _showBorderColorPickerDialog(
+                              ctx,
+                              title: s.comment_properties_border_color,
+                              initial: Color(borderColorValue),
+                            );
+                            if (picked != null) {
+                              setLocalState(
+                                () => borderColorValue = picked.toARGB32(),
+                              );
+                            }
+                          },
+                          child: Text(s.common_change),
+                        ),
+                        const Spacer(),
+                        TextButton(
+                          onPressed: () {
+                            setLocalState(() {
+                              fontSize = 14.0;
+                              isBold = false;
+                              borderColorValue =
+                                  Colors.grey.shade600.toARGB32();
+                              dashedLineColorValue = Colors.black.toARGB32();
+                              arrowColorValue = Colors.blue.toARGB32();
+                            });
+                          },
+                          child: Text(s.common_default),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: 92,
+                          child: Text(s.comment_properties_dashed_color),
+                        ),
+                        Container(
+                          width: 18,
+                          height: 18,
+                          decoration: BoxDecoration(
+                            color: Color(dashedLineColorValue),
+                            border: Border.all(color: Colors.black26),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        TextButton(
+                          onPressed: () async {
+                            final picked = await _showBorderColorPickerDialog(
+                              ctx,
+                              title: s.comment_properties_dashed_color,
+                              initial: Color(dashedLineColorValue),
+                            );
+                            if (picked != null) {
+                              setLocalState(
+                                () => dashedLineColorValue = picked.toARGB32(),
+                              );
+                            }
+                          },
+                          child: Text(s.common_change),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: 92,
+                          child: Text(s.comment_properties_arrow_color),
+                        ),
+                        Container(
+                          width: 18,
+                          height: 18,
+                          decoration: BoxDecoration(
+                            color: Color(arrowColorValue),
+                            border: Border.all(color: Colors.black26),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        TextButton(
+                          onPressed: () async {
+                            final picked = await _showBorderColorPickerDialog(
+                              ctx,
+                              title: s.comment_properties_arrow_color,
+                              initial: Color(arrowColorValue),
+                            );
+                            if (picked != null) {
+                              setLocalState(
+                                () => arrowColorValue = picked.toARGB32(),
+                              );
+                            }
+                          },
+                          child: Text(s.common_change),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: Text(s.common_cancel),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: Text(s.common_ok),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    _focusNode.canRequestFocus = prevCanRequest;
+    if (mounted) _focusNode.requestFocus();
+
+    if (result == true) {
+      setState(() {
+        final TimingChartAnnotation current = annotations[index];
+        annotations[index] = current.copyWith(
+          fontSize: fontSize,
+          isBold: isBold,
+          borderColorValue: borderColorValue,
+          dashedLineColorValue: dashedLineColorValue,
+          arrowColorValue: arrowColorValue,
+        );
+        _forceRepaint();
+      });
+      _controller?.setAnnotations(annotations);
     }
   }
 
@@ -4086,12 +4420,15 @@ class TimingChartState extends State<TimingChart>
   void _setAnnotationArrowToSignal(String annId, int visibleRowIndex) {
     if (visibleRowIndex < 0 || visibleRowIndex >= _visibleIndexes.length)
       return;
-    final absoluteRowIndex = _visibleIndexes[visibleRowIndex];
     setState(() {
       final idx = annotations.indexWhere((a) => a.id == annId);
       if (idx != -1) {
-        final rowCenterY = (absoluteRowIndex + 0.5) * _cellHeight;
-        annotations[idx] = annotations[idx].copyWith(arrowTipY: rowCenterY);
+        // 表示行インデックスを保存しておくと、fitToScreen等でcellHeightが変動してもズレない
+        final rowCenterY = (visibleRowIndex + 0.5) * _cellHeight;
+        annotations[idx] = annotations[idx].copyWith(
+          arrowTipRowIndex: visibleRowIndex,
+          arrowTipY: rowCenterY, // 後方互換・既存処理用に残す
+        );
         _forceRepaint();
       }
     });
@@ -4347,6 +4684,7 @@ class _StepTimingChartPainter extends CustomPainter {
       selectedAnnotationId: selectedAnnotationId,
       dashedColor: dashedColor,
       arrowColor: arrowColor,
+      showBottomUnitLabels: showBottomUnitLabels,
       timeUnitIsMs: timeUnitIsMs,
       msPerStep: msPerStep,
       stepDurationsMs: stepDurationsMs,
@@ -4519,6 +4857,9 @@ class _StepTimingChartPainter extends CustomPainter {
     );
     canvas.restore();
 
+    // 下部時間ラベル（単位）を先に描画し、その上にコメントボックスを重ねる
+    _gridManager.drawTimeLabels(canvas, size, rowCount, maxTimeSteps);
+
     canvas.save();
     canvas.clipRect(
       Rect.fromLTWH(
@@ -4547,8 +4888,6 @@ class _StepTimingChartPainter extends CustomPainter {
     } catch (_) {
       // 計測に失敗しても描画自体には影響させない
     }
-
-    _gridManager.drawTimeLabels(canvas, size, rowCount, maxTimeSteps);
 
     annotationRects.clear();
     annotationRects.addAll(_annotationsManager.getAnnotationRects());

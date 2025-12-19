@@ -28,6 +28,7 @@ class MessageLookup extends MessageLookupByLibrary {
     "chartNameLabel": MessageLookupByLibrary.simpleMessage("チャート名"),
     "chartTabTitle": MessageLookupByLibrary.simpleMessage("タイミングチャート"),
     "color_picker_title": MessageLookupByLibrary.simpleMessage("色を選択"),
+    "color_picker_selected": MessageLookupByLibrary.simpleMessage("選択中:"),
     "comment_add_range_title": MessageLookupByLibrary.simpleMessage(
       "範囲コメントを追加",
     ),
@@ -35,8 +36,26 @@ class MessageLookup extends MessageLookupByLibrary {
     "comment_arrow_color": MessageLookupByLibrary.simpleMessage("コメント矢印の色"),
     "comment_dashed_color": MessageLookupByLibrary.simpleMessage("コメント破線の色"),
     "comment_edit_title": MessageLookupByLibrary.simpleMessage("コメントを編集"),
+    "comment_properties_title": MessageLookupByLibrary.simpleMessage(
+      "コメントのプロパティ",
+    ),
+    "comment_properties_font_size": MessageLookupByLibrary.simpleMessage(
+      "フォントサイズ",
+    ),
+    "comment_properties_bold": MessageLookupByLibrary.simpleMessage("太字"),
+    "comment_properties_border_color": MessageLookupByLibrary.simpleMessage(
+      "罫線の色",
+    ),
+    "comment_properties_dashed_color": MessageLookupByLibrary.simpleMessage(
+      "破線の色",
+    ),
+    "comment_properties_arrow_color": MessageLookupByLibrary.simpleMessage(
+      "矢印の色",
+    ),
     "comment_input_hint": MessageLookupByLibrary.simpleMessage("コメントを入力"),
     "common_cancel": MessageLookupByLibrary.simpleMessage("キャンセル"),
+    "common_change": MessageLookupByLibrary.simpleMessage("変更"),
+    "common_default": MessageLookupByLibrary.simpleMessage("デフォルト"),
     "common_ok": MessageLookupByLibrary.simpleMessage("OK"),
     "createTemplateButton": MessageLookupByLibrary.simpleMessage("テンプレートを作成"),
     "ctx_add_comment": MessageLookupByLibrary.simpleMessage("コメントを追加"),
@@ -48,6 +67,7 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "ctx_delete_columns": MessageLookupByLibrary.simpleMessage("選択列を削除"),
     "ctx_delete_comment": MessageLookupByLibrary.simpleMessage("コメントを削除"),
+    "ctx_comment_properties": MessageLookupByLibrary.simpleMessage("プロパティ"),
     "ctx_delete_selection": MessageLookupByLibrary.simpleMessage("選択範囲を削除"),
     "ctx_draw_omission": MessageLookupByLibrary.simpleMessage("省略記号"),
     "ctx_duplicate_to_tail": MessageLookupByLibrary.simpleMessage("末尾に複製"),
