@@ -1,0 +1,4 @@
+このフォルダはヘルプ用の画像/動画（assets）を置くための場所です。
+（例）assets/help/media/example.png , assets/help/media/example.mp4
+
+

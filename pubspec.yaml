@@ -86,6 +86,10 @@ flutter:
     # バージョン情報
     - assets/CHANGELOG.md
     - assets/VERSION.json
+    # ヘルプ（Markdown）
+    - assets/help/en/
+    - assets/help/ja/
+    - assets/help/media/
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.

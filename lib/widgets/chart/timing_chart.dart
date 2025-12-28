@@ -4527,6 +4527,43 @@ class TimingChartState extends State<TimingChart>
         HardwareKeyboard.instance.isControlPressed ||
         HardwareKeyboard.instance.isMetaPressed;
 
+    // 追加: キーボードで横スクロール（パン）
+    // - ←/→: 少し移動（Shiftで加速）
+    // - PageUp/PageDown: 1画面分移動
+    // - Home/End: 先頭/末尾
+    {
+      final bool shift = HardwareKeyboard.instance.isShiftPressed;
+      final double small = math.max(20.0, _cellWidth * 3);
+      final double large = math.max(_getViewportWaveWidth() * 0.9, small * 10);
+
+      if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+        _scrollHorizontallyBy(-(shift ? small * 5 : small));
+        return;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+        _scrollHorizontallyBy(shift ? small * 5 : small);
+        return;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.pageUp) {
+        _scrollHorizontallyBy(-large);
+        return;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.pageDown) {
+        _scrollHorizontallyBy(large);
+        return;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.home) {
+        _scrollHorizontallyTo(0);
+        return;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.end) {
+        if (_hScrollController.hasClients) {
+          _scrollHorizontallyTo(_hScrollController.position.maxScrollExtent);
+        }
+        return;
+      }
+    }
+
     // アンドゥ/リドゥショートカット
     if (isModifierPressed) {
       if (event.logicalKey == LogicalKeyboardKey.keyZ) {
@@ -4558,6 +4595,29 @@ class TimingChartState extends State<TimingChart>
         _setSignalsInSelection(0);
         return;
       }
+    }
+  }
+
+  void _scrollHorizontallyBy(double deltaPx) {
+    if (!_hScrollController.hasClients) return;
+    final pos = _hScrollController.position;
+    final next = (_hScrollController.offset + deltaPx)
+        .clamp(pos.minScrollExtent, pos.maxScrollExtent);
+    try {
+      _hScrollController.jumpTo(next);
+    } catch (_) {
+      // ignore jump errors
+    }
+  }
+
+  void _scrollHorizontallyTo(double offsetPx) {
+    if (!_hScrollController.hasClients) return;
+    final pos = _hScrollController.position;
+    final next = offsetPx.clamp(pos.minScrollExtent, pos.maxScrollExtent);
+    try {
+      _hScrollController.jumpTo(next);
+    } catch (_) {
+      // ignore jump errors
     }
   }
 

@@ -17,6 +17,7 @@ import 'utils/file_utils.dart';
 import 'widgets/form/form_tab.dart';
 import 'widgets/chart/timing_chart.dart';
 import 'widgets/settings/settings_window.dart';
+import 'widgets/help/help_dialog.dart';
 import 'utils/vxvismgr_parser.dart';
 import 'utils/vxvismgr_mapping_loader.dart';
 import 'utils/csv_io_log_parser.dart';
@@ -1133,6 +1134,14 @@ class _MyHomePageState extends State<MyHomePage>
     );
   }
 
+  void _showGlobalHelpDialog(BuildContext context) {
+    final int initialTab = _tabController.index.clamp(0, 1);
+    showDialog(
+      context: context,
+      builder: (_) => GlobalHelpDialog(initialTabIndex: initialTab),
+    );
+  }
+
   /// ウィジェットの破棄処理を行います
   ///
   /// タブコントローラーとすべてのテキストコントローラーを破棄します。
@@ -1186,6 +1195,14 @@ class _MyHomePageState extends State<MyHomePage>
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                     ),
+                  ),
+                  const SizedBox(width: 12),
+                  IconButton(
+                    tooltip: s.menu_help,
+                    icon: const Icon(Icons.help_outline),
+                    color: Colors.white,
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => _showGlobalHelpDialog(context),
                   ),
                 ],
               ),
@@ -1559,6 +1576,7 @@ class _MyHomePageState extends State<MyHomePage>
               title: Text(s.menu_help),
               onTap: () {
                 Navigator.pop(context);
+                _showGlobalHelpDialog(context);
               },
             ),
             ListTile(
