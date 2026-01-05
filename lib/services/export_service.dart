@@ -7,7 +7,8 @@ import '../models/chart/timing_chart_annotation.dart';
 import '../models/form/form_state.dart';
 import '../providers/timing_chart_controller.dart';
 import '../utils/file_utils.dart';
-import '../widgets/form/form_tab.dart';
+import '../models/form/camera_table_types.dart';
+import '../widgets/form/form_tab.dart' show FormTabState;
 import '../widgets/chart/timing_chart.dart';
 import '../suggestion_loader.dart';
 

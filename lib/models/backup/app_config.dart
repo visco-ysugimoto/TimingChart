@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../form/form_state.dart';
 import '../chart/signal_data.dart';
 import '../chart/signal_type.dart';
-import '../../widgets/form/form_tab.dart';
+import '../form/camera_table_types.dart';
 import '../chart/timing_chart_annotation.dart';
 
 /// アプリケーションの全設定を保持するクラス

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../widgets/form/form_tab.dart';
+import '../form/camera_table_types.dart';
 
 import '../form/form_state.dart';
 import 'signal_type.dart';

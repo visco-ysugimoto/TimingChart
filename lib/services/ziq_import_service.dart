@@ -12,7 +12,7 @@ import '../utils/vxvismgr_mapping_loader.dart';
 import '../utils/csv_io_log_parser.dart';
 import '../providers/form_controllers_notifier.dart';
 import '../providers/timing_chart_controller.dart';
-import '../widgets/form/form_tab.dart';
+import '../widgets/form/form_tab.dart' show FormTabState;
 
 /// ZIQインポート処理を担当するサービスクラス
 class ZiqImportService {

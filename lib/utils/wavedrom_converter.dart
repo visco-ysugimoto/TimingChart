@@ -5,7 +5,7 @@ import '../models/chart/signal_data.dart';
 import '../models/chart/timing_chart_annotation.dart';
 import '../models/form/form_state.dart';
 import '../models/chart/signal_type.dart';
-import '../widgets/form/form_tab.dart' show CellMode;
+import '../models/form/camera_table_types.dart' show CellMode;
 
 /// AppConfig から WaveDrom 形式(JSON)へ変換するユーティリティ
 class WaveDromConverter {

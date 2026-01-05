@@ -6,7 +6,6 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'dart:ui' as ui;
-import 'dart:typed_data';
 import 'package:image/image.dart' as img;
 import '../../utils/web_jpeg.dart' as web_jpeg;
 import '../../models/chart/timing_chart_annotation.dart';
@@ -22,166 +21,18 @@ import 'package:provider/provider.dart'; // Provider用
 import '../../generated/l10n.dart';
 import '../../providers/timing_chart_controller.dart';
 
+part 'timing_chart_types.dart';
+part 'timing_chart_auto_comments.dart';
+part 'timing_chart_painters.dart';
+part 'timing_chart_export.dart';
+part 'timing_chart_selection_ops.dart';
+part 'timing_chart_gestures.dart';
+part 'timing_chart_edit_steps.dart';
+part 'timing_chart_zoom_scroll.dart';
+
 // 翻訳サポート用
 
-/// 自動コメント生成で使用する HWトリガ立ち上がりイベント（内部専用）
-class _HwTriggerEdge {
-  final int rowIndex;
-  final int timeIndex;
-  final String name;
-
-  const _HwTriggerEdge({
-    required this.rowIndex,
-    required this.timeIndex,
-    required this.name,
-  });
-}
-
-/// 自動コメント生成で使用する 出力信号立ち上がりイベント（内部専用）
-class _OutputEdge {
-  final int rowIndex;
-  final int timeIndex;
-  final String name;
-
-  const _OutputEdge({
-    required this.rowIndex,
-    required this.timeIndex,
-    required this.name,
-  });
-}
-
-/// タイミングチャートのレンダリングに必要なレイアウト計算データ構造
-///
-/// このクラスは、タイミングチャートをレンダリングするために必要なすべての計算済みレイアウト値を保持します。
-/// セルの寸法、ズーム係数、表示可能な信号インデックスなどが含まれます。
-/// これらの値はレイアウトパスごとに一度計算され、レンダリング全体で再利用されます。
-class _ChartLayoutData {
-  /// 信号タイプでフィルタリング後の表示可能な信号行インデックスのリスト
-  final List<int> visibleIndexes;
-
-  /// 時間ステップの総数（ミリ秒単位を使用する場合は小数になる可能性がある）
-  final double totalSteps;
-
-  /// ズームが適用される前の基本セル幅
-  final double baseCellWidth;
-
-  /// ビューポート内のすべてのコンテンツを表示するために必要な最小セル幅
-  final double minCellWidthForFullView;
-
-  /// ズーム制約に基づく最大許可セル幅
-  final double maxCellWidthAllowed;
-
-  /// 現在のビューで許可される最小ズーム係数
-  final double minZoomFactorForView;
-
-  /// 現在のビューで許可される最大ズーム係数
-  final double maxZoomFactorForView;
-
-  /// 最小/最大境界にクランプされた後の実効ズーム係数
-  final double effectiveZoomFactor;
-
-  /// レンダリングに使用される実際のセル幅（baseCellWidth * effectiveZoomFactor）
-  final double cellWidth;
-
-  /// 各信号行セルの高さ
-  final double cellHeight;
-
-  /// チャートコンテンツ領域の総幅
-  final double totalWidth;
-
-  /// コメント領域を含むチャートコンテンツ領域の総高さ
-  final double totalHeight;
-
-  /// 下部に予約されているアノテーションコメント領域の高さ
-  final double commentAreaHeight;
-
-  /// すべての信号配列の最大長（最長の信号）
-  final int maxLen;
-
-  _ChartLayoutData({
-    required this.visibleIndexes,
-    required this.totalSteps,
-    required this.baseCellWidth,
-    required this.minCellWidthForFullView,
-    required this.maxCellWidthAllowed,
-    required this.minZoomFactorForView,
-    required this.maxZoomFactorForView,
-    required this.effectiveZoomFactor,
-    required this.cellWidth,
-    required this.cellHeight,
-    required this.totalWidth,
-    required this.totalHeight,
-    required this.commentAreaHeight,
-    required this.maxLen,
-  });
-}
-
-/// タイミングチャートでの時間位置計算用のヘルパークラス
-///
-/// ピクセル位置と時間ステップインデックス間の変換を行う静的ユーティリティメソッドを提供します。
-/// ステップベースとミリ秒ベースの両方の時間単位を処理します。
-class _TimePositionCalculator {
-  /// 時間単位変換用の累積ステップ位置配列を計算します
-  ///
-  /// ミリ秒単位を使用する場合、各ステップの継続時間が異なる可能性があります。
-  /// このメソッドは、正規化されたステップ単位（1.0 = 1つの基本ステップ継続時間）で
-  /// 各ステップ境界の累積位置を計算します。
-  ///
-  /// 長さmaxLen + 1の配列を返します。pos[i]はステップiの開始時の累積位置で、
-  /// pos[maxLen]は総位置です。
-  ///
-  /// [settings] - msPerStepと時間単位設定を含む設定
-  /// [maxLen] - 時間ステップの最大数
-  /// [stepDurationsMs] - 各ステップの継続時間（ミリ秒）の配列
-  /// 累積ステップ位置の配列を返します
-  static List<double> calculateStepPositions(
-    SettingsNotifier settings,
-    int maxLen,
-    List<double> stepDurationsMs,
-  ) {
-    final List<double> pos = List<double>.filled(maxLen + 1, 0.0);
-    for (int i = 0; i < maxLen; i++) {
-      final durSteps =
-          (i < stepDurationsMs.length && settings.msPerStep > 0)
-              ? stepDurationsMs[i] / settings.msPerStep
-              : 1.0;
-      pos[i + 1] = pos[i] + durSteps;
-    }
-    return pos;
-  }
-
-  /// ピクセル単位の相対X位置から時間ステップインデックスを取得します
-  ///
-  /// ピクセル位置（波形領域の開始位置からの相対位置）を対応する時間ステップインデックスに変換します。
-  /// ステップベースとミリ秒ベースの両方の時間単位を正しく処理します。
-  ///
-  /// [relX] - 波形領域の開始位置からの相対X位置（ピクセル）
-  /// [cellWidth] - 1つのセルの幅（ピクセル）
-  /// [settings] - 時間単位設定を含む設定
-  /// [maxLen] - 時間ステップの最大数
-  /// [stepDurationsMs] - 各ステップの継続時間（ミリ秒）の配列
-  /// 時間ステップインデックスを返します。無効な場合は-1を返します
-  static int getTimeIndexFromPosition(
-    double relX,
-    double cellWidth,
-    SettingsNotifier settings,
-    int maxLen,
-    List<double> stepDurationsMs,
-  ) {
-    if (settings.timeUnitIsMs && maxLen > 0) {
-      final pos = calculateStepPositions(settings, maxLen, stepDurationsMs);
-      for (int i = 0; i < maxLen; i++) {
-        final double leftPx = pos[i] * cellWidth;
-        final double rightPx = pos[i + 1] * cellWidth;
-        if (relX >= leftPx && relX < rightPx) {
-          return i;
-        }
-      }
-      return maxLen - 1;
-    }
-    return (relX / cellWidth).floor();
-  }
-}
+// NOTE: 小さな型/ヘルパーは `timing_chart_types.dart` に分離しました。
 
 /// インタラクティブなタイミング図チャートを表示するStatefulWidget
 ///
@@ -413,90 +264,7 @@ class TimingChartState extends State<TimingChart>
   /// その後、選択範囲が見えるようにスクロール位置を調整します。
   /// 有効な選択がある場合にのみ機能します。
   void _zoomToSelectionFit() {
-    if (!_hasValidSelection) return;
-    final settings = Provider.of<SettingsNotifier>(context, listen: false);
-    final bool isMs = settings.timeUnitIsMs;
-
-    final int stTime = math.min(_startTimeIndex!, _endTimeIndex!);
-    final int edTime = math.max(_startTimeIndex!, _endTimeIndex!);
-    if (stTime < 0 || edTime < stTime) return;
-
-    final double viewportWaveWidth = _getViewportWaveWidth();
-    if (!(viewportWaveWidth.isFinite) || viewportWaveWidth <= 0) return;
-
-    final int maxLen =
-        signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
-    if (maxLen <= 0) return;
-
-    final List<double> durationsForLayout = _durationsForLayout(settings);
-
-    double totalStepsUnits = 0.0;
-    if (isMs) {
-      for (int i = 0; i < maxLen; i++) {
-        final dur =
-            (i < durationsForLayout.length)
-                ? durationsForLayout[i]
-                : settings.msPerStep;
-        totalStepsUnits +=
-            (settings.msPerStep > 0) ? (dur / settings.msPerStep) : 1.0;
-      }
-    } else {
-      totalStepsUnits = maxLen.toDouble();
-    }
-    if (totalStepsUnits <= 0) return;
-
-    double baseCellWidth;
-    if (widget.fitToScreen) {
-      baseCellWidth = math.max(viewportWaveWidth / totalStepsUnits, 5.0);
-    } else {
-      baseCellWidth = math.max(viewportWaveWidth / totalStepsUnits, 20.0);
-    }
-
-    double selectedUnits = 0.0;
-    if (isMs) {
-      for (int i = stTime; i <= edTime; i++) {
-        if (i < 0 || i >= maxLen) continue;
-        final dur =
-            (i < durationsForLayout.length)
-                ? durationsForLayout[i]
-                : settings.msPerStep;
-        final u = (settings.msPerStep > 0) ? (dur / settings.msPerStep) : 1.0;
-        if (u.isFinite && u > 0) selectedUnits += u;
-      }
-    } else {
-      selectedUnits = (edTime - stTime + 1).toDouble();
-    }
-    if (!(selectedUnits.isFinite) || selectedUnits <= 0) return;
-
-    final double targetCellWidth = viewportWaveWidth / selectedUnits;
-    final double targetZoom =
-        (baseCellWidth > 0) ? (targetCellWidth / baseCellWidth) : 1.0;
-
-    setState(() {
-      _zoomFactor = targetZoom;
-    });
-
-    double stepsUnitsBefore = 0.0;
-    if (isMs) {
-      for (int i = 0; i < stTime; i++) {
-        if (i < 0 || i >= maxLen) continue;
-        final dur =
-            (i < durationsForLayout.length)
-                ? durationsForLayout[i]
-                : settings.msPerStep;
-        stepsUnitsBefore +=
-            (settings.msPerStep > 0) ? (dur / settings.msPerStep) : 1.0;
-      }
-    } else {
-      stepsUnitsBefore = stTime.toDouble();
-    }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _applyAnchorScrollCorrection(
-        anchorXInWave: 0.0,
-        stepsUnitsBefore: stepsUnitsBefore,
-      );
-    });
+    _zoomToSelectionFitImpl();
   }
 
   final double chartMarginLeft = 16.0;
@@ -522,7 +290,7 @@ class TimingChartState extends State<TimingChart>
   String? _selectedAnnotationId;
 
   /// アノテーションIDからそのヒットテスト矩形へのマップ
-  Map<String, Rect> _annotationHitRects = {};
+  final Map<String, Rect> _annotationHitRects = {};
 
   /// 現在ドラッグされているアノテーションのID
   String? _draggingAnnotationId;
@@ -973,156 +741,18 @@ class TimingChartState extends State<TimingChart>
   ///
   /// [details] - タップ位置を含むタップジェスチャーの詳細
   void _handleTap(TapUpDetails details) {
-    final chartLocalPos = details.localPosition;
-    final adjustedPos = Offset(
-      chartLocalPos.dx -
-          chartMarginLeft +
-          (_hScrollController.hasClients ? _hScrollController.offset : 0),
-      chartLocalPos.dy -
-          chartMarginTop +
-          (_vScrollController.hasClients ? _vScrollController.offset : 0),
-    );
-
-    String? hitAnnId;
-    for (final entry in _annotationHitRects.entries) {
-      final annId = entry.key;
-      final rect = entry.value;
-      if (rect.contains(adjustedPos)) {
-        hitAnnId = annId;
-        break;
-      }
-    }
-
-    if (hitAnnId != null) {
-      setState(() {
-        _selectedAnnotationId = hitAnnId;
-      });
-      _clearSelection();
-      return;
-    } else {
-      if (_selectedAnnotationId != null) {
-        setState(() {
-          _selectedAnnotationId = null;
-        });
-      }
-    }
-
-    final bool inLabelArea =
-        chartLocalPos.dx >= chartMarginLeft &&
-        chartLocalPos.dx <= chartMarginLeft + labelWidth;
-
-    if (inLabelArea) {
-      final row = _getSignalIndexFromDy(chartLocalPos.dy);
-      if (row >= 0 && row < _visibleIndexes.length) {
-        final originalRow = _visibleIndexes[row];
-        final int maxTime =
-            signals.isNotEmpty ? signals[originalRow].length - 1 : -1;
-        if (maxTime >= 0) {
-          setState(() {
-            if (_startSignalIndex == row &&
-                _endSignalIndex == row &&
-                _startTimeIndex == 0 &&
-                _endTimeIndex == maxTime) {
-              _clearSelection();
-            } else {
-              _startSignalIndex = row;
-              _endSignalIndex = row;
-              _startTimeIndex = 0;
-              _endTimeIndex = maxTime;
-            }
-            _selectedAnnotationId = null;
-            _forceRepaint();
-          });
-        }
-      }
-      return;
-    }
-
-    final clickSig = _getSignalIndexFromDy(chartLocalPos.dy);
-    final clickTim = _getTimeIndexFromDx(chartLocalPos.dx);
-
-    if (clickTim < 0 || clickSig < 0 || clickSig >= _visibleIndexes.length) {
-      _clearSelection();
-      return;
-    }
-
-    if (_hasValidSelection) {
-      final stSigAbs = math.min(_startSignalIndex!, _endSignalIndex!);
-      final edSigAbs = math.max(_startSignalIndex!, _endSignalIndex!);
-      final stTimeAbs = math.min(_startTimeIndex!, _endTimeIndex!);
-      final edTimeAbs = math.max(_startTimeIndex!, _endTimeIndex!);
-      final settings = Provider.of<SettingsNotifier>(context, listen: false);
-      double xStartPx;
-      double xEndPx;
-      if (settings.timeUnitIsMs) {
-        double pos = 0.0;
-        for (int t = 0; t < stTimeAbs; t++) {
-          final durSteps =
-              (t < settings.stepDurationsMs.length && settings.msPerStep > 0)
-                  ? settings.stepDurationsMs[t] / settings.msPerStep
-                  : 1.0;
-          pos += durSteps;
-        }
-        xStartPx = chartMarginLeft + labelWidth + pos * _cellWidth;
-        for (int t = stTimeAbs; t <= edTimeAbs; t++) {
-          final durSteps =
-              (t < settings.stepDurationsMs.length && settings.msPerStep > 0)
-                  ? settings.stepDurationsMs[t] / settings.msPerStep
-                  : 1.0;
-          pos += durSteps;
-        }
-        xEndPx = chartMarginLeft + labelWidth + pos * _cellWidth;
-      } else {
-        xStartPx = chartMarginLeft + labelWidth + (stTimeAbs * _cellWidth);
-        xEndPx = chartMarginLeft + labelWidth + ((edTimeAbs + 1) * _cellWidth);
-      }
-      final selectionRectContent = Rect.fromLTWH(
-        xStartPx,
-        chartMarginTop + (stSigAbs * _cellHeight).toDouble(),
-        (xEndPx - xStartPx).clamp(0.0, double.infinity),
-        (edSigAbs - stSigAbs + 1) * _cellHeight,
-      );
-      final double scrollX =
-          _hScrollController.hasClients ? _hScrollController.offset : 0.0;
-      final double scrollY =
-          _vScrollController.hasClients ? _vScrollController.offset : 0.0;
-      final Rect selectionRectViewport = selectionRectContent.translate(
-        -scrollX,
-        -scrollY,
-      );
-
-      if (selectionRectViewport.contains(chartLocalPos)) {
-        _toggleSignalsInSelection();
-      } else {
-        _clearSelection();
-        _toggleSingleSignal(clickSig, clickTim);
-      }
-    } else {
-      _toggleSingleSignal(clickSig, clickTim);
-    }
+    _handleTapImpl(details);
   }
 
-  /// 指定された位置の単一信号値を切り替えます
-  ///
-  /// 指定された表示行と時間ステップインデックスで信号値を反転します（0から1、または1から0）。
-  /// チャート状態を更新し、変更をコミットします。
-  ///
-  /// [visibleRow] - 表示信号行インデックス
-  /// [time] - 時間ステップインデックス
-  void _toggleSingleSignal(int visibleRow, int time) {
-    if (visibleRow >= 0 && visibleRow < _visibleIndexes.length) {
-      final originalRow = _visibleIndexes[visibleRow];
-      if (time >= 0 && time < signals[originalRow].length) {
-        setState(() {
-          signals[originalRow][time] =
-              (signals[originalRow][time] == 0) ? 1 : 0;
-          _highlightTimeIndices = [..._highlightTimeIndices];
-          _forceRepaint();
-        });
-        _commitSignalsFromChartEdit();
-      }
-    }
+  void _onPanDown(DragDownDetails details) {
+    _onPanDownImpl(details);
   }
+
+  void _onSecondaryTapDown(TapDownDetails details) {
+    _onSecondaryTapDownImpl(details);
+  }
+
+  // NOTE: 選択/編集操作（単一トグル含む）は `timing_chart_selection_ops.dart` に分離しました。
 
   /// パンジェスチャーの開始を処理します
   ///
@@ -1131,70 +761,7 @@ class TimingChartState extends State<TimingChart>
   ///
   /// [details] - 初期位置を含むパンジェスチャー開始の詳細
   void _onPanStart(DragStartDetails details) {
-    final box = context.findRenderObject() as RenderBox?;
-    if (box == null) return;
-    final localPos = box.globalToLocal(details.globalPosition);
-    final chartLocalPos = Offset(localPos.dx, localPos.dy - _fixedHeaderHeight);
-
-    final adjustedPosForAnn = Offset(
-      chartLocalPos.dx -
-          chartMarginLeft +
-          (_hScrollController.hasClients ? _hScrollController.offset : 0),
-      chartLocalPos.dy -
-          chartMarginTop +
-          (_vScrollController.hasClients ? _vScrollController.offset : 0),
-    );
-    for (final entry in _annotationHitRects.entries) {
-      final rect = entry.value;
-      if (rect.contains(adjustedPosForAnn)) {
-        setState(() {
-          _draggingAnnotationId = entry.key;
-          _draggingStartLocal = adjustedPosForAnn;
-          _draggingInitialBoxTopLeft = rect.topLeft;
-          _selectedAnnotationId = entry.key;
-        });
-        _dragStartGlobal = null;
-        return;
-      }
-    }
-
-    final bool inLabelArea =
-        chartLocalPos.dx >= chartMarginLeft &&
-        chartLocalPos.dx <= chartMarginLeft + labelWidth;
-
-    final sigIndex = _getSignalIndexFromDy(chartLocalPos.dy);
-    if (inLabelArea && sigIndex >= 0 && sigIndex < _visibleIndexes.length) {
-      setState(() {
-        _isLabelDrag = true;
-        _labelDragStartRow = sigIndex;
-        _labelDragCurrentRow = sigIndex;
-      });
-      return;
-    }
-
-    if (chartLocalPos.dy >
-        chartMarginTop + _visibleIndexes.length * _cellHeight) {
-      _dragStartGlobal = null;
-      return;
-    }
-
-    final sig = _getSignalIndexFromDy(chartLocalPos.dy);
-    final tim = _getTimeIndexFromDx(chartLocalPos.dx);
-
-    if (tim < 0 || sig < 0 || sig >= _visibleIndexes.length) {
-      _clearSelection();
-      _dragStartGlobal = null;
-      return;
-    }
-
-    setState(() {
-      _dragStartGlobal = details.globalPosition;
-      _startSignalIndex = sig;
-      _endSignalIndex = sig;
-      _startTimeIndex = tim;
-      _endTimeIndex = tim;
-      _selectedAnnotationId = null;
-    });
+    _onPanStartImpl(details);
   }
 
   /// パンジェスチャーの更新を処理します
@@ -1204,78 +771,7 @@ class TimingChartState extends State<TimingChart>
   ///
   /// [details] - 現在の位置を含むパンジェスチャー更新の詳細
   void _onPanUpdate(DragUpdateDetails details) {
-    if (_draggingAnnotationId != null &&
-        _draggingStartLocal != null &&
-        _draggingInitialBoxTopLeft != null) {
-      final chartLocalPos = details.localPosition;
-      final adjustedPos = Offset(
-        chartLocalPos.dx -
-            chartMarginLeft +
-            (_hScrollController.hasClients ? _hScrollController.offset : 0),
-        chartLocalPos.dy -
-            chartMarginTop +
-            (_vScrollController.hasClients ? _vScrollController.offset : 0),
-      );
-      final delta = adjustedPos - _draggingStartLocal!;
-      Offset deltaClamped = delta;
-      final proposedTopLeft = _draggingInitialBoxTopLeft! + delta;
-      if (proposedTopLeft.dy < 0) {
-        deltaClamped = Offset(delta.dx, -_draggingInitialBoxTopLeft!.dy);
-      }
-
-      final annIndex = annotations.indexWhere(
-        (a) => a.id == _draggingAnnotationId,
-      );
-      if (annIndex != -1) {
-        final current = annotations[annIndex];
-        final newOffsetX = (current.offsetX ?? 0) + deltaClamped.dx;
-        final newOffsetY = (current.offsetY ?? 0) + deltaClamped.dy;
-        setState(() {
-          annotations[annIndex] = current.copyWith(
-            offsetX: newOffsetX,
-            offsetY: newOffsetY,
-          );
-          _highlightTimeIndices = [..._highlightTimeIndices];
-          _forceRepaint();
-        });
-        _controller?.setAnnotations(annotations);
-        _draggingStartLocal = _draggingStartLocal! + deltaClamped;
-        _draggingInitialBoxTopLeft = _draggingInitialBoxTopLeft! + deltaClamped;
-      }
-      return;
-    }
-    if (_isLabelDrag) {
-      final chartLocalPos = details.localPosition;
-      int sig = _getSignalIndexFromDy(chartLocalPos.dy);
-      sig = sig.clamp(0, _visibleIndexes.length - 1);
-      if (sig != _labelDragCurrentRow) {
-        setState(() {
-          _labelDragCurrentRow = sig;
-        });
-      }
-      return;
-    }
-
-    if (_dragStartGlobal == null) return;
-
-    final chartLocalPos = details.localPosition;
-
-    final sig = _getSignalIndexFromDy(chartLocalPos.dy);
-    final tim = _getTimeIndexFromDx(chartLocalPos.dx);
-
-    final clampedSig = sig.clamp(0, _visibleIndexes.length - 1);
-    final maxTimeIndex =
-        signals.isEmpty
-            ? -1
-            : signals.map((e) => e.length).fold(0, math.max) - 1;
-    final clampedTim = tim < 0 ? 0 : tim.clamp(0, maxTimeIndex);
-
-    if (_endSignalIndex == clampedSig && _endTimeIndex == clampedTim) return;
-
-    setState(() {
-      _endSignalIndex = clampedSig;
-      _endTimeIndex = clampedTim;
-    });
+    _onPanUpdateImpl(details);
   }
 
   /// パンジェスチャーの終了を処理します
@@ -1286,44 +782,7 @@ class TimingChartState extends State<TimingChart>
   ///
   /// [details] - パンジェスチャー終了の詳細
   void _onPanEnd(DragEndDetails details) {
-    if (_draggingAnnotationId != null) {
-      setState(() {
-        _draggingAnnotationId = null;
-        _draggingStartLocal = null;
-        _draggingInitialBoxTopLeft = null;
-      });
-      _forceRepaint();
-      return;
-    }
-    if (_isLabelDrag) {
-      if (_labelDragStartRow != null &&
-          _labelDragCurrentRow != null &&
-          _labelDragStartRow != _labelDragCurrentRow) {
-        _reorderSignalRows(_labelDragStartRow!, _labelDragCurrentRow!);
-      }
-      setState(() {
-        _isLabelDrag = false;
-        _labelDragStartRow = null;
-        _labelDragCurrentRow = null;
-        _startSignalIndex = null;
-        _endSignalIndex = null;
-        _startTimeIndex = null;
-        _endTimeIndex = null;
-      });
-      _forceRepaint();
-      return;
-    }
-
-    if (_dragStartGlobal == null) return;
-
-    if (_startSignalIndex == _endSignalIndex &&
-        _startTimeIndex == _endTimeIndex) {
-      _clearSelection();
-    }
-
-    setState(() {
-      _dragStartGlobal = null;
-    });
+    _onPanEndImpl(details);
   }
 
   // =====ステップ継続時間編集=====
@@ -1335,39 +794,7 @@ class TimingChartState extends State<TimingChart>
   ///
   /// [details] - 初期位置を含むパンジェスチャー開始の詳細
   void _onPanStartEditSteps(DragStartDetails details) {
-    if (!_isEditingSteps) return;
-    final chartLocalPos = details.localPosition;
-    final double dx = chartLocalPos.dx;
-    final double chartX =
-        dx -
-        chartMarginLeft +
-        (_hScrollController.hasClients ? _hScrollController.offset : 0);
-
-    final settings = Provider.of<SettingsNotifier>(context, listen: false);
-    final maxLen =
-        signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
-    double cursorSteps = 0;
-    int nearest = 0;
-    double nearestDist = double.infinity;
-    for (int i = 0; i <= maxLen; i++) {
-      final double boundaryPx = cursorSteps * _cellWidth;
-      final double relX = (chartX - labelWidth).clamp(0, double.infinity);
-      final double d = (boundaryPx - relX).abs();
-      if (d < nearestDist) {
-        nearestDist = d;
-        nearest = i;
-      }
-      if (i < maxLen) {
-        final dur =
-            (i < settings.stepDurationsMs.length)
-                ? (settings.timeUnitIsMs
-                    ? settings.stepDurationsMs[i] / settings.msPerStep
-                    : 1.0)
-                : 1.0;
-        cursorSteps += dur;
-      }
-    }
-    setState(() => _activeStepIndex = nearest);
+    _onPanStartEditStepsImpl(details);
   }
 
   /// ステップ継続時間編集モード用のパンジェスチャー更新を処理します
@@ -1377,42 +804,7 @@ class TimingChartState extends State<TimingChart>
   ///
   /// [details] - 現在の位置を含むパンジェスチャー更新の詳細
   void _onPanUpdateEditSteps(DragUpdateDetails details) {
-    if (!_isEditingSteps || _activeStepIndex == null) return;
-    final settings = Provider.of<SettingsNotifier>(context, listen: false);
-    final idx = _activeStepIndex! - 1;
-    final maxLen =
-        signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
-    if (idx < 0 || idx >= maxLen) return;
-
-    final chartLocalPos = details.localPosition;
-    final double dx = chartLocalPos.dx;
-    final double chartX =
-        dx -
-        chartMarginLeft +
-        (_hScrollController.hasClients ? _hScrollController.offset : 0);
-    final double relX = (chartX - labelWidth).clamp(0, double.infinity);
-
-    final List<double> list = List<double>.from(settings.stepDurationsMs);
-    if (list.length < maxLen) {
-      list.addAll(List.filled(maxLen - list.length, settings.msPerStep));
-    }
-    final List<double> pos = List<double>.filled(maxLen + 1, 0.0);
-    for (int t = 0; t < maxLen; t++) {
-      final durSteps =
-          (t < list.length && settings.msPerStep > 0)
-              ? list[t] / settings.msPerStep
-              : 1.0;
-      pos[t + 1] = pos[t] + durSteps;
-    }
-    final int boundaryIndex = _activeStepIndex!; // i
-    final double targetSteps = relX / _cellWidth;
-    final double prevSteps = pos[boundaryIndex - 1];
-    double newDurSteps = targetSteps - prevSteps;
-    if (newDurSteps < 0.005) newDurSteps = 0.005;
-    double newMs = newDurSteps * settings.msPerStep;
-    if (newMs < 0.1) newMs = 0.1;
-    list[idx] = newMs;
-    settings.setStepDurationsMs(list);
+    _onPanUpdateEditStepsImpl(details);
   }
 
   /// ステップ継続時間編集モード用のパンジェスチャー終了を処理します
@@ -1422,14 +814,11 @@ class TimingChartState extends State<TimingChart>
   ///
   /// [details] - パンジェスチャー終了の詳細
   void _onPanEndEditSteps(DragEndDetails details) {
-    // ドラッグ編集は「編集モード自体」を終了させず、選択中境界だけ解除する。
-    // ここで stepDurationsMs を空にすると編集結果が消えてしまうため行わない。
-    final settings = Provider.of<SettingsNotifier>(context, listen: false);
-    _useControllerStepDurations = true;
-    _controller?.setStepDurationsMs(settings.stepDurationsMs);
-    setState(() {
-      _activeStepIndex = null;
-    });
+    _onPanEndEditStepsImpl(details);
+  }
+
+  void _toggleEditGridMode() {
+    _toggleEditGridModeImpl();
   }
 
   /// スナップ距離を考慮して相対X位置から最も近いステップインデックスを見つけます
@@ -1451,36 +840,13 @@ class TimingChartState extends State<TimingChart>
     List<double> stepDurationsMs, {
     double snapDistance = 6.0,
   }) {
-    final pos = _TimePositionCalculator.calculateStepPositions(
+    return _findNearestStepIndexImpl(
+      relX,
       settings,
       maxLen,
       stepDurationsMs,
+      snapDistance: snapDistance,
     );
-
-    int nearest = 0;
-    double best = double.infinity;
-    for (int i = 0; i <= maxLen; i++) {
-      final double boundaryPx = pos[i] * _cellWidth;
-      final double d = (boundaryPx - relX).abs();
-      if (d < best) {
-        best = d;
-        nearest = i;
-      }
-    }
-
-    if (best <= snapDistance) {
-      return nearest.clamp(0, math.max(0, maxLen - 1));
-    }
-
-    // Find step index from position
-    for (int i = 0; i < maxLen; i++) {
-      final double leftPx = pos[i] * _cellWidth;
-      final double rightPx = pos[i + 1] * _cellWidth;
-      if (relX >= leftPx && relX < rightPx) {
-        return i;
-      }
-    }
-    return math.max(0, maxLen - 1);
   }
 
   /// ステップ継続時間編集モードでのタップジェスチャーを処理します
@@ -1490,95 +856,7 @@ class TimingChartState extends State<TimingChart>
   ///
   /// [details] - タップ位置を含むタップジェスチャーの詳細
   void _onTapUpEditSteps(TapUpDetails details) {
-    if (!_isEditingSteps) return;
-    final chartLocalPos = details.localPosition;
-    final double dx = chartLocalPos.dx;
-    final double chartX =
-        dx -
-        chartMarginLeft +
-        (_hScrollController.hasClients ? _hScrollController.offset : 0);
-
-    final settings = Provider.of<SettingsNotifier>(context, listen: false);
-    final maxLen =
-        signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
-    final double relX = (chartX - labelWidth).clamp(0, double.infinity);
-
-    const double snapPx = 6.0;
-    final pos = _TimePositionCalculator.calculateStepPositions(
-      settings,
-      maxLen,
-      settings.stepDurationsMs,
-    );
-    int nearest = 0;
-    double best = double.infinity;
-    for (int i = 0; i <= maxLen; i++) {
-      final double boundaryPx = pos[i] * _cellWidth;
-      final double d = (boundaryPx - relX).abs();
-      if (d < best) {
-        best = d;
-        nearest = i;
-      }
-    }
-
-    if (best <= snapPx) {
-      setState(() {
-        _activeStepIndex = nearest;
-      });
-      return;
-    }
-
-    final idx = _findNearestStepIndex(
-      relX,
-      settings,
-      maxLen,
-      settings.stepDurationsMs,
-    );
-
-    final currentMs =
-        (idx < settings.stepDurationsMs.length)
-            ? settings.stepDurationsMs[idx]
-            : settings.msPerStep;
-    final controller = TextEditingController(
-      text: currentMs.toStringAsFixed(3),
-    );
-    showDialog<bool>(
-      context: context,
-      builder:
-          (ctx) => AlertDialog(
-            title: const Text('Set step duration (ms)'),
-            content: TextField(
-              controller: controller,
-              autofocus: true,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const InputDecoration(hintText: 'e.g. 1.0'),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Apply'),
-              ),
-            ],
-          ),
-    ).then((ok) {
-      if (ok != true) return;
-      final v = double.tryParse(controller.text.trim());
-      if (v == null || !(v.isFinite) || v <= 0) return;
-      final List<double> list = List<double>.from(settings.stepDurationsMs);
-      if (list.length < maxLen) {
-        list.addAll(List.filled(maxLen - list.length, settings.msPerStep));
-      }
-      list[idx] = v;
-      settings.setStepDurationsMs(list);
-      _useControllerStepDurations = true;
-      _controller?.setStepDurationsMs(list);
-      setState(() => _activeStepIndex = idx);
-    });
+    _onTapUpEditStepsImpl(details);
   }
 
   /// 長押しジェスチャーの開始を処理します
@@ -1588,27 +866,7 @@ class TimingChartState extends State<TimingChart>
   ///
   /// [details] - 初期位置を含む長押しジェスチャー開始の詳細
   void _onLongPressStart(LongPressStartDetails details) {
-    final chartLocalPos = details.localPosition;
-    final adjustedPos = Offset(
-      chartLocalPos.dx -
-          chartMarginLeft +
-          (_hScrollController.hasClients ? _hScrollController.offset : 0),
-      chartLocalPos.dy -
-          chartMarginTop +
-          (_vScrollController.hasClients ? _vScrollController.offset : 0),
-    );
-    for (final entry in _annotationHitRects.entries) {
-      final rect = entry.value;
-      if (rect.contains(adjustedPos)) {
-        setState(() {
-          _draggingAnnotationId = entry.key;
-          _draggingStartLocal = adjustedPos;
-          _draggingInitialBoxTopLeft = rect.topLeft;
-          _selectedAnnotationId = entry.key;
-        });
-        return;
-      }
-    }
+    _onLongPressStartImpl(details);
   }
 
   /// 長押しジェスチャーの移動更新を処理します
@@ -1618,42 +876,7 @@ class TimingChartState extends State<TimingChart>
   ///
   /// [details] - 現在の位置を含む長押しジェスチャー移動更新の詳細
   void _onLongPressMoveUpdate(LongPressMoveUpdateDetails details) {
-    if (_draggingAnnotationId == null || _draggingStartLocal == null) return;
-    final chartLocalPos = details.localPosition;
-    final adjustedPos = Offset(
-      chartLocalPos.dx -
-          chartMarginLeft +
-          (_hScrollController.hasClients ? _hScrollController.offset : 0),
-      chartLocalPos.dy -
-          chartMarginTop +
-          (_vScrollController.hasClients ? _vScrollController.offset : 0),
-    );
-    final delta = adjustedPos - _draggingStartLocal!;
-    Offset deltaClamped = delta;
-    final proposedTopLeft = _draggingInitialBoxTopLeft ?? Offset.zero + delta;
-    if (_draggingInitialBoxTopLeft != null && proposedTopLeft.dy < 0) {
-      deltaClamped = Offset(delta.dx, -_draggingInitialBoxTopLeft!.dy);
-    }
-    final annIndex = annotations.indexWhere(
-      (a) => a.id == _draggingAnnotationId,
-    );
-    if (annIndex != -1) {
-      final current = annotations[annIndex];
-      final newOffsetX = (current.offsetX ?? 0) + deltaClamped.dx;
-      final newOffsetY = (current.offsetY ?? 0) + deltaClamped.dy;
-      setState(() {
-        annotations[annIndex] = current.copyWith(
-          offsetX: newOffsetX,
-          offsetY: newOffsetY,
-        );
-        _highlightTimeIndices = [..._highlightTimeIndices];
-        _forceRepaint();
-      });
-      _controller?.setAnnotations(annotations);
-      _draggingStartLocal = _draggingStartLocal! + deltaClamped;
-      _draggingInitialBoxTopLeft =
-          (_draggingInitialBoxTopLeft ?? Offset.zero) + deltaClamped;
-    }
+    _onLongPressMoveUpdateImpl(details);
   }
 
   /// 長押しジェスチャーの終了を処理します
@@ -1662,14 +885,7 @@ class TimingChartState extends State<TimingChart>
   ///
   /// [details] - 長押しジェスチャー終了の詳細
   void _onLongPressEnd(LongPressEndDetails details) {
-    if (_draggingAnnotationId != null) {
-      setState(() {
-        _draggingAnnotationId = null;
-        _draggingStartLocal = null;
-        _draggingInitialBoxTopLeft = null;
-      });
-      _forceRepaint();
-    }
+    _onLongPressEndImpl(details);
   }
 
   /// 指定された位置にコンテキストメニューを表示します
@@ -1682,217 +898,8 @@ class TimingChartState extends State<TimingChart>
   /// [context] - メニューを表示するためのビルドコンテキスト
   /// [position] - メニューが表示されるグローバル位置
   void _showContextMenu(BuildContext context, Offset position) async {
-    final RenderBox overlay =
-        Overlay.of(context).context.findRenderObject() as RenderBox;
-
-    _lastRightClickPos = position;
-
-    final RenderBox? rootBox = context.findRenderObject() as RenderBox?;
-    final Offset rootLocalPos =
-        rootBox != null ? rootBox.globalToLocal(position) : position;
-    // 他のジェスチャー処理（_onPanStart 等）と同じく、固定ヘッダ分を差し引いた座標系で扱う
-    // これを揃えないと「矢印の先端をこの行に設定」で行がずれて見える
-    final Offset gestureLocalPos = Offset(
-      rootLocalPos.dx,
-      rootLocalPos.dy - _fixedHeaderHeight,
-    );
-
-    final RenderBox? paintBox =
-        _customPaintKey.currentContext?.findRenderObject() as RenderBox?;
-    final Offset chartLocalPos =
-        paintBox != null
-            ? paintBox.globalToLocal(position)
-            : Offset(
-              rootLocalPos.dx +
-                  (_hScrollController.hasClients
-                      ? _hScrollController.offset
-                      : 0),
-              rootLocalPos.dy +
-                  (_vScrollController.hasClients
-                      ? _vScrollController.offset
-                      : 0),
-            );
-    final adjustedPos = Offset(
-      chartLocalPos.dx - chartMarginLeft,
-      chartLocalPos.dy - chartMarginTop,
-    );
-
-    final settingsRO = Provider.of<SettingsNotifier>(context, listen: false);
-    int clickedTimeIndex;
-    if (settingsRO.timeUnitIsMs) {
-      final int maxLen =
-          signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
-      final double chartX = chartLocalPos.dx - chartMarginLeft;
-      final double relX = (chartX - labelWidth).clamp(0, double.infinity);
-      clickedTimeIndex = _findNearestStepIndex(
-        relX,
-        settingsRO,
-        maxLen,
-        settingsRO.stepDurationsMs,
-      );
-    } else {
-      clickedTimeIndex = _getTimeIndexFromDx(rootLocalPos.dx);
-    }
-
-    final int clickedSig = _getSignalIndexFromDy(gestureLocalPos.dy);
-
-    String? hitAnnId;
-    for (final entry in _annotationHitRects.entries) {
-      if (entry.value.contains(adjustedPos)) {
-        hitAnnId = entry.key;
-        break;
-      }
-    }
-
-    List<PopupMenuEntry<String>> menuItems = [];
-    final s = S.of(context);
-
-    if (hitAnnId != null) {
-      final ann = annotations.firstWhereOrNull((a) => a.id == hitAnnId);
-      final bool horizontalOn = ann?.arrowHorizontal != false;
-      menuItems = [
-        PopupMenuItem(value: 'editComment', child: Text(s.ctx_edit_comment)),
-        PopupMenuItem(
-          value: 'deleteComment',
-          child: Text(s.ctx_delete_comment),
-        ),
-
-        PopupMenuItem(
-          value: 'toggleArrowHorizontal',
-          child: Text(
-            horizontalOn
-                ? s.ctx_arrow_horizontal_on_to_off
-                : s.ctx_arrow_horizontal_off_to_on,
-          ),
-        ),
-        if (!(horizontalOn))
-          PopupMenuItem(
-            value: 'setArrowTipToRow',
-            child: Text(s.ctx_set_arrow_tip_to_row),
-          ),
-        PopupMenuItem(
-          value: 'commentProperties',
-          child: Text(s.ctx_comment_properties),
-        ),
-      ];
-    } else {
-      setState(() {
-        _highlightTimeIndices.clear();
-        if (_hasValidSelection) {
-          final stTime = math.min(_startTimeIndex!, _endTimeIndex!);
-          final edTime = math.max(_startTimeIndex!, _endTimeIndex!);
-          _highlightTimeIndices.add(stTime);
-          _highlightTimeIndices.add(edTime + 1);
-        } else {
-          if (clickedTimeIndex >= 0) {
-            _highlightTimeIndices.add(clickedTimeIndex);
-          }
-        }
-      });
-
-      menuItems = [
-        if (_hasValidSelection)
-          //PopupMenuItem(value: 'zoomSelection', child: Text('zoom selection')),
-          PopupMenuItem(value: 'insert', child: Text(s.ctx_insert_zeros)),
-        PopupMenuItem(value: 'duplicate', child: Text(s.ctx_duplicate_to_tail)),
-        PopupMenuItem(
-          value: 'selectAll',
-          child: Text(s.ctx_select_all_signals),
-        ),
-        if (_hasValidSelection)
-          PopupMenuItem(value: 'delete', child: Text(s.ctx_delete_selection)),
-        if (_hasValidSelection)
-          PopupMenuItem(
-            value: 'deleteColumns',
-            child: Text(s.ctx_delete_columns),
-          ),
-        // 波形から重要なイベントを検出してコメントを自動生成
-        //const PopupMenuItem(value: 'autoComment', child: Text('波形からコメント自動生成')),
-        PopupMenuItem(value: 'addComment', child: Text(s.ctx_add_comment)),
-        PopupMenuItem(value: 'omit', child: Text(s.ctx_draw_omission)),
-      ];
-    }
-
-    final selectedValue = await showMenu<String>(
-      context: context,
-      position: RelativeRect.fromRect(
-        Rect.fromLTWH(position.dx, position.dy, 0, 0),
-        Offset.zero & overlay.size,
-      ),
-      items: menuItems,
-    );
-
-    setState(() {
-      _highlightTimeIndices.clear();
-    });
-
-    if (selectedValue != null) {
-      switch (selectedValue) {
-        case 'editComment':
-          if (hitAnnId != null) _editComment(hitAnnId);
-          break;
-        case 'commentProperties':
-          if (hitAnnId != null) _editCommentProperties(hitAnnId);
-          break;
-        case 'deleteComment':
-          if (hitAnnId != null) _deleteComment(hitAnnId);
-          break;
-        case 'toggleArrowHorizontal':
-          if (hitAnnId != null) {
-            final idx = annotations.indexWhere((a) => a.id == hitAnnId);
-            if (idx != -1) {
-              final current = annotations[idx];
-              final bool horizontalOn = current.arrowHorizontal != false;
-              setState(() {
-                annotations[idx] = current.copyWith(
-                  arrowHorizontal: !horizontalOn,
-                );
-                _forceRepaint();
-              });
-              _controller?.setAnnotations(annotations);
-            }
-          }
-          break;
-        case 'setArrowTipToRow':
-          if (hitAnnId != null &&
-              clickedSig >= 0 &&
-              clickedSig < _visibleIndexes.length) {
-            _setAnnotationArrowToSignal(hitAnnId, clickedSig);
-          }
-          break;
-        case 'insert':
-          _insertZerosToSelection();
-          break;
-        case 'duplicate':
-          _duplicateRange();
-          break;
-        case 'selectAll':
-          _selectAllSignals();
-          break;
-        case 'delete':
-          _deleteRange();
-          break;
-        case 'deleteColumns':
-          _deleteColumns();
-          break;
-        case 'zoomSelection':
-          _zoomToSelectionFit();
-          break;
-        case 'autoComment':
-          await _autoGenerateCommentsForCurrentChart();
-          break;
-        case 'addComment':
-          if (_hasValidSelection) {
-            _showAddRangeCommentDialog();
-          } else {
-            _showAddCommentDialog();
-          }
-          break;
-        case 'omit':
-          _toggleOmissionTime(clickedTimeIndex);
-          break;
-      }
-    }
+    // ignore: discarded_futures
+    _showContextMenuImpl(context, position);
   }
 
   Future<Color?> _showBorderColorPickerDialog(
@@ -1912,78 +919,73 @@ class TimingChartState extends State<TimingChart>
       Colors.brown,
     ];
 
-    return showDialog<Color>(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: Text(title),
-          content: StatefulBuilder(
-            builder: (ctx, setLocalState) {
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children:
-                        presets.map((c) {
-                          final bool isSelected =
-                              c.toARGB32() == selected.toARGB32();
-                          return InkWell(
-                            onTap: () => setLocalState(() => selected = c),
-                            child: Container(
-                              width: 28,
-                              height: 28,
-                              decoration: BoxDecoration(
-                                color: c,
-                                border: Border.all(
-                                  color:
-                                      isSelected
-                                          ? Colors.black
-                                          : Colors.black26,
-                                  width: isSelected ? 2 : 1,
-                                ),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Text('${S.of(context).color_picker_selected} '),
-                      Container(
-                        width: 18,
-                        height: 18,
-                        decoration: BoxDecoration(
-                          color: selected,
-                          border: Border.all(color: Colors.black26),
+    Widget contentBuilder(BuildContext ctx, StateSetter setLocalState) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children:
+                presets.map((c) {
+                  final bool isSelected = c.toARGB32() == selected.toARGB32();
+                  return InkWell(
+                    onTap: () => setLocalState(() => selected = c),
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: c,
+                        border: Border.all(
+                          color: isSelected ? Colors.black : Colors.black26,
+                          width: isSelected ? 2 : 1,
                         ),
+                        borderRadius: BorderRadius.circular(6),
                       ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '#${selected.toARGB32().toRadixString(16).padLeft(8, '0').toUpperCase()}',
-                      ),
-                    ],
-                  ),
-                ],
-              );
-            },
+                    ),
+                  );
+                }).toList(),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, null),
-              child: Text(S.of(context).common_cancel),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, selected),
-              child: Text(S.of(context).common_ok),
-            ),
-          ],
-        );
-      },
-    );
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Text('${S.of(context).color_picker_selected} '),
+              Container(
+                width: 18,
+                height: 18,
+                decoration: BoxDecoration(
+                  color: selected,
+                  border: Border.all(color: Colors.black26),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '#${selected.toARGB32().toRadixString(16).padLeft(8, '0').toUpperCase()}',
+              ),
+            ],
+          ),
+        ],
+      );
+    }
+
+    Widget dialogBuilder(BuildContext ctx) {
+      return AlertDialog(
+        title: Text(title),
+        content: StatefulBuilder(builder: contentBuilder),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, null),
+            child: Text(S.of(context).common_cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, selected),
+            child: Text(S.of(context).common_ok),
+          ),
+        ],
+      );
+    }
+
+    return showDialog<Color>(context: context, builder: dialogBuilder);
   }
 
   /// コメントボックスの見た目（フォント/太字/罫線色）を編集します
@@ -2005,185 +1007,188 @@ class TimingChartState extends State<TimingChart>
     _focusNode.canRequestFocus = false;
     FocusScope.of(context).unfocus();
 
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (ctx) {
-        final s = S.of(context);
-        return StatefulBuilder(
-          builder: (ctx, setLocalState) {
-            return AlertDialog(
-              title: Text(s.comment_properties_title),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+    Widget dialogBuilder(BuildContext ctx) {
+      final s = S.of(context);
+
+      Widget stateBuilder(BuildContext ctx, StateSetter setLocalState) {
+        void resetDefaults() {
+          setLocalState(() {
+            fontSize = 14.0;
+            isBold = false;
+            borderColorValue = Colors.grey.shade600.toARGB32();
+            dashedLineColorValue = Colors.black.toARGB32();
+            arrowColorValue = Colors.blue.toARGB32();
+          });
+        }
+
+        Future<void> pickBorderColor() async {
+          final picked = await _showBorderColorPickerDialog(
+            ctx,
+            title: s.comment_properties_border_color,
+            initial: Color(borderColorValue),
+          );
+          if (picked != null) {
+            setLocalState(() => borderColorValue = picked.toARGB32());
+          }
+        }
+
+        Future<void> pickDashedLineColor() async {
+          final picked = await _showBorderColorPickerDialog(
+            ctx,
+            title: s.comment_properties_dashed_color,
+            initial: Color(dashedLineColorValue),
+          );
+          if (picked != null) {
+            setLocalState(() => dashedLineColorValue = picked.toARGB32());
+          }
+        }
+
+        Future<void> pickArrowColor() async {
+          final picked = await _showBorderColorPickerDialog(
+            ctx,
+            title: s.comment_properties_arrow_color,
+            initial: Color(arrowColorValue),
+          );
+          if (picked != null) {
+            setLocalState(() => arrowColorValue = picked.toARGB32());
+          }
+        }
+
+        return AlertDialog(
+          title: Text(s.comment_properties_title),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
                   children: [
-                    Row(
-                      children: [
-                        SizedBox(
-                          width: 92,
-                          child: Text(s.comment_properties_font_size),
-                        ),
-                        Expanded(
-                          child: Slider(
-                            value: fontSize.clamp(8.0, 40.0),
-                            min: 8.0,
-                            max: 40.0,
-                            divisions: 32,
-                            label: fontSize.round().toString(),
-                            onChanged: (v) => setLocalState(() => fontSize = v),
-                          ),
-                        ),
-                        SizedBox(
-                          width: 34,
-                          child: Text(
-                            fontSize.round().toString(),
-                            textAlign: TextAlign.right,
-                          ),
-                        ),
-                      ],
+                    SizedBox(
+                      width: 92,
+                      child: Text(s.comment_properties_font_size),
                     ),
-                    CheckboxListTile(
-                      value: isBold,
-                      onChanged:
-                          (v) => setLocalState(() => isBold = v ?? false),
-                      title: Text(s.comment_properties_bold),
-                      controlAffinity: ListTileControlAffinity.leading,
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
+                    Expanded(
+                      child: Slider(
+                        value: fontSize.clamp(8.0, 40.0),
+                        min: 8.0,
+                        max: 40.0,
+                        divisions: 32,
+                        label: fontSize.round().toString(),
+                        onChanged: (v) => setLocalState(() => fontSize = v),
+                      ),
                     ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        SizedBox(
-                          width: 92,
-                          child: Text(s.comment_properties_border_color),
-                        ),
-                        Container(
-                          width: 18,
-                          height: 18,
-                          decoration: BoxDecoration(
-                            color: Color(borderColorValue),
-                            border: Border.all(color: Colors.black26),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        TextButton(
-                          onPressed: () async {
-                            final picked = await _showBorderColorPickerDialog(
-                              ctx,
-                              title: s.comment_properties_border_color,
-                              initial: Color(borderColorValue),
-                            );
-                            if (picked != null) {
-                              setLocalState(
-                                () => borderColorValue = picked.toARGB32(),
-                              );
-                            }
-                          },
-                          child: Text(s.common_change),
-                        ),
-                        const Spacer(),
-                        TextButton(
-                          onPressed: () {
-                            setLocalState(() {
-                              fontSize = 14.0;
-                              isBold = false;
-                              borderColorValue =
-                                  Colors.grey.shade600.toARGB32();
-                              dashedLineColorValue = Colors.black.toARGB32();
-                              arrowColorValue = Colors.blue.toARGB32();
-                            });
-                          },
-                          child: Text(s.common_default),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        SizedBox(
-                          width: 92,
-                          child: Text(s.comment_properties_dashed_color),
-                        ),
-                        Container(
-                          width: 18,
-                          height: 18,
-                          decoration: BoxDecoration(
-                            color: Color(dashedLineColorValue),
-                            border: Border.all(color: Colors.black26),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        TextButton(
-                          onPressed: () async {
-                            final picked = await _showBorderColorPickerDialog(
-                              ctx,
-                              title: s.comment_properties_dashed_color,
-                              initial: Color(dashedLineColorValue),
-                            );
-                            if (picked != null) {
-                              setLocalState(
-                                () => dashedLineColorValue = picked.toARGB32(),
-                              );
-                            }
-                          },
-                          child: Text(s.common_change),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        SizedBox(
-                          width: 92,
-                          child: Text(s.comment_properties_arrow_color),
-                        ),
-                        Container(
-                          width: 18,
-                          height: 18,
-                          decoration: BoxDecoration(
-                            color: Color(arrowColorValue),
-                            border: Border.all(color: Colors.black26),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        TextButton(
-                          onPressed: () async {
-                            final picked = await _showBorderColorPickerDialog(
-                              ctx,
-                              title: s.comment_properties_arrow_color,
-                              initial: Color(arrowColorValue),
-                            );
-                            if (picked != null) {
-                              setLocalState(
-                                () => arrowColorValue = picked.toARGB32(),
-                              );
-                            }
-                          },
-                          child: Text(s.common_change),
-                        ),
-                      ],
+                    SizedBox(
+                      width: 34,
+                      child: Text(
+                        fontSize.round().toString(),
+                        textAlign: TextAlign.right,
+                      ),
                     ),
                   ],
                 ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: Text(s.common_cancel),
+                CheckboxListTile(
+                  value: isBold,
+                  onChanged: (v) => setLocalState(() => isBold = v ?? false),
+                  title: Text(s.comment_properties_bold),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
                 ),
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: Text(s.common_ok),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 92,
+                      child: Text(s.comment_properties_border_color),
+                    ),
+                    Container(
+                      width: 18,
+                      height: 18,
+                      decoration: BoxDecoration(
+                        color: Color(borderColorValue),
+                        border: Border.all(color: Colors.black26),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    TextButton(
+                      onPressed: pickBorderColor,
+                      child: Text(s.common_change),
+                    ),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: resetDefaults,
+                      child: Text(s.common_default),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 92,
+                      child: Text(s.comment_properties_dashed_color),
+                    ),
+                    Container(
+                      width: 18,
+                      height: 18,
+                      decoration: BoxDecoration(
+                        color: Color(dashedLineColorValue),
+                        border: Border.all(color: Colors.black26),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    TextButton(
+                      onPressed: pickDashedLineColor,
+                      child: Text(s.common_change),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 92,
+                      child: Text(s.comment_properties_arrow_color),
+                    ),
+                    Container(
+                      width: 18,
+                      height: 18,
+                      decoration: BoxDecoration(
+                        color: Color(arrowColorValue),
+                        border: Border.all(color: Colors.black26),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    TextButton(
+                      onPressed: pickArrowColor,
+                      child: Text(s.common_change),
+                    ),
+                  ],
                 ),
               ],
-            );
-          },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(s.common_cancel),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(s.common_ok),
+            ),
+          ],
         );
-      },
+      }
+
+      return StatefulBuilder(builder: stateBuilder);
+    }
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: dialogBuilder,
     );
 
     _focusNode.canRequestFocus = prevCanRequest;
@@ -2227,30 +1232,34 @@ class TimingChartState extends State<TimingChart>
     _focusNode.canRequestFocus = false;
     FocusScope.of(context).unfocus();
 
+    void onChanged(String val) => newComment = val;
+
+    Widget dialogBuilder(BuildContext ctx) {
+      final s = S.of(context);
+      return AlertDialog(
+        title: Text(s.comment_add_title),
+        content: TextField(
+          autofocus: true,
+          onChanged: onChanged,
+          decoration: InputDecoration(hintText: s.comment_input_hint),
+          maxLines: null,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(s.common_cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(s.common_ok),
+          ),
+        ],
+      );
+    }
+
     final result = await showDialog<bool>(
       context: context,
-      builder: (ctx) {
-        final s = S.of(context);
-        return AlertDialog(
-          title: Text(s.comment_add_title),
-          content: TextField(
-            autofocus: true,
-            onChanged: (val) => newComment = val,
-            decoration: InputDecoration(hintText: s.comment_input_hint),
-            maxLines: null,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(s.common_cancel),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text(s.common_ok),
-            ),
-          ],
-        );
-      },
+      builder: dialogBuilder,
     );
 
     _focusNode.canRequestFocus = prevCanRequest;
@@ -2273,345 +1282,7 @@ class TimingChartState extends State<TimingChart>
       _controller?.setAnnotations(annotations);
     }
   }
-
-  /// 現在の波形情報から重要なイベントを検出し、コメントを自動生成して挿入します
-  ///
-  /// - 各信号の立ち上がり/立ち下がり
-  /// - 一定以上の長さのON期間
-  /// - HWトリガから出力信号までの遅延
-  ///
-  /// 既存の「自動生成コメント（末尾が '（自動）' のもの）」は一度削除してから再生成します。
-  Future<void> _autoGenerateCommentsForCurrentChart() async {
-    if (signals.isEmpty) return;
-
-    // 自動生成対象となるコメントを構築
-    final List<TimingChartAnnotation> autoComments =
-        _buildAutoGeneratedCommentsFromSignals();
-
-    if (autoComments.isEmpty) {
-      // 重要とみなせるイベントが見つからなかった場合は簡単なトーストのみ表示
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('自動で挿入できるコメントが見つかりませんでした'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-      return;
-    }
-
-    setState(() {
-      // 既存の自動生成コメント（IDが "auto" で始まるもの）を削除
-      annotations.removeWhere((a) => a.id.startsWith('auto'));
-
-      annotations.addAll(autoComments);
-      _forceRepaint();
-    });
-    _controller?.setAnnotations(annotations);
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('自動コメントを ${autoComments.length} 件挿入しました'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
-  }
-
-  /// 波形からの自動コメント生成ロジック本体
-  ///
-  /// - 各可視信号ごとに最大数件のエッジ/長期ONを検出
-  /// - HWトリガと出力信号の組み合わせから簡易な遅延コメントを生成
-  List<TimingChartAnnotation> _buildAutoGeneratedCommentsFromSignals() {
-    final List<TimingChartAnnotation> result = [];
-    if (signals.isEmpty) return result;
-
-    // 解析対象の時間長
-    final int maxLen = signals
-        .map((e) => e.length)
-        .fold<int>(0, (prev, len) => math.max(prev, len));
-    if (maxLen <= 1) return result;
-
-    // 表示中の行のみを対象にする（なければ全行）
-    final List<int> targetRows =
-        _visibleIndexes.isNotEmpty
-            ? List<int>.from(_visibleIndexes)
-            : List<int>.generate(signals.length, (i) => i);
-
-    // 各信号あたり立ち上がり/立ち下がりは「初回のみ」コメントする
-    const int maxEdgesPerSignal = 1;
-    const int maxTotalAnnotations = 50;
-    const int longOnThresholdSteps = 5;
-    const int maxTriggerDelaySteps = 20;
-
-    // HWトリガの立ち上がりエッジを記録（後で出力信号との関連コメントに使う）
-    final List<_HwTriggerEdge> hwRisingEdges = [];
-    final List<_OutputEdge> outputRisingEdges = [];
-
-    for (final rowIndex in targetRows) {
-      if (rowIndex < 0 || rowIndex >= signals.length) continue;
-      final values = signals[rowIndex];
-      if (values.isEmpty) continue;
-
-      final String name =
-          (rowIndex < signalNames.length)
-              ? signalNames[rowIndex]
-              : 'Signal ${rowIndex + 1}';
-      final SignalType type =
-          (rowIndex < widget.signalTypes.length)
-              ? widget.signalTypes[rowIndex]
-              : SignalType.input;
-
-      int prev = values.first;
-      int runStart = 0;
-      int risingCount = 0;
-      int fallingCount = 0;
-
-      for (
-        int t = 1;
-        t < values.length && result.length < maxTotalAnnotations;
-        t++
-      ) {
-        final int v = values[t];
-        if (v == prev) continue;
-
-        // 直前までのラン区間 [runStart, t-1] を確定
-        if (prev == 1) {
-          final int runLength = t - runStart;
-          if (runLength >= longOnThresholdSteps &&
-              result.length < maxTotalAnnotations) {
-            result.add(
-              _createAutoAnnotation(
-                startTimeIndex: runStart,
-                endTimeIndex: t - 1,
-                text: _buildLongOnCommentText(name, type, runLength),
-              ),
-            );
-          }
-        }
-
-        // エッジ判定
-        if (prev == 0 && v == 1) {
-          // 立ち上がり
-          if (type == SignalType.hwTrigger) {
-            hwRisingEdges.add(
-              _HwTriggerEdge(rowIndex: rowIndex, timeIndex: t, name: name),
-            );
-          } else if (type == SignalType.output) {
-            outputRisingEdges.add(
-              _OutputEdge(rowIndex: rowIndex, timeIndex: t, name: name),
-            );
-          }
-
-          if (risingCount < maxEdgesPerSignal) {
-            result.add(
-              _createAutoAnnotation(
-                startTimeIndex: t,
-                text: _buildEdgeCommentText(name, type, true),
-              ),
-            );
-            risingCount++;
-          }
-        } else if (prev == 1 && v == 0) {
-          // 立ち下がり
-          if (fallingCount < maxEdgesPerSignal) {
-            result.add(
-              _createAutoAnnotation(
-                startTimeIndex: t,
-                text: _buildEdgeCommentText(name, type, false),
-              ),
-            );
-            fallingCount++;
-          }
-        }
-
-        runStart = t;
-        prev = v;
-      }
-
-      // 最後の区間も長いONならコメント
-      if (prev == 1) {
-        final int runLength = values.length - runStart;
-        if (runLength >= longOnThresholdSteps &&
-            result.length < maxTotalAnnotations) {
-          result.add(
-            _createAutoAnnotation(
-              startTimeIndex: runStart,
-              endTimeIndex: values.length - 1,
-              text: _buildLongOnCommentText(name, type, runLength),
-            ),
-          );
-        }
-      }
-
-      if (result.length >= maxTotalAnnotations) break;
-    }
-
-    // HWトリガ → 出力の遅延コメント（簡易版）
-    for (final outEdge in outputRisingEdges) {
-      if (result.length >= maxTotalAnnotations) break;
-      _HwTriggerEdge? bestTrigger;
-      int bestDt = maxTriggerDelaySteps + 1;
-
-      for (final trig in hwRisingEdges) {
-        if (trig.timeIndex > outEdge.timeIndex) continue;
-        final int dt = outEdge.timeIndex - trig.timeIndex;
-        if (dt >= 0 && dt <= maxTriggerDelaySteps && dt < bestDt) {
-          bestDt = dt;
-          bestTrigger = trig;
-        }
-      }
-
-      if (bestTrigger != null) {
-        result.add(
-          _createAutoAnnotation(
-            startTimeIndex: bestTrigger.timeIndex,
-            endTimeIndex: outEdge.timeIndex,
-            text: _buildDelayCommentText(
-              bestTrigger.name,
-              outEdge.name,
-              bestDt,
-            ),
-          ),
-        );
-      }
-    }
-
-    return result;
-  }
-
-  /// エッジ（立ち上がり/立ち下がり）用のコメント文を組み立て
-  String _buildEdgeCommentText(String name, SignalType type, bool rising) {
-    // 1) まずドメイン固有のルールを優先（役割に沿った短いコメント）
-    final String? domainText = _buildDomainSpecificEdgeComment(
-      name,
-      type,
-      rising,
-    );
-    if (domainText != null) {
-      return domainText;
-    }
-
-    // 2) 汎用ルールはシンプルな形式に統一
-    final String dir = rising ? 'ON' : 'OFF';
-    // できるだけ短く：「信号名 ON/OFF」
-    return '$name $dir';
-  }
-
-  /// 長時間ONが続いた区間用のコメント文を組み立て
-  String _buildLongOnCommentText(String name, SignalType type, int steps) {
-    // 一部の信号は長時間ONにドメイン固有コメントを割り当て可能
-    final String? domainText = _buildDomainSpecificLongOnComment(
-      name,
-      type,
-      steps,
-    );
-    if (domainText != null) {
-      return domainText;
-    }
-
-    // 汎用コメントはステップ数を出さず、意味だけを簡潔に
-    return '$name 長時間ON';
-  }
-
-  /// HWトリガから出力までの遅延コメント文を組み立て
-  String _buildDelayCommentText(
-    String triggerName,
-    String outputName,
-    int steps,
-  ) {
-    // 役割に沿った特別なパターン（例: 一括露光終了 → ワーク搬送）
-    final String? domainText = _buildDomainSpecificDelayComment(
-      triggerName,
-      outputName,
-      steps,
-    );
-    if (domainText != null) {
-      return domainText;
-    }
-
-    // 汎用コメントもシンプルに
-    return '$triggerName → $outputName 遅延 $steps ステップ';
-  }
-
-  /// エッジ用のドメイン固有コメント（役割に沿った説明）
-  ///
-  /// 例) 「一括露光中」がOFFになったタイミングで「ワーク搬送可」など。
-  String? _buildDomainSpecificEdgeComment(
-    String name,
-    SignalType type,
-    bool rising,
-  ) {
-    final normalized = name.replaceAll(' ', '');
-
-    // 一括露光中: OFF になったらワーク搬送が可能
-    if (normalized.contains('一括露光中')) {
-      if (!rising) {
-        return '一括露光終了 → ワーク搬送可';
-      } else {
-        return '一括露光開始';
-      }
-    }
-
-    // ここに他のルールを追加可能
-    // 例:
-    // if (normalized.contains('搬送許可') && rising) {
-    //   return 'ワーク搬送開始可（自動）';
-    // }
-
-    return null;
-  }
-
-  /// 長時間ON用のドメイン固有コメント
-  String? _buildDomainSpecificLongOnComment(
-    String name,
-    SignalType type,
-    int steps,
-  ) {
-    final normalized = name.replaceAll(' ', '');
-
-    // 一括露光中 が長く続いている場合
-    if (normalized.contains('一括露光中')) {
-      return '一括露光継続中';
-    }
-
-    return null;
-  }
-
-  /// トリガ→出力の遅延用ドメイン固有コメント
-  String? _buildDomainSpecificDelayComment(
-    String triggerName,
-    String outputName,
-    int steps,
-  ) {
-    final trig = triggerName.replaceAll(' ', '');
-    final out = outputName.replaceAll(' ', '');
-
-    // 例: 一括露光トリガ → ワーク搬送用出力 などに合わせて拡張可能
-    if (trig.contains('一括露光') && out.contains('搬送')) {
-      return '一括露光完了から搬送開始までの遅延 $steps ステップ';
-    }
-
-    return null;
-  }
-
-  /// 自動コメント用アノテーションインスタンスを生成
-  TimingChartAnnotation _createAutoAnnotation({
-    required int startTimeIndex,
-    int? endTimeIndex,
-    required String text,
-  }) {
-    final String id =
-        'auto${DateTime.now().millisecondsSinceEpoch}_${_autoCommentSerial++}';
-    return TimingChartAnnotation(
-      id: id,
-      startTimeIndex: startTimeIndex,
-      endTimeIndex: endTimeIndex,
-      text: text,
-    );
-  }
+  // NOTE: 自動コメント生成は `timing_chart_auto_comments.dart` の extension へ分離しました。
 
   /// 新しい範囲アノテーションを追加するダイアログを表示します
   ///
@@ -2629,30 +1300,34 @@ class TimingChartState extends State<TimingChart>
     _focusNode.canRequestFocus = false;
     FocusScope.of(context).unfocus();
 
+    void onChanged(String val) => newComment = val;
+
+    Widget dialogBuilder(BuildContext ctx) {
+      final s = S.of(context);
+      return AlertDialog(
+        title: Text(s.comment_add_range_title),
+        content: TextField(
+          autofocus: true,
+          onChanged: onChanged,
+          decoration: InputDecoration(hintText: s.comment_input_hint),
+          maxLines: null,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(s.common_cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(s.common_ok),
+          ),
+        ],
+      );
+    }
+
     final result = await showDialog<bool>(
       context: context,
-      builder: (ctx) {
-        final s = S.of(context);
-        return AlertDialog(
-          title: Text(s.comment_add_range_title),
-          content: TextField(
-            autofocus: true,
-            onChanged: (val) => newComment = val,
-            decoration: InputDecoration(hintText: s.comment_input_hint),
-            maxLines: null,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(s.common_cancel),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text(s.common_ok),
-            ),
-          ],
-        );
-      },
+      builder: dialogBuilder,
     );
 
     _focusNode.canRequestFocus = prevCanRequest;
@@ -2692,33 +1367,34 @@ class TimingChartState extends State<TimingChart>
     _focusNode.canRequestFocus = false;
     FocusScope.of(context).unfocus();
 
+    Widget dialogBuilder(BuildContext ctx) {
+      final controller = TextEditingController(text: ann.text);
+      final s = S.of(context);
+      void onOk() {
+        newText = controller.text;
+        Navigator.pop(ctx, true);
+      }
+
+      return AlertDialog(
+        title: Text(s.comment_edit_title),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: null,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(s.common_cancel),
+          ),
+          TextButton(onPressed: onOk, child: Text(s.common_ok)),
+        ],
+      );
+    }
+
     final result = await showDialog<bool>(
       context: context,
-      builder: (ctx) {
-        final controller = TextEditingController(text: ann.text);
-        final s = S.of(context);
-        return AlertDialog(
-          title: Text(s.comment_edit_title),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            maxLines: null,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(s.common_cancel),
-            ),
-            TextButton(
-              onPressed: () {
-                newText = controller.text;
-                Navigator.pop(ctx, true);
-              },
-              child: Text(s.common_ok),
-            ),
-          ],
-        );
-      },
+      builder: dialogBuilder,
     );
 
     _focusNode.canRequestFocus = prevCanRequest;
@@ -2754,460 +1430,13 @@ class TimingChartState extends State<TimingChart>
     _controller?.setAnnotations(annotations);
   }
 
-  /// 現在の選択範囲内のすべての信号値を切り替えます
-  ///
-  /// 選択されたすべての信号行について、選択範囲内のすべての信号値を反転します（0から1、または1から0）。
-  /// 変更をコントローラーにコミットします。
-  void _toggleSignalsInSelection() {
-    if (!_hasValidSelection) return;
-    final stSig = math.min(_startSignalIndex!, _endSignalIndex!);
-    final edSig = math.max(_startSignalIndex!, _endSignalIndex!);
-    final stTime = math.min(_startTimeIndex!, _endTimeIndex!);
-    final edTime = math.max(_startTimeIndex!, _endTimeIndex!);
-    if (stSig < 0 || edSig >= _visibleIndexes.length) return;
-    setState(() {
-      for (int visibleRow = stSig; visibleRow <= edSig; visibleRow++) {
-        final originalRow = _visibleIndexes[visibleRow];
-        final maxTimeForRow = signals[originalRow].length - 1;
-        final clampedStTime = stTime.clamp(0, maxTimeForRow);
-        final clampedEdTime = edTime.clamp(0, maxTimeForRow);
-        if (clampedStTime > clampedEdTime) continue;
-        for (int t = clampedStTime; t <= clampedEdTime; t++) {
-          signals[originalRow][t] = (signals[originalRow][t] == 0) ? 1 : 0;
-        }
-      }
-      _highlightTimeIndices = [..._highlightTimeIndices];
-      _forceRepaint();
-    });
-    _commitSignalsFromChartEdit();
-  }
-
-  /// 選択範囲にゼロ値を挿入します
-  ///
-  /// 選択されたすべての信号行について、選択範囲の開始位置に選択幅に等しい数のゼロ値を挿入します。
-  /// これにより、既存の値が右にシフトされます。
-  void _insertZerosToSelection() {
-    if (!_hasValidSelection) return;
-    final stSig = math.min(_startSignalIndex!, _endSignalIndex!);
-    final edSig = math.max(_startSignalIndex!, _endSignalIndex!);
-    final stTime = math.min(_startTimeIndex!, _endTimeIndex!);
-    final edTime = math.max(_startTimeIndex!, _endTimeIndex!);
-    if (stSig < 0 || edSig >= _visibleIndexes.length) return;
-    final lengthToInsert = (edTime - stTime + 1);
-    if (lengthToInsert <= 0) return;
-    setState(() {
-      for (int visibleRow = stSig; visibleRow <= edSig; visibleRow++) {
-        final originalRow = _visibleIndexes[visibleRow];
-        final clampedStTime = stTime.clamp(0, signals[originalRow].length);
-        signals[originalRow].insertAll(
-          clampedStTime,
-          List.filled(lengthToInsert, 0),
-        );
-      }
-      _normalizeSignalLengths();
-      _clearSelection();
-    });
-    _commitSignalsFromChartEdit();
-  }
-
-  /// 指定された範囲の時間列を削除します
-  ///
-  /// 指定された時間範囲内のすべての信号から時間ステップを削除します。
-  /// 削除を反映するために、ステップ継続時間、省略インデックス、アノテーションも更新します。
-  /// これは列全体を削除する際に使用されます。
-  ///
-  /// [stTime] - 開始時間インデックス（含む）
-  /// [edTime] - 終了時間インデックス（含む）
-  void _deleteColumnsAtRange(int stTime, int edTime) {
-    debugPrint('deleteColumnsAtRange: stTime=$stTime, edTime=$edTime');
-    debugPrint(
-      'deleteColumnsAtRange: signals=${signals.map((e) => e.length).toList()}',
-    );
-    debugPrint(
-      'deleteColumnsAtRange: _visibleIndexes=${_visibleIndexes.map((e) => e).toList()}',
-    );
-    debugPrint('deleteColumnsAtRange: _startSignalIndex=$_startSignalIndex');
-    debugPrint('deleteColumnsAtRange: _endSignalIndex=$_endSignalIndex');
-    debugPrint('deleteColumnsAtRange: _startTimeIndex=$_startTimeIndex');
-    debugPrint('deleteColumnsAtRange: _endTimeIndex=$_endTimeIndex');
-    final int oldMaxLen =
-        signals.isEmpty ? 0 : signals.map((e) => e.length).reduce(math.max);
-    final int clampedSt = stTime.clamp(0, oldMaxLen);
-    final int clampedEd = (edTime + 1).clamp(0, oldMaxLen);
-    if (clampedSt >= clampedEd) return;
-    final int deleteLen = clampedEd - clampedSt;
-
-    setState(() {
-      for (int i = 0; i < signals.length; i++) {
-        final maxTimeForRow = signals[i].length;
-        final st = clampedSt.clamp(0, maxTimeForRow);
-        final ed = clampedEd.clamp(0, maxTimeForRow);
-        if (st < ed) {
-          signals[i].removeRange(st, ed);
-        }
-      }
-      _normalizeSignalLengths();
-      _clearSelection();
-      _forceRepaint();
-    });
-
-    // Commit signals to controller first to prevent listener from overwriting with old state
-    _controller?.setSignals(signals);
-
-    final settings = Provider.of<SettingsNotifier>(context, listen: false);
-    if (settings.timeUnitIsMs && deleteLen > 0) {
-      List<double> durations = List<double>.from(
-        (_controller?.stepDurationsMs.isNotEmpty ?? false)
-            ? _controller!.stepDurationsMs
-            : settings.stepDurationsMs,
-      );
-      if (durations.length < oldMaxLen) {
-        durations.addAll(
-          List<double>.filled(oldMaxLen - durations.length, settings.msPerStep),
-        );
-      }
-      durations.removeRange(clampedSt, clampedEd);
-      settings.setStepDurationsMs(durations);
-      _controller?.setStepDurationsMs(durations);
-    }
-
-    if (deleteLen > 0) {
-      final List<int> newOmission = [];
-      for (final t in _omissionTimeIndices) {
-        if (t < clampedSt) {
-          newOmission.add(t);
-        } else if (t >= clampedEd) {
-          newOmission.add(t - deleteLen);
-        }
-      }
-      _omissionTimeIndices = newOmission;
-      _controller?.setOmissionTimeIndices(_omissionTimeIndices);
-    }
-
-    if (deleteLen > 0) {
-      final List<TimingChartAnnotation> updated = [];
-      for (final ann in annotations) {
-        final int aStart = ann.startTimeIndex;
-        final int aEnd = ann.endTimeIndex ?? ann.startTimeIndex;
-
-        if (aEnd < clampedSt) {
-          updated.add(ann);
-        } else if (aStart >= clampedEd) {
-          updated.add(
-            ann.copyWith(
-              startTimeIndex: aStart - deleteLen,
-              endTimeIndex: ann.endTimeIndex != null ? aEnd - deleteLen : null,
-            ),
-          );
-        } else {
-          final int newEnd = clampedSt - 1;
-          final int newStart = math.min(aStart, newEnd);
-          if (newEnd >= 0 && newStart <= newEnd) {
-            updated.add(
-              ann.copyWith(
-                startTimeIndex: newStart,
-                endTimeIndex: ann.endTimeIndex != null ? newEnd : null,
-              ),
-            );
-          }
-        }
-      }
-      setState(() {
-        annotations = updated;
-        _forceRepaint();
-      });
-      _controller?.setAnnotations(annotations);
-    }
-
-    _commitSignalsFromChartEdit();
-  }
-
-  /// 信号から選択範囲を削除します
-  ///
-  /// 選択された信号行から選択された時間範囲を削除します。
-  /// すべての表示信号が選択されている場合、列削除に委譲します。
-  /// それ以外の場合は、選択された行からのみ削除します。
-  void _deleteRange() {
-    // More tolerant: verify index existence, then safely clamp and process
-    if (_startSignalIndex == null ||
-        _endSignalIndex == null ||
-        _startTimeIndex == null ||
-        _endTimeIndex == null) {
-      return;
-    }
-    if (_visibleIndexes.isEmpty || signals.isEmpty) return;
-    final stSig = math
-        .min(_startSignalIndex!, _endSignalIndex!)
-        .clamp(0, _visibleIndexes.length - 1);
-    final edSig = math
-        .max(_startSignalIndex!, _endSignalIndex!)
-        .clamp(0, _visibleIndexes.length - 1);
-    final stTime = math.min(_startTimeIndex!, _endTimeIndex!);
-    final edTime = math.max(_startTimeIndex!, _endTimeIndex!);
-
-    final bool allVisibleSelected =
-        stSig == 0 && edSig == _visibleIndexes.length - 1;
-    if (allVisibleSelected) {
-      _deleteColumnsAtRange(stTime, edTime);
-      return;
-    }
-
-    setState(() {
-      for (int visibleRow = stSig; visibleRow <= edSig; visibleRow++) {
-        final originalRow = _visibleIndexes[visibleRow];
-        final maxTimeForRow = signals[originalRow].length;
-        final clampedStTime = stTime.clamp(0, maxTimeForRow);
-        final clampedEdTime = (edTime + 1).clamp(0, maxTimeForRow);
-        if (clampedStTime >= clampedEdTime) continue;
-        signals[originalRow].removeRange(clampedStTime, clampedEdTime);
-      }
-      _normalizeSignalLengths();
-      _clearSelection();
-      _forceRepaint();
-    });
-    _commitSignalsFromChartEdit();
-  }
-
-  /// 選択された時間範囲の列を削除します
-  ///
-  /// 選択された時間範囲について、時間列全体（すべての信号にわたる）を削除します。
-  /// より寛容：時間インデックスの存在のみを確認し、その後安全に範囲をクランプして処理します。
-  void _deleteColumns() {
-    // More tolerant: only verify time index existence, then safely clamp and process range
-    if (_startTimeIndex == null || _endTimeIndex == null) {
-      debugPrint('deleteColumns: _startTimeIndex=$_startTimeIndex');
-      debugPrint('deleteColumns: _endTimeIndex=$_endTimeIndex');
-      return;
-    }
-    final stTime = math.min(_startTimeIndex!, _endTimeIndex!);
-    final edTime = math.max(_startTimeIndex!, _endTimeIndex!);
-    debugPrint('deleteColumns: stTime=$stTime, edTime=$edTime');
-    debugPrint(
-      'deleteColumns: signals=${signals.map((e) => e.length).toList()}',
-    );
-    debugPrint(
-      'deleteColumns: _visibleIndexes=${_visibleIndexes.map((e) => e).toList()}',
-    );
-    debugPrint('deleteColumns: _startSignalIndex=$_startSignalIndex');
-    debugPrint('deleteColumns: _endSignalIndex=$_endSignalIndex');
-    debugPrint('deleteColumns: _startTimeIndex=$_startTimeIndex');
-    debugPrint('deleteColumns: _endTimeIndex=$_endTimeIndex');
-    _deleteColumnsAtRange(stTime, edTime);
-  }
-
-  /// 選択範囲を信号の末尾に複製します
-  ///
-  /// 選択された信号と時間範囲をコピーし、各選択信号行の末尾に追加します。
-  /// 選択範囲内にあるアノテーションと省略マークも複製します。
-  /// ミリ秒単位を使用している場合は、ステップ継続時間を更新します。
-  void _duplicateRange() {
-    if (!_hasValidSelection) return;
-
-    // Calculate start and end signal indices and time indices
-    final stSig = math.min(_startSignalIndex!, _endSignalIndex!);
-    final edSig = math.max(_startSignalIndex!, _endSignalIndex!);
-    final stTime = math.min(_startTimeIndex!, _endTimeIndex!);
-    final edTime = math.max(_startTimeIndex!, _endTimeIndex!);
-
-    // Verify that calculated signal indices are within valid range
-    if (stSig < 0 || edSig >= _visibleIndexes.length) return;
-
-    // Step durations: prepare step durations array for duplication
-    final int oldMaxLen =
-        signals.isEmpty ? 0 : signals.map((e) => e.length).reduce(math.max);
-    final settings = Provider.of<SettingsNotifier>(context, listen: false);
-    final int selectionLength = (edTime - stTime + 1).clamp(0, 1 << 30);
-    List<double>? stepDurationsAfterDup;
-    if (settings.timeUnitIsMs && selectionLength > 0) {
-      final double defaultMs = settings.msPerStep;
-      List<double> baseDurations = List<double>.from(
-        (_controller?.stepDurationsMs.isNotEmpty ?? false)
-            ? _controller!.stepDurationsMs
-            : settings.stepDurationsMs,
-      );
-      if (baseDurations.length < oldMaxLen) {
-        baseDurations.addAll(
-          List<double>.filled(oldMaxLen - baseDurations.length, defaultMs),
-        );
-      } else if (baseDurations.length > oldMaxLen) {
-        baseDurations = baseDurations.sublist(0, oldMaxLen);
-      }
-      final int safeStart = stTime.clamp(0, baseDurations.length);
-      final int safeEnd = math.min(
-        baseDurations.length,
-        safeStart + selectionLength,
-      );
-      List<double> slice = baseDurations.sublist(safeStart, safeEnd);
-      if (slice.length < selectionLength) {
-        slice = [
-          ...slice,
-          ...List<double>.filled(selectionLength - slice.length, defaultMs),
-        ];
-      }
-      stepDurationsAfterDup = List<double>.from(baseDurations)..addAll(slice);
-    }
-
-    setState(() {
-      for (int visibleRow = stSig; visibleRow <= edSig; visibleRow++) {
-        final originalRow = _visibleIndexes[visibleRow];
-        final maxTimeForRow = signals[originalRow].length - 1;
-        final clampedStTime = stTime.clamp(0, maxTimeForRow);
-        final clampedEdTime = edTime.clamp(0, maxTimeForRow);
-        if (clampedStTime > clampedEdTime) continue;
-
-        final slice = signals[originalRow].sublist(
-          clampedStTime,
-          clampedEdTime + 1,
-        );
-        signals[originalRow].addAll(slice);
-      }
-
-      final List<TimingChartAnnotation> duplicatedAnnotations = [];
-      for (final ann in annotations) {
-        final annStart = ann.startTimeIndex;
-        final int annEnd = ann.endTimeIndex ?? annStart;
-
-        if (annEnd >= stTime && annStart <= edTime) {
-          final int offset = oldMaxLen - stTime;
-          final newAnn = ann.copyWith(
-            id:
-                'ann${DateTime.now().millisecondsSinceEpoch}_${duplicatedAnnotations.length}',
-            startTimeIndex: annStart + offset,
-            endTimeIndex:
-                ann.endTimeIndex != null ? ann.endTimeIndex! + offset : null,
-          );
-          duplicatedAnnotations.add(newAnn);
-        }
-      }
-      annotations.addAll(duplicatedAnnotations);
-
-      final List<int> newOmissions = [];
-      for (final t in _omissionTimeIndices) {
-        if (t >= stTime && t <= edTime) {
-          newOmissions.add(t + (oldMaxLen - stTime));
-        }
-      }
-      _omissionTimeIndices.addAll(newOmissions);
-
-      _normalizeSignalLengths();
-      _clearSelection();
-
-      _forceRepaint();
-    });
-
-    _commitSignalsFromChartEdit();
-    _controller?.setAnnotations(annotations);
-    _controller?.setOmissionTimeIndices(_omissionTimeIndices);
-
-    if (stepDurationsAfterDup != null) {
-      final int newMaxLen =
-          signals.isEmpty ? 0 : signals.map((e) => e.length).reduce(math.max);
-      final double defaultMs = settings.msPerStep;
-      if (stepDurationsAfterDup.length < newMaxLen) {
-        stepDurationsAfterDup.addAll(
-          List<double>.filled(
-            newMaxLen - stepDurationsAfterDup.length,
-            defaultMs,
-          ),
-        );
-      } else if (stepDurationsAfterDup.length > newMaxLen) {
-        stepDurationsAfterDup = stepDurationsAfterDup.sublist(0, newMaxLen);
-      }
-      settings.setStepDurationsMs(stepDurationsAfterDup);
-      _controller?.setStepDurationsMs(stepDurationsAfterDup);
-    }
-  }
-
-  /// すべての信号の長さを最長の信号に合わせて正規化します
-  ///
-  /// 短い信号にゼロ値をパディングして、すべての信号が同じ長さになるようにします。
-  /// これにより、すべての信号行間で一貫した時間ステップ数が確保されます。
-  void _normalizeSignalLengths() {
-    if (signals.isEmpty) return;
-
-    int maxLen = 0;
-    for (final signal in signals) {
-      if (signal.length > maxLen) {
-        maxLen = signal.length;
-      }
-    }
-
-    for (final signal in signals) {
-      final diff = maxLen - signal.length;
-      if (diff > 0) {
-        signal.addAll(List.filled(diff, 0));
-      }
-    }
-  }
-
-  /// 指定された時間インデックスで省略マークを切り替えます
-  ///
-  /// 指定された時間ステップで波線（省略マーク）を追加または削除します。
-  /// 省略マークは、時間ステップがスキップまたは省略されていることを示します。
-  ///
-  /// [timeIndex] - 省略マークを切り替える時間ステップインデックス
-  void _toggleOmissionTime(int timeIndex) {
-    if (timeIndex < 0) return;
-    setState(() {
-      if (_omissionTimeIndices.contains(timeIndex)) {
-        _omissionTimeIndices.remove(timeIndex);
-      } else {
-        _omissionTimeIndices.add(timeIndex);
-      }
-      _forceRepaint();
-    });
-    _controller?.setOmissionTimeIndices(_omissionTimeIndices);
-  }
-
-  /// 1ステップズームインします
-  ///
-  /// ズーム係数を_zoomStepだけ増やし、最大許可ズームにクランプします。
-  void _zoomIn() {
-    final double current = math.max(_zoomFactor, _minZoomFactorForView);
-    final double next = math.min(current + _zoomStep, _maxZoomFactorForView);
-    if ((next - _zoomFactor).abs() < 1e-6) return;
-    setState(() {
-      _zoomFactor = next;
-    });
-  }
-
-  /// 1ステップズームアウトします
-  ///
-  /// ズーム係数を_zoomStepだけ減らし、最小許可ズームにクランプします。
-  void _zoomOut() {
-    final double current = math.max(_zoomFactor, _minZoomFactorForView);
-    final double next = math.max(current - _zoomStep, _minZoomFactorForView);
-    if ((next - _zoomFactor).abs() < 1e-6) return;
-    setState(() {
-      _zoomFactor = next;
-    });
-  }
+  // NOTE: 選択/編集操作（範囲トグル/挿入/削除/複製/省略線）は `timing_chart_selection_ops.dart` に分離しました。
 
   /// 可能であればズームをデフォルト（1.0）にリセットし、それ以外の場合は最小値にリセットします
   ///
   /// ズームを1.0に設定しようとしますが、1.0が許可範囲外の場合は最小ズームにフォールバックします。
   void _resetZoom() {
-    final double preferred = 1.0;
-    final double minAllowed = math.max(_minZoomFactorForView, _minZoom);
-    final bool preferredInRange =
-        preferred >= minAllowed - 1e-6 &&
-        preferred <= _maxZoomFactorForView + 1e-6;
-    final double target = preferredInRange ? preferred : minAllowed;
-    if ((_zoomFactor - target).abs() < 1e-6) return;
-    setState(() {
-      _zoomFactor = target;
-    });
-  }
-
-  /// 波形表示に使用可能なビューポートの幅を取得します
-  ///
-  /// マージンとラベル幅を総ウィジェット幅から減算して使用可能な幅を計算します。
-  ///
-  /// ビューポート幅（ピクセル）を返します
-  double _getViewportWaveWidth() {
-    final double widgetWidth = MediaQuery.of(context).size.width;
-    final double viewportWaveWidth = widgetWidth - chartMarginLeft - labelWidth;
-    return viewportWaveWidth.isFinite ? math.max(0.0, viewportWaveWidth) : 0.0;
+    _resetZoomImpl();
   }
 
   /// 信号タイプフィルタリングに基づいて表示可能な信号行インデックスのリストを計算します
@@ -3472,94 +1701,18 @@ class TimingChartState extends State<TimingChart>
     );
   }
 
-  /// すべての信号にわたる総時間ステップ単位を計算します
-  ///
-  /// 総正規化ステップ単位を計算します。ミリ秒単位の場合、正規化された継続時間を合計します。
-  /// ステップ単位の場合、最大信号長を返します。
-  ///
-  /// 総ステップ単位をdoubleとして返します
-  double _computeTotalStepUnits() {
-    final settings = Provider.of<SettingsNotifier>(context, listen: false);
-    final int maxLen =
-        signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
-    if (maxLen <= 0) return 0.0;
-    if (settings.timeUnitIsMs) {
-      double sum = 0.0;
-      for (int i = 0; i < maxLen; i++) {
-        final dur =
-            (i < settings.stepDurationsMs.length)
-                ? settings.stepDurationsMs[i]
-                : settings.msPerStep;
-        sum += (settings.msPerStep > 0) ? (dur / settings.msPerStep) : 1.0;
-      }
-      return sum;
-    } else {
-      return maxLen.toDouble();
-    }
-  }
-
-  /// ズーム後にアンカーポイントを維持するためにスクロール補正を適用します
-  ///
-  /// ズーム後、anchorXInWaveのポイントが同じ視覚的位置に残るようにスクロール位置を調整します。
-  /// stepsUnitsBeforeを使用して新しいスクロールオフセットを計算します。
-  ///
-  /// [anchorXInWave] - 固定を維持する波形領域内のX位置
-  /// [stepsUnitsBefore] - アンカーポイントより前のステップ単位
-  void _applyAnchorScrollCorrection({
-    required double anchorXInWave,
-    required double stepsUnitsBefore,
-  }) {
-    final double viewportWaveWidth = _getViewportWaveWidth();
-    final double contentWidth = _computeTotalStepUnits() * _cellWidth;
-    final double newContentX = stepsUnitsBefore * _cellWidth;
-    double newScroll = newContentX - anchorXInWave;
-    final double maxScroll = math.max(0.0, contentWidth - viewportWaveWidth);
-    newScroll = newScroll.clamp(0.0, maxScroll);
-    if (_hScrollController.hasClients) {
-      try {
-        _hScrollController.jumpTo(newScroll);
-      } catch (_) {
-        // ignore jump errors
-      }
-    }
-  }
-
   /// ビューポートの中心をアンカーポイントとして維持しながらズームインします
   ///
   /// 1ステップズームインし、ビューポートの中心が同じ視覚的位置に残るようにスクロールを調整します。
   void _zoomInWithAnchorAtCenter() {
-    final double viewportWaveWidth = _getViewportWaveWidth();
-    final double anchorXInWave = viewportWaveWidth / 2;
-    final double scrollBefore =
-        _hScrollController.hasClients ? _hScrollController.offset : 0.0;
-    final double stepsUnitsBefore =
-        (scrollBefore + anchorXInWave) / (_cellWidth <= 0 ? 1.0 : _cellWidth);
-    _zoomIn();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _applyAnchorScrollCorrection(
-        anchorXInWave: anchorXInWave,
-        stepsUnitsBefore: stepsUnitsBefore,
-      );
-    });
+    _zoomInWithAnchorAtCenterImpl();
   }
 
   /// ビューポートの中心をアンカーポイントとして維持しながらズームアウトします
   ///
   /// 1ステップズームアウトし、ビューポートの中心が同じ視覚的位置に残るようにスクロールを調整します。
   void _zoomOutWithAnchorAtCenter() {
-    final double viewportWaveWidth = _getViewportWaveWidth();
-    final double anchorXInWave = viewportWaveWidth / 2;
-    final double scrollBefore =
-        _hScrollController.hasClients ? _hScrollController.offset : 0.0;
-    final double stepsUnitsBefore =
-        (scrollBefore + anchorXInWave) / (_cellWidth <= 0 ? 1.0 : _cellWidth);
-    _zoomOut();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _applyAnchorScrollCorrection(
-        anchorXInWave: anchorXInWave,
-        stepsUnitsBefore: stepsUnitsBefore,
-      );
-    });
+    _zoomOutWithAnchorAtCenterImpl();
   }
 
   /// ポインター信号イベント（マウスホイールスクロール）を処理します
@@ -3569,49 +1722,7 @@ class TimingChartState extends State<TimingChart>
   ///
   /// [event] - ポインター信号イベント（通常はスクロールホイール）
   void _handlePointerSignal(PointerSignalEvent event) {
-    if (event is! PointerScrollEvent) return;
-
-    final bool modifierPressed =
-        HardwareKeyboard.instance.isControlPressed ||
-        HardwareKeyboard.instance.isMetaPressed;
-    if (!modifierPressed) return;
-
-    final double verticalDelta = event.scrollDelta.dy;
-    final double horizontalDelta = event.scrollDelta.dx;
-    final double dominantDelta =
-        verticalDelta.abs() >= horizontalDelta.abs()
-            ? verticalDelta
-            : horizontalDelta;
-
-    double viewportWaveWidth = _getViewportWaveWidth();
-    double anchorXInWave;
-    final box = context.findRenderObject() as RenderBox?;
-    if (box != null) {
-      final local = box.globalToLocal(event.position);
-      anchorXInWave = local.dx - chartMarginLeft - labelWidth;
-      if (!anchorXInWave.isFinite) anchorXInWave = viewportWaveWidth / 2;
-    } else {
-      anchorXInWave = viewportWaveWidth / 2;
-    }
-    anchorXInWave = anchorXInWave.clamp(0.0, viewportWaveWidth);
-
-    final double scrollBefore =
-        _hScrollController.hasClients ? _hScrollController.offset : 0.0;
-    final double stepsUnitsBefore =
-        (scrollBefore + anchorXInWave) / (_cellWidth <= 0 ? 1.0 : _cellWidth);
-
-    if (dominantDelta < 0) {
-      _zoomIn();
-    } else if (dominantDelta > 0) {
-      _zoomOut();
-    }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _applyAnchorScrollCorrection(
-        anchorXInWave: anchorXInWave,
-        stepsUnitsBefore: stepsUnitsBefore,
-      );
-    });
+    _handlePointerSignalImpl(event);
   }
 
   /// チャートコンテンツウィジェットを構築します
@@ -3686,46 +1797,9 @@ class TimingChartState extends State<TimingChart>
                   onLongPressMoveUpdate:
                       isEditingMode ? null : _onLongPressMoveUpdate,
                   onLongPressEnd: isEditingMode ? null : _onLongPressEnd,
-                  onPanDown:
-                      isEditingMode
-                          ? null
-                          : (details) {
-                            final box =
-                                context.findRenderObject() as RenderBox?;
-                            if (box == null) return;
-                            final localPos = box.globalToLocal(
-                              details.globalPosition,
-                            );
-                            final adjustedPos = Offset(
-                              localPos.dx -
-                                  chartMarginLeft +
-                                  (_hScrollController.hasClients
-                                      ? _hScrollController.offset
-                                      : 0),
-                              localPos.dy -
-                                  chartMarginTop +
-                                  (_vScrollController.hasClients
-                                      ? _vScrollController.offset
-                                      : 0),
-                            );
-                            for (final entry in _annotationHitRects.entries) {
-                              final rect = entry.value;
-                              if (rect.contains(adjustedPos)) {
-                                setState(() {
-                                  _draggingAnnotationId = entry.key;
-                                  _draggingStartLocal = adjustedPos;
-                                  _draggingInitialBoxTopLeft = rect.topLeft;
-                                  _selectedAnnotationId = entry.key;
-                                });
-                                break;
-                              }
-                            }
-                          },
+                  onPanDown: isEditingMode ? null : _onPanDown,
                   onSecondaryTapDown:
-                      isEditingMode
-                          ? null
-                          : (details) =>
-                              _showContextMenu(context, details.globalPosition),
+                      isEditingMode ? null : _onSecondaryTapDown,
                   child: SingleChildScrollView(
                     controller: _hScrollController,
                     scrollDirection: Axis.horizontal,
@@ -3915,13 +1989,7 @@ class TimingChartState extends State<TimingChart>
     return isEditingMode
         ? Listener(
           onPointerSignal: _handlePointerSignal,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final settings = Provider.of<SettingsNotifier>(context);
-              final layoutData = _calculateLayoutData(constraints, settings);
-              return _buildChartContent(context, layoutData, settings, true);
-            },
-          ),
+          child: LayoutBuilder(builder: _buildChartWithLayoutEditing),
         )
         : KeyboardListener(
           focusNode: _focusNode,
@@ -3929,16 +1997,30 @@ class TimingChartState extends State<TimingChart>
           onKeyEvent: _onKeyEvent,
           child: Listener(
             onPointerSignal: _handlePointerSignal,
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final settings = Provider.of<SettingsNotifier>(context);
-                final layoutData = _calculateLayoutData(constraints, settings);
-                return _buildChartContent(context, layoutData, settings, false);
-              },
-            ),
+            child: LayoutBuilder(builder: _buildChartWithLayoutNormal),
           ),
         );
   }
+
+  Widget _buildChartWithLayout(
+    BuildContext context,
+    BoxConstraints constraints,
+    bool isEditingMode,
+  ) {
+    final settings = Provider.of<SettingsNotifier>(context);
+    final layoutData = _calculateLayoutData(constraints, settings);
+    return _buildChartContent(context, layoutData, settings, isEditingMode);
+  }
+
+  Widget _buildChartWithLayoutEditing(
+    BuildContext context,
+    BoxConstraints constraints,
+  ) => _buildChartWithLayout(context, constraints, true);
+
+  Widget _buildChartWithLayoutNormal(
+    BuildContext context,
+    BoxConstraints constraints,
+  ) => _buildChartWithLayout(context, constraints, false);
 
   Widget _buildZoomControls() {
     final int zoomPercent = (_effectiveZoomFactor * 100).round();
@@ -3984,63 +2066,70 @@ class TimingChartState extends State<TimingChart>
 
     return ListenableBuilder(
       listenable: _controller!,
-      builder: (context, _) {
-        final bool canUndo = _controller?.canUndo ?? false;
-        final bool canRedo = _controller?.canRedo ?? false;
+      builder: _buildZoomControlsListenable,
+    );
+  }
 
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            OutlinedButton.icon(
-              icon: const Icon(Icons.undo, size: 16),
-              label: const Text('Undo'),
-              onPressed:
-                  canUndo
-                      ? () {
-                        _controller?.undo();
-                      }
-                      : null,
-            ),
-            const SizedBox(width: 6),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.redo, size: 16),
-              label: const Text('Redo'),
-              onPressed:
-                  canRedo
-                      ? () {
-                        _controller?.redo();
-                      }
-                      : null,
-            ),
-            const SizedBox(width: 12),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.zoom_out, size: 16),
-              label: const Text('Zoom out'),
-              onPressed: canZoomOut ? _zoomOutWithAnchorAtCenter : null,
-            ),
-            const SizedBox(width: 6),
-            Text('$zoomPercent%'),
-            const SizedBox(width: 6),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.zoom_in, size: 16),
-              label: const Text('Zoom in'),
-              onPressed: canZoomIn ? _zoomInWithAnchorAtCenter : null,
-            ),
-            const SizedBox(width: 6),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.fit_screen, size: 16),
-              label: const Text('Fit'),
-              onPressed: canReset ? _resetZoom : null,
-            ),
-            const SizedBox(width: 6),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.fit_screen_outlined, size: 16),
-              label: const Text('Fit sel'),
-              onPressed: canFitSelection ? _zoomToSelectionFit : null,
-            ),
-          ],
-        );
-      },
+  void _onUndoPressed() {
+    _controller?.undo();
+  }
+
+  void _onRedoPressed() {
+    _controller?.redo();
+  }
+
+  Widget _buildZoomControlsListenable(BuildContext context, Widget? _) {
+    final int zoomPercent = (_effectiveZoomFactor * 100).round();
+    final bool canZoomIn = _effectiveZoomFactor < _maxZoomFactorForView - 0.001;
+    final bool canZoomOut =
+        _effectiveZoomFactor > _minZoomFactorForView + 0.001;
+    final bool canReset =
+        (_effectiveZoomFactor - _minZoomFactorForView).abs() > 0.001;
+    final bool canFitSelection = _hasValidSelection;
+    final bool canUndo = _controller?.canUndo ?? false;
+    final bool canRedo = _controller?.canRedo ?? false;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        OutlinedButton.icon(
+          icon: const Icon(Icons.undo, size: 16),
+          label: const Text('Undo'),
+          onPressed: canUndo ? _onUndoPressed : null,
+        ),
+        const SizedBox(width: 6),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.redo, size: 16),
+          label: const Text('Redo'),
+          onPressed: canRedo ? _onRedoPressed : null,
+        ),
+        const SizedBox(width: 12),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.zoom_out, size: 16),
+          label: const Text('Zoom out'),
+          onPressed: canZoomOut ? _zoomOutWithAnchorAtCenter : null,
+        ),
+        const SizedBox(width: 6),
+        Text('$zoomPercent%'),
+        const SizedBox(width: 6),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.zoom_in, size: 16),
+          label: const Text('Zoom in'),
+          onPressed: canZoomIn ? _zoomInWithAnchorAtCenter : null,
+        ),
+        const SizedBox(width: 6),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.fit_screen, size: 16),
+          label: const Text('Fit'),
+          onPressed: canReset ? _resetZoom : null,
+        ),
+        const SizedBox(width: 6),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.fit_screen_outlined, size: 16),
+          label: const Text('Fit sel'),
+          onPressed: canFitSelection ? _zoomToSelectionFit : null,
+        ),
+      ],
     );
   }
 
@@ -4112,6 +2201,15 @@ class TimingChartState extends State<TimingChart>
     final settings = Provider.of<SettingsNotifier>(context);
     final bool isMs = settings.timeUnitIsMs;
     final String label = isMs ? 'ms' : 'step';
+
+    void onTimeUnitChanged(bool v) {
+      _onTimeUnitChanged(settings, v);
+    }
+
+    void onShowLabelsChanged(bool v) {
+      settings.showBottomUnitLabels = v;
+    }
+
     return Container(
       decoration: BoxDecoration(
         color: Color.alphaBlend(
@@ -4132,29 +2230,14 @@ class TimingChartState extends State<TimingChart>
         children: [
           Text('Unit:'),
           const SizedBox(width: 6),
-          Switch(
-            value: isMs,
-            onChanged: (v) {
-              settings.timeUnitIsMs = v;
-              setState(() {});
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                _resetZoom();
-              });
-              if (!v && _isEditingSteps) {
-                setState(() {
-                  _isEditingSteps = false;
-                  _activeStepIndex = null;
-                });
-              }
-            },
-          ),
+          Switch(value: isMs, onChanged: onTimeUnitChanged),
           Text(label),
           const SizedBox(width: 12),
           Text('Labels:'),
           const SizedBox(width: 6),
           Switch(
             value: settings.showBottomUnitLabels,
-            onChanged: (v) => settings.showBottomUnitLabels = v,
+            onChanged: onShowLabelsChanged,
           ),
           const SizedBox(width: 12),
           if (_showAdvancedTimingControls && isMs) ...[
@@ -4170,22 +2253,7 @@ class TimingChartState extends State<TimingChart>
                 size: 16,
               ),
               label: Text(_isEditingSteps ? 'Done' : 'Edit grid'),
-              onPressed: () {
-                // 編集終了時に、現在の stepDurations をコントローラにも反映しておく
-                // （Undo/Redoや他処理との整合のため）
-                if (_isEditingSteps) {
-                  final settings = Provider.of<SettingsNotifier>(
-                    context,
-                    listen: false,
-                  );
-                  _useControllerStepDurations = true;
-                  _controller?.setStepDurationsMs(settings.stepDurationsMs);
-                }
-                setState(() {
-                  _isEditingSteps = !_isEditingSteps;
-                  _activeStepIndex = null;
-                });
-              },
+              onPressed: _toggleEditGridMode,
             ),
             const SizedBox(width: 8),
             const Text('（境界線をドラッグ/タップで調整）'),
@@ -4197,6 +2265,20 @@ class TimingChartState extends State<TimingChart>
         ],
       ),
     );
+  }
+
+  void _onTimeUnitChanged(SettingsNotifier settings, bool v) {
+    settings.timeUnitIsMs = v;
+    setState(() {});
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _resetZoom();
+    });
+    if (!v && _isEditingSteps) {
+      setState(() {
+        _isEditingSteps = false;
+        _activeStepIndex = null;
+      });
+    }
   }
 
   /// ステップあたりのミリ秒を編集するためのテキストフィールドを構築します
@@ -4211,6 +2293,11 @@ class TimingChartState extends State<TimingChart>
     final controller = TextEditingController(
       text: settings.msPerStep.toStringAsFixed(2),
     );
+
+    void onSubmitted(String val) {
+      _onMsPerStepSubmitted(settings, val);
+    }
+
     return SizedBox(
       width: 72,
       height: 32,
@@ -4223,14 +2310,16 @@ class TimingChartState extends State<TimingChart>
           border: OutlineInputBorder(),
         ),
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        onSubmitted: (val) {
-          final v = double.tryParse(val);
-          if (v != null && v > 0) {
-            settings.msPerStep = v;
-          }
-        },
+        onSubmitted: onSubmitted,
       ),
     );
+  }
+
+  void _onMsPerStepSubmitted(SettingsNotifier settings, String val) {
+    final v = double.tryParse(val);
+    if (v != null && v > 0) {
+      settings.msPerStep = v;
+    }
   }
 
   /// ステップ継続時間を一括編集するためのボタンを構築します
@@ -4241,65 +2330,74 @@ class TimingChartState extends State<TimingChart>
   /// ステップ継続時間編集ボタンウィジェットを返します
   // ignore: unused_element
   Widget _buildEditStepDurationsButton() {
+    void onPressed() {
+      // ignore: discarded_futures
+      _onEditStepDurationsPressed();
+    }
+
     return OutlinedButton.icon(
       icon: const Icon(Icons.tune, size: 16),
       label: const Text('Edit steps'),
-      onPressed: () async {
-        final settings = Provider.of<SettingsNotifier>(context, listen: false);
-        final maxLen =
-            signals.isEmpty
-                ? 0
-                : signals.map((e) => e.length).fold(0, math.max);
-        settings.ensureStepDurationsLength(maxLen);
-        final controller = TextEditingController(
-          text: settings.stepDurationsMs.join(','),
-        );
-        final bool prevCanRequest = _focusNode.canRequestFocus;
-        _focusNode.canRequestFocus = false;
-        FocusScope.of(context).unfocus();
+      onPressed: onPressed,
+    );
+  }
 
-        final ok =
-            await showDialog<bool>(
-              context: context,
-              builder:
-                  (ctx) => AlertDialog(
-                    title: const Text('Step durations (ms, comma-separated)'),
-                    content: TextField(
-                      controller: controller,
-                      minLines: 3,
-                      maxLines: 6,
-                      decoration: const InputDecoration(
-                        hintText: 'e.g. 1,1,2,0.5,0.5,3',
-                      ),
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx, false),
-                        child: const Text('Cancel'),
-                      ),
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx, true),
-                        child: const Text('Apply'),
-                      ),
-                    ],
-                  ),
-            ) ??
-            false;
-        _focusNode.canRequestFocus = prevCanRequest;
-        if (mounted) _focusNode.requestFocus();
-        if (!ok) return;
-        final parts = controller.text.split(',');
-        final parsed = <double>[];
-        for (final p in parts) {
-          final v = double.tryParse(p.trim());
-          if (v != null && v > 0) parsed.add(v);
-        }
-        if (parsed.isNotEmpty) {
-          settings.setStepDurationsMs(parsed);
-          _useControllerStepDurations = true;
-          _controller?.setStepDurationsMs(settings.stepDurationsMs);
-        }
-      },
+  Future<void> _onEditStepDurationsPressed() async {
+    final settings = Provider.of<SettingsNotifier>(context, listen: false);
+    final maxLen =
+        signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
+    settings.ensureStepDurationsLength(maxLen);
+    final controller = TextEditingController(
+      text: settings.stepDurationsMs.join(','),
+    );
+    final bool prevCanRequest = _focusNode.canRequestFocus;
+    _focusNode.canRequestFocus = false;
+    FocusScope.of(context).unfocus();
+
+    final ok =
+        await showDialog<bool>(
+          context: context,
+          builder: _buildEditStepDurationsDialog(controller),
+        ) ??
+        false;
+    _focusNode.canRequestFocus = prevCanRequest;
+    if (mounted) _focusNode.requestFocus();
+    if (!ok) return;
+
+    final parts = controller.text.split(',');
+    final parsed = <double>[];
+    for (final p in parts) {
+      final v = double.tryParse(p.trim());
+      if (v != null && v > 0) parsed.add(v);
+    }
+    if (parsed.isNotEmpty) {
+      settings.setStepDurationsMs(parsed);
+      _useControllerStepDurations = true;
+      _controller?.setStepDurationsMs(settings.stepDurationsMs);
+    }
+  }
+
+  Widget Function(BuildContext) _buildEditStepDurationsDialog(
+    TextEditingController controller,
+  ) {
+    return (ctx) => AlertDialog(
+      title: const Text('Step durations (ms, comma-separated)'),
+      content: TextField(
+        controller: controller,
+        minLines: 3,
+        maxLines: 6,
+        decoration: const InputDecoration(hintText: 'e.g. 1,1,2,0.5,0.5,3'),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          child: const Text('Apply'),
+        ),
+      ],
     );
   }
 
@@ -4314,133 +2412,9 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  /// チャートをPNG画像としてキャプチャします
-  ///
-  /// RepaintBoundaryを使用してチャートコンテンツを画像にレンダリングし、
-  /// PNGバイトを返します。より良い品質のために高いピクセル比を使用します。
-  ///
-  /// [pixelRatio] - オプションのピクセル比（デフォルトはデバイス比または3.0）
-  /// PNG画像バイトを返します。キャプチャに失敗した場合はnullを返します
-  Future<Uint8List?> captureChartPng({double? pixelRatio}) async {
-    try {
-      RenderRepaintBoundary? boundary =
-          _viewportBoundaryKey.currentContext?.findRenderObject()
-              as RenderRepaintBoundary?;
-      boundary ??=
-          _repaintBoundaryKey.currentContext?.findRenderObject()
-              as RenderRepaintBoundary?;
-      if (boundary == null) return null;
-      final double devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
-      final double defaultRatio =
-          kIsWeb ? 2.0 : _defaultExportPixelRatio; // Webは負荷が高いので控えめに
-      final double targetRatio =
-          pixelRatio ?? math.max(devicePixelRatio, defaultRatio);
-      final double maxRatio = kIsWeb ? 3.0 : _maxExportPixelRatio;
-      final double pr = targetRatio.clamp(1.0, maxRatio).toDouble();
-      final ui.Image image = await boundary.toImage(pixelRatio: pr);
-      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-      return byteData?.buffer.asUint8List();
-    } catch (e) {
-      debugPrint('Error capturing chart PNG: $e');
-      return null;
-    }
-  }
-
-  /// チャートをJPEG画像としてキャプチャします
-  ///
-  /// チャートコンテンツを画像にレンダリングし、JPEG形式に変換します。
-  /// 背景色とのアルファチャネル合成を処理します。
-  ///
-  /// [pixelRatio] - オプションのピクセル比（デフォルトはデバイス比または3.0）
-  /// [backgroundColor] - アルファ合成用の背景色（デフォルトはテーマ）
-  /// [quality] - JPEG品質0-100（デフォルトは90）
-  /// JPEG画像バイトを返します。キャプチャに失敗した場合はnullを返します
-  Future<Uint8List?> captureChartJpeg({
-    double? pixelRatio,
-    Color? backgroundColor,
-    int quality = 90,
-  }) async {
-    try {
-      RenderRepaintBoundary? boundary =
-          _viewportBoundaryKey.currentContext?.findRenderObject()
-              as RenderRepaintBoundary?;
-      boundary ??=
-          _repaintBoundaryKey.currentContext?.findRenderObject()
-              as RenderRepaintBoundary?;
-      if (boundary == null) return null;
-      final double devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
-      final double defaultRatio =
-          kIsWeb ? 2.0 : _defaultExportPixelRatio; // Webは負荷が高いので控えめに
-      final double targetRatio =
-          pixelRatio ?? math.max(devicePixelRatio, defaultRatio);
-      final double maxRatio = kIsWeb ? 3.0 : _maxExportPixelRatio;
-      final double pr = targetRatio.clamp(1.0, maxRatio).toDouble();
-
-      final ui.Image image = await boundary.toImage(pixelRatio: pr);
-
-      final width = image.width;
-      final height = image.height;
-
-      final theme = Theme.of(context);
-      final Color bg =
-          backgroundColor ??
-          (theme.brightness == Brightness.dark ? Colors.black : Colors.white);
-
-      // WebではDart側のJPEGエンコード（package:image）が非常に重いので、
-      // ブラウザネイティブのCanvasエンコードに逃がす。
-      if (kIsWeb) {
-        final pngData = await image.toByteData(format: ui.ImageByteFormat.png);
-        if (pngData == null) return null;
-        final jpeg = await web_jpeg.pngToJpegBytes(
-          pngData.buffer.asUint8List(),
-          quality: quality,
-          backgroundColorValue: bg.value,
-        );
-        return jpeg;
-      }
-
-      final byteData = await image.toByteData(
-        format: ui.ImageByteFormat.rawRgba,
-      );
-      if (byteData == null) return null;
-
-      final rgbaBytes = byteData.buffer.asUint8List();
-
-      final int rBg = (bg.r * 255).round();
-      final int gBg = (bg.g * 255).round();
-      final int bBg = (bg.b * 255).round();
-
-      final Uint8List rgbBytes = Uint8List(width * height * 3);
-      int si = 0; // source index
-      int di = 0; // dest index
-      for (int i = 0; i < width * height; i++) {
-        final int r = rgbaBytes[si];
-        final int g = rgbaBytes[si + 1];
-        final int b = rgbaBytes[si + 2];
-        final int a = rgbaBytes[si + 3];
-        final int outR = ((r * a + rBg * (255 - a)) / 255).round();
-        final int outG = ((g * a + gBg * (255 - a)) / 255).round();
-        final int outB = ((b * a + bBg * (255 - a)) / 255).round();
-        rgbBytes[di] = outR;
-        rgbBytes[di + 1] = outG;
-        rgbBytes[di + 2] = outB;
-        si += 4;
-        di += 3;
-      }
-
-      final img.Image rgbImage = img.Image.fromBytes(
-        width: width,
-        height: height,
-        bytes: rgbBytes.buffer,
-        numChannels: 3,
-      );
-      final jpg = img.encodeJpg(rgbImage, quality: quality);
-      return Uint8List.fromList(jpg);
-    } catch (e) {
-      debugPrint('Error capturing chart JPEG: $e');
-      return null;
-    }
-  }
+  /// `extension` から `setState()` を直接呼べない（@protected）ための薄いラッパー。
+  void _setState(VoidCallback fn) => setState(fn);
+  // NOTE: 画像エクスポート（PNG/JPEG）は `timing_chart_export.dart` に分離しました。
 
   List<TimingChartAnnotation> getAnnotations() => List.from(annotations);
 
@@ -4527,42 +2501,7 @@ class TimingChartState extends State<TimingChart>
         HardwareKeyboard.instance.isControlPressed ||
         HardwareKeyboard.instance.isMetaPressed;
 
-    // 追加: キーボードで横スクロール（パン）
-    // - ←/→: 少し移動（Shiftで加速）
-    // - PageUp/PageDown: 1画面分移動
-    // - Home/End: 先頭/末尾
-    {
-      final bool shift = HardwareKeyboard.instance.isShiftPressed;
-      final double small = math.max(20.0, _cellWidth * 3);
-      final double large = math.max(_getViewportWaveWidth() * 0.9, small * 10);
-
-      if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-        _scrollHorizontallyBy(-(shift ? small * 5 : small));
-        return;
-      }
-      if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-        _scrollHorizontallyBy(shift ? small * 5 : small);
-        return;
-      }
-      if (event.logicalKey == LogicalKeyboardKey.pageUp) {
-        _scrollHorizontallyBy(-large);
-        return;
-      }
-      if (event.logicalKey == LogicalKeyboardKey.pageDown) {
-        _scrollHorizontallyBy(large);
-        return;
-      }
-      if (event.logicalKey == LogicalKeyboardKey.home) {
-        _scrollHorizontallyTo(0);
-        return;
-      }
-      if (event.logicalKey == LogicalKeyboardKey.end) {
-        if (_hScrollController.hasClients) {
-          _scrollHorizontallyTo(_hScrollController.position.maxScrollExtent);
-        }
-        return;
-      }
-    }
+    if (_handleHorizontalScrollKeysImpl(event)) return;
 
     // アンドゥ/リドゥショートカット
     if (isModifierPressed) {
@@ -4598,74 +2537,7 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  void _scrollHorizontallyBy(double deltaPx) {
-    if (!_hScrollController.hasClients) return;
-    final pos = _hScrollController.position;
-    final next = (_hScrollController.offset + deltaPx)
-        .clamp(pos.minScrollExtent, pos.maxScrollExtent);
-    try {
-      _hScrollController.jumpTo(next);
-    } catch (_) {
-      // ignore jump errors
-    }
-  }
-
-  void _scrollHorizontallyTo(double offsetPx) {
-    if (!_hScrollController.hasClients) return;
-    final pos = _hScrollController.position;
-    final next = offsetPx.clamp(pos.minScrollExtent, pos.maxScrollExtent);
-    try {
-      _hScrollController.jumpTo(next);
-    } catch (_) {
-      // ignore jump errors
-    }
-  }
-
-  /// すべての時間ステップにわたってすべての表示信号を選択します
-  ///
-  /// 選択範囲を時間0から最大時間ステップまでのすべての表示信号行をカバーするように設定します。
-  /// チャート状態を更新して選択範囲をハイライトします。
-  void _selectAllSignals() {
-    if (signals.isEmpty || _visibleIndexes.isEmpty) return;
-    setState(() {
-      _startSignalIndex = 0;
-      _endSignalIndex = _visibleIndexes.length - 1;
-      _startTimeIndex = 0;
-      _endTimeIndex = signals[0].length - 1;
-      _forceRepaint();
-    });
-  }
-
-  /// 選択範囲内のすべての信号値を指定された値に設定します
-  ///
-  /// 選択範囲内のすべての信号値を0または1に設定します。
-  /// キーボードショートカット（0/1キー）で信号状態を設定するために使用されます。
-  ///
-  /// [value] - 設定する値（0または1）
-  void _setSignalsInSelection(int value) {
-    if (!_hasValidSelection) return;
-    final stSig = math.min(_startSignalIndex!, _endSignalIndex!);
-    final edSig = math.max(_startSignalIndex!, _endSignalIndex!);
-    final stTime = math.min(_startTimeIndex!, _endTimeIndex!);
-    final edTime = math.max(_startTimeIndex!, _endTimeIndex!);
-    if (stSig < 0 || edSig >= _visibleIndexes.length) return;
-
-    setState(() {
-      for (int visibleRow = stSig; visibleRow <= edSig; visibleRow++) {
-        final originalRow = _visibleIndexes[visibleRow];
-        final maxTimeForRow = signals[originalRow].length - 1;
-        final clampedStTime = stTime.clamp(0, maxTimeForRow);
-        final clampedEdTime = edTime.clamp(0, maxTimeForRow);
-        if (clampedStTime > clampedEdTime) continue;
-        for (int t = clampedStTime; t <= clampedEdTime; t++) {
-          signals[originalRow][t] = value;
-        }
-      }
-      _highlightTimeIndices = [..._highlightTimeIndices];
-      _forceRepaint();
-    });
-    _commitSignalsFromChartEdit();
-  }
+  // NOTE: 全選択/選択範囲の一括設定は `timing_chart_selection_ops.dart` に分離しました。
 
   /// 隣接する行と交換して信号行を上下に移動します
   ///
@@ -4747,542 +2619,4 @@ class TimingChartState extends State<TimingChart>
   }
 }
 
-/// タイミングチャートコンテンツをレンダリングするカスタムペインター
-///
-/// グリッド線、信号波形、アノテーション、選択範囲、省略マークの描画を処理します。
-/// レンダリングの異なる側面（グリッド、信号、アノテーション）について、
-/// 専門化されたマネージャークラスに委譲します。
-class _StepTimingChartPainter extends CustomPainter {
-  _StepTimingChartPainter({
-    required this.signals,
-    required this.signalNames,
-    required this.signalTypes,
-    required this.annotations,
-    required this.cellWidth,
-    required this.cellHeight,
-    required this.labelWidth,
-    required this.commentAreaHeight,
-    required this.chartMarginLeft,
-    required this.chartMarginTop,
-    required this.startSignalIndex,
-    required this.endSignalIndex,
-    required this.startTimeIndex,
-    required this.endTimeIndex,
-    required this.highlightTimeIndices,
-    required this.omissionTimeIndices,
-    required this.selectedAnnotationId,
-    required this.annotationRects,
-    required this.showAllSignalTypes,
-    required this.showIoNumbers,
-    required this.portNumbers,
-    required this.timeUnitIsMs,
-    required this.msPerStep,
-    required this.stepDurationsMs,
-    required this.activeStepIndex,
-    required this.labelColor,
-    required this.dashedColor,
-    required this.omissionColor,
-    required this.omissionFillColor,
-    required this.arrowColor,
-    required this.signalColors,
-    required this.showBottomUnitLabels,
-    required this.onCommentAreaMeasured,
-    this.draggingStartRow,
-    this.draggingCurrentRow,
-  }) {
-    _annotationsManager = ChartAnnotationsManager(
-      annotations: annotations,
-      cellWidth: cellWidth,
-      cellHeight: cellHeight,
-      labelWidth: labelWidth,
-      highlightTimeIndices: highlightTimeIndices,
-      selectedAnnotationId: selectedAnnotationId,
-      dashedColor: dashedColor,
-      arrowColor: arrowColor,
-      showBottomUnitLabels: showBottomUnitLabels,
-      timeUnitIsMs: timeUnitIsMs,
-      msPerStep: msPerStep,
-      stepDurationsMs: stepDurationsMs,
-    );
-
-    _gridManager = ChartGridManager(
-      cellWidth: cellWidth,
-      cellHeight: cellHeight,
-      labelWidth: labelWidth,
-      signalNames: signalNames,
-      signalTypes: signalTypes,
-      showAllSignalTypes: showAllSignalTypes,
-      showIoNumbers: showIoNumbers,
-      portNumbers: portNumbers,
-      labelColor: labelColor,
-      highlightStartRow: startSignalIndex,
-      highlightEndRow: endSignalIndex,
-      highlightTextColor: arrowColor,
-      timeUnitIsMs: timeUnitIsMs,
-      msPerStep: msPerStep,
-      stepDurationsMs: stepDurationsMs,
-      activeStepIndex: activeStepIndex,
-      showBottomUnitLabels: showBottomUnitLabels,
-    );
-
-    _signalsManager = ChartSignalsManager(
-      cellWidth: cellWidth,
-      cellHeight: cellHeight,
-      labelWidth: labelWidth,
-      signalTypes: signalTypes,
-      showAllSignalTypes: showAllSignalTypes,
-      signalColors: signalColors,
-      timeUnitIsMs: timeUnitIsMs,
-      msPerStep: msPerStep,
-      stepDurationsMs: stepDurationsMs,
-    );
-  }
-
-  final List<List<int>> signals;
-  final List<String> signalNames;
-  final List<SignalType> signalTypes;
-  final List<TimingChartAnnotation> annotations;
-  final List<int> highlightTimeIndices;
-  final List<int> omissionTimeIndices;
-
-  final double cellWidth;
-  final double cellHeight;
-  final double labelWidth;
-  final double commentAreaHeight;
-  final double chartMarginLeft;
-  final double chartMarginTop;
-
-  final int? startSignalIndex;
-  final int? endSignalIndex;
-  final int? startTimeIndex;
-  final int? endTimeIndex;
-
-  final String? selectedAnnotationId;
-  final Map<String, Rect> annotationRects;
-  final bool showAllSignalTypes;
-  final bool showIoNumbers;
-  final List<int> portNumbers;
-  final bool timeUnitIsMs;
-  final double msPerStep;
-  final List<double> stepDurationsMs;
-  final int? activeStepIndex;
-  final Map<SignalType, Color> signalColors;
-
-  // Colors
-  final Color labelColor;
-  final Color dashedColor;
-  final Color omissionColor;
-  final Color omissionFillColor;
-  final Color arrowColor;
-  final bool showBottomUnitLabels;
-
-  final int? draggingStartRow;
-  final int? draggingCurrentRow;
-
-  /// 描画済みアノテーションからコメント領域の必要高さを親にフィードバックするコールバック
-  final void Function(double) onCommentAreaMeasured;
-
-  late final ChartAnnotationsManager _annotationsManager;
-  late final ChartGridManager _gridManager;
-  late final ChartSignalsManager _signalsManager;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final double drawAreaWidth = size.width - chartMarginLeft;
-
-    canvas.save();
-    canvas.translate(chartMarginLeft, chartMarginTop);
-
-    final rowCount = signals.length;
-
-    final double maskHeight = rowCount * cellHeight + commentAreaHeight;
-    final Paint labelMaskPaint =
-        Paint()
-          ..color = omissionFillColor
-          ..style = PaintingStyle.fill;
-    final double maskWidth = (labelWidth - 1).clamp(0.0, double.infinity);
-    canvas.drawRect(Rect.fromLTWH(0, 0, maskWidth, maskHeight), labelMaskPaint);
-
-    if (draggingStartRow != null) {
-      final paintBg =
-          Paint()
-            ..color = Colors.yellow.withAlpha((0.25 * 255).round())
-            ..style = PaintingStyle.fill;
-      canvas.drawRect(
-        Rect.fromLTWH(
-          0,
-          draggingStartRow! * cellHeight,
-          drawAreaWidth,
-          cellHeight,
-        ),
-        paintBg,
-      );
-    }
-    if (draggingCurrentRow != null) {
-      final paintBg =
-          Paint()
-            ..color = Colors.blue.withAlpha((0.25 * 255).round())
-            ..style = PaintingStyle.fill;
-      canvas.drawRect(
-        Rect.fromLTWH(
-          0,
-          draggingCurrentRow! * cellHeight,
-          drawAreaWidth,
-          cellHeight,
-        ),
-        paintBg,
-      );
-    }
-
-    final maxTimeSteps =
-        signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
-    _gridManager.drawGridLines(canvas, size, rowCount, maxTimeSteps);
-
-    _gridManager.drawHighlightedLines(canvas, highlightTimeIndices, size);
-
-    canvas.save();
-    final double clipHeight = rowCount * cellHeight + commentAreaHeight;
-    canvas.clipRect(
-      Rect.fromLTWH(
-        labelWidth + 1,
-        0,
-        drawAreaWidth - (labelWidth + 1),
-        clipHeight,
-      ),
-    );
-    _signalsManager.drawSignalWaveforms(canvas, signals);
-
-    _drawOmissionLines(canvas, rowCount);
-    canvas.restore();
-    canvas.save();
-    canvas.clipRect(
-      Rect.fromLTWH(
-        labelWidth + 1,
-        0,
-        drawAreaWidth - (labelWidth + 1),
-        rowCount * cellHeight + commentAreaHeight,
-      ),
-    );
-    _signalsManager.drawSelectionHighlight(
-      canvas,
-      startSignalIndex,
-      endSignalIndex,
-      startTimeIndex,
-      endTimeIndex,
-    );
-    canvas.restore();
-
-    // 下部時間ラベル（単位）を先に描画し、その上にコメントボックスを重ねる
-    _gridManager.drawTimeLabels(canvas, size, rowCount, maxTimeSteps);
-
-    canvas.save();
-    canvas.clipRect(
-      Rect.fromLTWH(
-        labelWidth + 1,
-        0,
-        drawAreaWidth - (labelWidth + 1),
-        rowCount * cellHeight + commentAreaHeight,
-      ),
-    );
-    _annotationsManager.drawAnnotations(canvas, size, rowCount);
-    canvas.restore();
-
-    // --- コメント領域の実際の必要高さを計測してStateに通知 ---
-    try {
-      final double chartBottomY = rowCount * cellHeight;
-      double maxBottom = chartBottomY;
-      for (final rect in _annotationsManager.annotationRects.values) {
-        if (rect.bottom > maxBottom) {
-          maxBottom = rect.bottom;
-        }
-      }
-      final double extra = math.max(0.0, maxBottom - chartBottomY);
-      // コメントボックスの下に少し余白（20px）を付ける
-      final double measuredHeight = math.max(40.0, extra + 20.0);
-      onCommentAreaMeasured(measuredHeight);
-    } catch (_) {
-      // 計測に失敗しても描画自体には影響させない
-    }
-
-    annotationRects.clear();
-    annotationRects.addAll(_annotationsManager.getAnnotationRects());
-
-    canvas.restore();
-  }
-
-  void _drawOmissionLines(Canvas canvas, int rowCount) {
-    if (omissionTimeIndices.isEmpty) return;
-
-    final double chartBottom = rowCount * cellHeight;
-    final paint =
-        Paint()
-          ..color = omissionColor
-          ..strokeWidth = 2.0
-          ..style = PaintingStyle.stroke;
-
-    for (final t in omissionTimeIndices) {
-      double x;
-      if (timeUnitIsMs) {
-        double steps = 0.0;
-        for (int k = 0; k < t; k++) {
-          final durSteps =
-              (k < stepDurationsMs.length && msPerStep > 0)
-                  ? stepDurationsMs[k] / msPerStep
-                  : 1.0;
-          steps += durSteps;
-        }
-        x = labelWidth + steps * cellWidth;
-      } else {
-        x = labelWidth + t * cellWidth;
-      }
-      drawDoubleWavyVerticalLine(
-        canvas,
-        Offset(x, 0),
-        Offset(x, chartBottom),
-        paint,
-        amplitude: 12.0,
-        wavelength: 32.0,
-        gap: 8.0,
-        fillColor: omissionFillColor,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _StepTimingChartPainter oldDelegate) {
-    bool signalsChanged = signals.length != oldDelegate.signals.length;
-
-    if (!signalsChanged) {
-      for (int i = 0; i < signals.length; i++) {
-        if (signals[i].length != oldDelegate.signals[i].length) {
-          signalsChanged = true;
-          break;
-        }
-
-        for (int j = 0; j < signals[i].length; j++) {
-          if (signals[i][j] != oldDelegate.signals[i][j]) {
-            signalsChanged = true;
-            break;
-          }
-        }
-
-        if (signalsChanged) break;
-      }
-    }
-
-    return signalsChanged ||
-        signalNames != oldDelegate.signalNames ||
-        annotations != oldDelegate.annotations ||
-        labelColor != oldDelegate.labelColor ||
-        dashedColor != oldDelegate.dashedColor ||
-        omissionColor != oldDelegate.omissionColor ||
-        omissionFillColor != oldDelegate.omissionFillColor ||
-        arrowColor != oldDelegate.arrowColor ||
-        !mapEquals(signalColors, oldDelegate.signalColors) ||
-        selectedAnnotationId != oldDelegate.selectedAnnotationId ||
-        !listEquals(highlightTimeIndices, oldDelegate.highlightTimeIndices) ||
-        !listEquals(omissionTimeIndices, oldDelegate.omissionTimeIndices) ||
-        startSignalIndex != oldDelegate.startSignalIndex ||
-        endSignalIndex != oldDelegate.endSignalIndex ||
-        startTimeIndex != oldDelegate.startTimeIndex ||
-        endTimeIndex != oldDelegate.endTimeIndex ||
-        showIoNumbers != oldDelegate.showIoNumbers ||
-        portNumbers != oldDelegate.portNumbers ||
-        timeUnitIsMs != oldDelegate.timeUnitIsMs ||
-        msPerStep != oldDelegate.msPerStep ||
-        !listEquals(stepDurationsMs, oldDelegate.stepDurationsMs) ||
-        activeStepIndex != oldDelegate.activeStepIndex;
-  }
-}
-
-/// 信号ラベルオーバーレイをレンダリングするカスタムペインター
-///
-/// 左マージン領域に信号名ラベルを描画します。
-/// IOポート番号、プレフィックス、選択された行のハイライトを含みます。
-class _LabelsOverlayPainter extends CustomPainter {
-  _LabelsOverlayPainter({
-    required this.signalNames,
-    required this.signalTypes,
-    required this.showAllSignalTypes,
-    required this.showIoNumbers,
-    required this.portNumbers,
-    required this.ioSources,
-    required this.plcEipMode,
-    required this.labelColor,
-    required this.backgroundColor,
-    required this.labelWidth,
-    required this.chartMarginLeft,
-    required this.cellHeight,
-    required this.highlightStartRow,
-    required this.highlightEndRow,
-  });
-
-  final List<String> signalNames;
-  final List<SignalType> signalTypes;
-  final bool showAllSignalTypes;
-  final bool showIoNumbers;
-  final List<int> portNumbers;
-  final List<IoChannelSource> ioSources;
-  final String plcEipMode;
-  final Color labelColor;
-  final Color backgroundColor;
-  final double labelWidth;
-  final double chartMarginLeft;
-  final double cellHeight;
-  final int? highlightStartRow;
-  final int? highlightEndRow;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final bgPaint =
-        Paint()
-          ..color = backgroundColor
-          ..style = PaintingStyle.fill;
-    final double overlayWidth = (chartMarginLeft + labelWidth - 1).clamp(
-      0.0,
-      double.infinity,
-    );
-    canvas.drawRect(Rect.fromLTWH(0, 0, overlayWidth, size.height), bgPaint);
-
-    final gridPaint =
-        Paint()
-          ..color = labelColor.withAlpha((0.2 * 255).round())
-          ..strokeWidth = 1.0
-          ..style = PaintingStyle.stroke;
-    final double overlayWidthForLines = chartMarginLeft + labelWidth - 1;
-    final int rows = signalNames.length;
-    for (int i = 0; i <= rows; i++) {
-      final double y = i * cellHeight;
-      canvas.drawLine(Offset(0, y), Offset(overlayWidthForLines, y), gridPaint);
-    }
-
-    final borderPaint =
-        Paint()
-          ..color = labelColor.withAlpha((0.35 * 255).round())
-          ..strokeWidth = 1.0;
-    final double borderX = chartMarginLeft + labelWidth;
-    canvas.drawLine(
-      Offset(borderX, 0),
-      Offset(borderX, size.height),
-      borderPaint,
-    );
-
-    final textPainter = TextPainter(
-      textDirection: TextDirection.ltr,
-      maxLines: 2,
-      ellipsis: '...',
-    );
-
-    for (
-      int row = 0;
-      row < signalNames.length && row < signalTypes.length;
-      row++
-    ) {
-      final currentSignalType = signalTypes[row];
-      if (!showAllSignalTypes &&
-          (currentSignalType == SignalType.control ||
-              currentSignalType == SignalType.group ||
-              currentSignalType == SignalType.task)) {
-        continue;
-      }
-
-      bool isHighlighted = false;
-      if (highlightStartRow != null && highlightEndRow != null) {
-        final int minRow =
-            highlightStartRow! < highlightEndRow!
-                ? highlightStartRow!
-                : highlightEndRow!;
-        final int maxRow =
-            highlightStartRow! > highlightEndRow!
-                ? highlightStartRow!
-                : highlightEndRow!;
-        if (row >= minRow && row <= maxRow) {
-          isHighlighted = true;
-        }
-      }
-
-      final int portNum = (row < portNumbers.length) ? portNumbers[row] : 0;
-      final IoChannelSource rawSource =
-          (row < ioSources.length) ? ioSources[row] : IoChannelSource.unknown;
-      final IoChannelSource source = _effectiveSource(rawSource);
-
-      String prefix = '';
-      if (showIoNumbers && portNum > 0) {
-        switch (currentSignalType) {
-          case SignalType.input:
-            prefix = '${_inputPrefixFor(source)}$portNum: ';
-            break;
-          case SignalType.output:
-            prefix = '${_outputPrefixFor(source)}$portNum: ';
-            break;
-          case SignalType.hwTrigger:
-            prefix = 'HW$portNum: ';
-            break;
-          default:
-            break;
-        }
-      }
-
-      final displayName =
-          showIoNumbers ? '$prefix${signalNames[row]}' : signalNames[row];
-      textPainter.text = TextSpan(
-        text: displayName,
-        style: TextStyle(
-          color: isHighlighted ? Colors.orange : labelColor,
-          fontSize: 14,
-          fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal,
-        ),
-      );
-      textPainter.layout(maxWidth: labelWidth - 16);
-      final yCenter = row * cellHeight + (cellHeight - textPainter.height) / 2;
-      textPainter.paint(canvas, Offset(chartMarginLeft + 6, yCenter));
-    }
-  }
-
-  IoChannelSource _effectiveSource(IoChannelSource source) {
-    if (source == IoChannelSource.plcEip) {
-      if (plcEipMode == 'PLC') return IoChannelSource.plc;
-      if (plcEipMode == 'EIP') return IoChannelSource.eip;
-      return IoChannelSource.unknown;
-    }
-    return source;
-  }
-
-  String _inputPrefixFor(IoChannelSource source) {
-    switch (_effectiveSource(source)) {
-      case IoChannelSource.plc:
-        return 'PLI';
-      case IoChannelSource.eip:
-        return 'ESI';
-      default:
-        return 'Input';
-    }
-  }
-
-  String _outputPrefixFor(IoChannelSource source) {
-    switch (_effectiveSource(source)) {
-      case IoChannelSource.plc:
-        return 'PLO';
-      case IoChannelSource.eip:
-        return 'ESO';
-      default:
-        return 'Output';
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _LabelsOverlayPainter oldDelegate) {
-    return signalNames != oldDelegate.signalNames ||
-        signalTypes != oldDelegate.signalTypes ||
-        showAllSignalTypes != oldDelegate.showAllSignalTypes ||
-        showIoNumbers != oldDelegate.showIoNumbers ||
-        portNumbers != oldDelegate.portNumbers ||
-        !listEquals(ioSources, oldDelegate.ioSources) ||
-        plcEipMode != oldDelegate.plcEipMode ||
-        labelColor != oldDelegate.labelColor ||
-        labelWidth != oldDelegate.labelWidth ||
-        cellHeight != oldDelegate.cellHeight ||
-        highlightStartRow != oldDelegate.highlightStartRow ||
-        highlightEndRow != oldDelegate.highlightEndRow;
-  }
-}
+// NOTE: Painter は `timing_chart_painters.dart` に分離しました。

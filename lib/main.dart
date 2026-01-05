@@ -1451,28 +1451,19 @@ class _MyHomePageState extends State<MyHomePage>
                   });
 
                   // スナックバーの表示
-                  final foundIni =
-                      result.vxVisMgrIniContent != null
-                          ? 'OK'
-                          : 'vxVisMgr.iniが見つかりません';
-                  final foundDio =
-                      result.dioMonitorLogCsvContent != null
-                          ? 'OK'
-                          : 'DioMonitorLog.csvが見つかりません';
-                  final foundPlc =
-                      result.plcDioMonitorLogCsvContent != null
-                          ? 'OK'
-                          : 'Plc_DioMonitorLog.csvが見つかりません';
-                  final foundFnl =
-                      result.fnlDioMonitorLogCsvContent != null
-                          ? 'OK'
-                          : 'FNL_DioMonitorLog.csvが見つかりません';
 
                   if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
-                        'ZIPファイルが正常にインポートされました: vxVisMgr.ini:$foundIni  DioMonitorLog.csv:$foundDio  Plc_DioMonitorLog.csv:$foundPlc  FNL_DioMonitorLog.csv:$foundFnl  EnabledSignals:${result.enabledStatusSignals.length}  DioMap:${result.dioOutputAssignments.length}  PlcEipMap:${result.plcEipOutputAssignments.length}',
+                        'ZIPファイルが正常にインポートされました: '
+                        'vxVisMgr.ini:${result.vxVisMgrIniContent != null ? 'OK' : 'vxVisMgr.iniが見つかりません'}  '
+                        'DioMonitorLog.csv:${result.dioMonitorLogCsvContent != null ? 'OK' : 'DioMonitorLog.csvが見つかりません'}  '
+                        'Plc_DioMonitorLog.csv:${result.plcDioMonitorLogCsvContent != null ? 'OK' : 'Plc_DioMonitorLog.csvが見つかりません'}  '
+                        'FNL_DioMonitorLog.csv:${result.fnlDioMonitorLogCsvContent != null ? 'OK' : 'FNL_DioMonitorLog.csvが見つかりません'}  '
+                        'EnabledSignals:${result.enabledStatusSignals.length}  '
+                        'DioMap:${result.dioOutputAssignments.length}  '
+                        'PlcEipMap:${result.plcEipOutputAssignments.length}',
                       ),
                       duration: const Duration(seconds: 3),
                     ),
