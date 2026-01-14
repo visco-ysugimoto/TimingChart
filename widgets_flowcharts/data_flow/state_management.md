@@ -10,20 +10,18 @@ flowchart TD
     A --> C[FormControllersNotifier]
     A --> D[SettingsNotifier]
     A --> E[LocaleNotifier]
-    A --> F[TimingChartController]
     
     B --> G[フォーム状態]
     C --> H[TextEditingController管理]
     D --> I[アプリ設定]
     E --> J[言語設定]
-    F --> K[チャート状態]
+    %% TimingChartController は Provider ではなく HomePage で保持して子へ渡す
     
     style A fill:#e1f5ff
     style B fill:#fff3e0
     style C fill:#e8f5e9
     style D fill:#f3e5f5
     style E fill:#fce4ec
-    style F fill:#ffebee
 ```
 
 ## 各Notifierの役割
@@ -151,12 +149,17 @@ MultiProvider(
   providers: [
     ChangeNotifierProvider(create: (_) => FormStateNotifier()),
     ChangeNotifierProvider(create: (_) => FormControllersNotifier()),
-    ChangeNotifierProvider(create: (_) => SettingsNotifier()),
     ChangeNotifierProvider(create: (_) => LocaleNotifier()),
+    ChangeNotifierProvider(create: (_) => SettingsNotifier()),
   ],
-  child: MyApp(),
+  child: TimingChartGeneratorApp(),
 )
 ```
+
+## TimingChartController について（補足）
+
+`TimingChartController` は `Provider` 経由ではなく、`TimingChartGeneratorHomePage` の state が生成して
+`TimingChart(controller: ...)` として子に渡します（依存性注入）。
 
 ## 関連ファイル
 

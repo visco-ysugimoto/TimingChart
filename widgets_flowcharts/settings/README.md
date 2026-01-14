@@ -32,6 +32,10 @@ flowchart TD
     
     G --> Q[日本語]
     G --> R[英語]
+
+    %% 補足:
+    %% - 言語は SettingsNotifier ではなく LocaleNotifier を更新
+    %% - IO番号表示は SettingsNotifier ではなく親(HomePage)の state で保持（SharedPreferencesへ保存）
     
     style A fill:#e1f5ff
     style B fill:#fff3e0

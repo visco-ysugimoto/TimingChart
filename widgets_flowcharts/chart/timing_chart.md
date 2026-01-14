@@ -8,6 +8,24 @@
 - ズーム、パン、編集機能
 - アノテーション（コメント）の追加・編集
 - ステップベースとミリ秒ベースの時間単位サポート
+- 信号行の並び替え（ラベルドラッグ）
+- 選択範囲操作（反転/挿入/削除/複製/省略 など）
+- キーボード操作（ショートカット、横スクロール等）
+
+## 実装構成（part ファイル）
+
+`timing_chart.dart` は責務ごとに `part` へ分割されています。
+
+- **`timing_chart_types.dart`**: 内部用型/計算ユーティリティ
+- **`timing_chart_auto_comments.dart`**: 自動コメント生成/補助
+- **`timing_chart_painters.dart`**: 描画（CustomPainter）と各 Manager の組み立て
+- **`timing_chart_export.dart`**: エクスポート/外部連携（取得系APIなど）
+- **`timing_chart_selection_ops.dart`**: 選択/編集操作（セル反転、列操作、正規化等）
+- **`timing_chart_gestures.dart`**: ジェスチャー（タップ/ドラッグ、アノテーションドラッグ等）
+- **`timing_chart_edit_steps.dart`**: ステップ編集モード（境界編集/ハイライト等）
+- **`timing_chart_zoom_scroll.dart`**: ズーム/スクロール（アンカー補正、ホイールズーム、キー横スクロール）
+- **`timing_chart_keyboard.dart`**: キーボード操作（ショートカット）
+- **`timing_chart_row_reorder.dart`**: 行並べ替え（ラベルドラッグによる reorder）
 
 ## レンダリングフロー
 
@@ -22,19 +40,20 @@ flowchart TD
     A --> G[CustomPaint作成]
     G --> H[CustomPainter.paint呼び出し]
     
-    H --> I[ChartGridManager.drawGridLines]
+    H --> I[ChartGridManager]
     I --> I1[縦線描画]
     I --> I2[横線描画]
-    I --> I3[信号ラベル描画]
-    I --> I4[時間ラベル描画]
+    I --> I3[drawSignalLabels（信号ラベル）]
+    I --> I4[drawTimeLabels（下部時間ラベル）]
     
-    H --> J[ChartSignalsManager.drawSignalWaveforms]
+    H --> J[ChartSignalsManager]
     J --> J1[各信号行をループ]
     J1 --> J2[信号タイプに応じた色設定]
     J2 --> J3[水平線描画]
     J2 --> J4[垂直線描画]
+    J --> J5[選択範囲ハイライト描画]
     
-    H --> K[ChartAnnotationsManager.drawAnnotations]
+    H --> K[ChartAnnotationsManager]
     K --> K1[アノテーションソート]
     K1 --> K2[コメント位置計算]
     K2 --> K3[破線描画]
@@ -65,17 +84,17 @@ flowchart TD
 - セル幅・高さの計算
 - ズーム係数の計算
 
-### _handlePanUpdate()
+### _onPanUpdate() / _onPanStart() / _onPanEnd()
 パン（ドラッグ）処理を実行します。
 
-### _handleScaleUpdate()
-ズーム処理を実行します。
+### _handlePointerSignal()
+ズーム/ホイール入力を処理します（**Ctrl/Meta + ホイール**でズーム、アンカー補正あり）。
 
 ### _handleTap()
 タップ処理を実行します（信号編集など）。
 
-### _toggleSignalValue()
-信号値をトグルします（0 ↔ 1）。
+### _toggleSingleSignal() / _toggleSignalsInSelection()
+信号値をトグルします（0 ↔ 1）。選択範囲がある場合は範囲内を一括で反転します。
 
 ## データ構造
 
@@ -96,7 +115,8 @@ flowchart TD
 ## インタラクション処理
 
 ### ズーム
-- マウスホイールまたはピンチジェスチャーでズーム
+- **Ctrl/Meta + マウスホイール**でズーム（アンカー補正あり）
+- ボタン操作（ズームイン/アウト/リセット/選択範囲フィット等）も提供
 - ズーム係数は `minZoomFactorForView` と `maxZoomFactorForView` の範囲内に制限
 
 ### パン
@@ -104,8 +124,12 @@ flowchart TD
 - ビューポートの範囲内に制限
 
 ### 信号編集
-- タップで信号値をトグル（0 ↔ 1）
+- タップで単一セルをトグル（0 ↔ 1）
+- 選択範囲がある場合は範囲内を一括反転
 - アンドゥ/リドゥ機能をサポート
+
+### 行の並べ替え
+- 左ラベル領域をドラッグして行を並べ替えます（`timing_chart_row_reorder.dart`）
 
 ### アノテーション編集
 - アノテーションの追加・編集・削除

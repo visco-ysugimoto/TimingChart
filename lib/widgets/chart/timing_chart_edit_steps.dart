@@ -241,6 +241,73 @@ extension _TimingChartEditStepsExt on TimingChartState {
       _setState(() => _activeStepIndex = idx);
     });
   }
+
+  /// ステップ継続時間をカンマ区切りで一括編集するダイアログを開きます。
+  ///
+  /// `TimingChartState` 側ではフォーカス制御（ショートカット衝突回避）を行うため、
+  /// `_focusNode` を一時的に `canRequestFocus=false` にしてからダイアログを表示します。
+  Future<void> _onEditStepDurationsPressedImpl() async {
+    final settings = Provider.of<SettingsNotifier>(context, listen: false);
+    final maxLen =
+        signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
+    settings.ensureStepDurationsLength(maxLen);
+    final controller = TextEditingController(
+      text: settings.stepDurationsMs.join(','),
+    );
+
+    final bool prevCanRequest = _focusNode.canRequestFocus;
+    _focusNode.canRequestFocus = false;
+    FocusScope.of(context).unfocus();
+
+    final ok =
+            await showDialog<bool>(
+              context: context,
+              builder: _buildEditStepDurationsDialogImpl(controller),
+            ) ??
+        false;
+
+    _focusNode.canRequestFocus = prevCanRequest;
+    if (mounted) _focusNode.requestFocus();
+    if (!ok) return;
+
+    final parts = controller.text.split(',');
+    final parsed = <double>[];
+    for (final p in parts) {
+      final v = double.tryParse(p.trim());
+      if (v != null && v > 0) parsed.add(v);
+    }
+    if (parsed.isNotEmpty) {
+      settings.setStepDurationsMs(parsed);
+      _useControllerStepDurations = true;
+      _controller?.setStepDurationsMs(settings.stepDurationsMs);
+    }
+  }
+
+  Widget Function(BuildContext) _buildEditStepDurationsDialogImpl(
+    TextEditingController controller,
+  ) {
+    return (ctx) => AlertDialog(
+          title: const Text('Step durations (ms, comma-separated)'),
+          content: TextField(
+            controller: controller,
+            minLines: 3,
+            maxLines: 6,
+            decoration: const InputDecoration(
+              hintText: 'e.g. 1,1,2,0.5,0.5,3',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Apply'),
+            ),
+          ],
+        );
+  }
 }
 
 

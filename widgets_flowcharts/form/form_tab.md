@@ -29,8 +29,8 @@ flowchart TD
     
     H --> J[CustomDropdown]
     
-    K[Update Chart ボタン押下] --> L[SignalData生成]
-    L --> M[onUpdateChartコールバック]
+    K[Update Chart ボタン押下] --> L[更新パラメータ生成<br/>(names / values / types / ports / ioSources)]
+    L --> M[onUpdateChart コールバック]
     
     style A fill:#e1f5ff
     style D fill:#fff3e0
@@ -61,21 +61,21 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    A[Update Chart ボタン押下] --> B[ChartDataGenerator.generateSignalData呼び出し]
-    B --> C[入力信号データ生成]
-    B --> D[出力信号データ生成]
-    B --> E[HWトリガー信号データ生成]
-    B --> F[信号タイプ配列生成]
-    B --> G[ポート番号配列生成]
+    A[Update Chart ボタン押下] --> B[FormTab._onUpdateChart]
+    B --> C[generateSignalNames()]
+    B --> D[generateFilteredChartData()]
+    B --> E[generateSignalTypes()]
+    B --> F[generatePortNumbers()]
+    B --> G[generateIoChannelSources()]
     
-    C --> H[SignalDataオブジェクト作成]
+    C --> H[可視信号のみへフィルタ]
     D --> H
     E --> H
     F --> H
     G --> H
     
-    H --> I[onUpdateChartコールバック]
-    I --> J[MyHomePageにSignalDataを渡す]
+    H --> I[onUpdateChart コールバック]
+    I --> J[TimingChartGeneratorHomePage に渡す]
     
     style A fill:#ffebee
     style H fill:#e3f2fd
@@ -95,18 +95,24 @@ flowchart LR
 
 ### _onUpdateChart()
 チャート更新処理を実行します。
-- `ChartDataGenerator.generateSignalData()` を呼び出し
-- `SignalData` オブジェクトを作成
-- `onUpdateChart` コールバックを呼び出し
+- `FormTabState` が `names / values / types / ports / ioSources` を生成（可視信号のみ）
+- `onUpdateChart` コールバックを呼び出し（親: `TimingChartGeneratorHomePage`）
 
 ## データ構造
 
-### SignalData
-チャートに渡す信号データ。
-- `signalNames`: 信号名のリスト
-- `signals`: 信号値のリスト（各行は時間経過に伴う0/1値のリスト）
-- `signalTypes`: 信号タイプのリスト
-- `portNumbers`: ポート番号のリスト
+### onUpdateChart コールバック引数
+`FormTab` は `SignalData` オブジェクト1個を渡すのではなく、以下の配列をまとめて親へ渡します。
+
+- `names: List<String>`: 信号名（可視信号のみ）
+- `values: List<List<int>>`: 波形（可視信号のみ）
+- `types: List<SignalType>`: 信号タイプ（可視信号のみ）
+- `ports: List<int>`: ポート番号（可視信号のみ）
+- `ioSources: List<IoChannelSource>`: IOソース（可視信号のみ）
+- `overrideFlag: bool`: 既存値を上書きするか（現状は主に `false`）
+
+### SignalData（内部表現）
+フォーム内では `lib/models/chart/signal_data.dart` の `SignalData(name, signalType, values, isVisible)` を使って
+「可視性や型を含む信号一覧」を保持し、`Update Chart` 時に可視信号だけを抽出して上記配列にします。
 
 ## 関連ファイル
 

@@ -33,7 +33,6 @@ import 'providers/timing_chart_controller.dart';
 import 'dart:math' as math;
 import 'widgets/common/version_info_dialog.dart';
 import 'services/ziq_import_service.dart';
-import 'models/ziq/output_assignment.dart';
 import 'services/chart_update_service.dart';
 import 'services/export_service.dart';
 
@@ -66,9 +65,173 @@ Future<void> main() async {
         ChangeNotifierProvider(create: (_) => LocaleNotifier()),
         ChangeNotifierProvider(create: (_) => SettingsNotifier()),
       ],
-      child: const MyApp(),
+      child: const TimingChartGeneratorApp(),
     ),
   );
+}
+
+void _printZiqFilesStatus({
+  required String ziqLabel,
+  required String? ini,
+  required String? dio,
+  required String? plc,
+  required String? fnl,
+}) {
+  debugPrint('ZIQ_IMPORT_TEST: $ziqLabel');
+  debugPrint(' - vxVisMgr.ini: ${ini != null ? 'OK' : 'MISSING'}');
+  debugPrint(' - DioMonitorLog.csv: ${dio != null ? 'OK' : 'MISSING'}');
+  debugPrint(' - Plc_DioMonitorLog.csv: ${plc != null ? 'OK' : 'MISSING'}');
+  debugPrint(' - FNL_DioMonitorLog.csv: ${fnl != null ? 'OK' : 'MISSING'}');
+}
+
+List<MapEntry<String, String>> _collectCsvPairs({
+  required String? dio,
+  required String? plc,
+  required String? fnl,
+}) {
+  final csvPairs = <MapEntry<String, String>>[];
+  if (dio != null && dio.isNotEmpty) csvPairs.add(MapEntry('DIO', dio));
+  if (plc != null && plc.isNotEmpty) csvPairs.add(MapEntry('PLC', plc));
+  if (fnl != null && fnl.isNotEmpty) csvPairs.add(MapEntry('EIP', fnl));
+  return csvPairs;
+}
+
+Future<void> _runZiqImportTestFromContents({
+  required String? ini,
+  required String? dio,
+  required String? plc,
+  required String? fnl,
+}) async {
+  if (ini != null) {
+    final ioActive = VxVisMgrParser.parseIOActive(ini);
+    final ioSetting = VxVisMgrParser.parseIOSetting(ini);
+    final enabled =
+        VxVisMgrParser.parseStatusSignalSettings(
+          ini,
+        ).where((s) => s.enabled).toList();
+
+    if (ioActive != null) {
+      debugPrint(
+        ' IOActive: pinPorts=${ioActive.pinPorts}, poutPorts=${ioActive.poutPorts}',
+      );
+    }
+    if (ioSetting != null) {
+      final trigger =
+          (ioSetting.plcCommandEnabled || ioSetting.ethernetIpCommandEnabled)
+              ? 'Command Trigger'
+              : (ioSetting.triggerMode == 0
+                  ? 'Code Trigger'
+                  : 'Single Trigger');
+      final plcEip =
+          ioSetting.plcLinkEnabled
+              ? 'PLC'
+              : (ioSetting.ethernetIpEnabled ? 'EIP' : 'None');
+      debugPrint(' IOSetting: trigger=$trigger, PLC/EIP=$plcEip');
+    }
+    debugPrint(' Enabled signals: ${enabled.length}');
+  }
+
+  final csvPairs = _collectCsvPairs(dio: dio, plc: plc, fnl: fnl);
+  if (csvPairs.isEmpty) return;
+
+  final timeline = CsvIoLogParser.parseTimelineMulti(csvPairs);
+  final active = ActivePortDetector.detectActivePorts(csvPairs);
+  final activeIn = ActivePortDetector.detectActiveInputPorts(csvPairs);
+  final activePrintable = <String, List<int>>{
+    for (final e in active.entries) e.key: (e.value.toList()..sort()),
+  };
+  debugPrint(
+    ' Timeline: rows=${timeline.entries.length} (信号データが存在します), inPorts=${timeline.inPortCount}, outPorts=${timeline.outPortCount}',
+  );
+  debugPrint(' Active output ports: $activePrintable');
+  final activeInPrintable = <String, List<int>>{
+    for (final e in activeIn.entries) e.key: (e.value.toList()..sort()),
+  };
+  debugPrint(' Active input ports: $activeInPrintable');
+
+  if (ini == null) return;
+
+  final mapping = await VxVisMgrMappingLoader.loadMapping();
+  final enabled =
+      VxVisMgrParser.parseStatusSignalSettings(
+        ini,
+      ).where((s) => s.enabled).toList();
+
+  String plcEipOption = 'None';
+  final ioSetting2 = VxVisMgrParser.parseIOSetting(ini);
+  if (ioSetting2 != null) {
+    if (ioSetting2.plcLinkEnabled) {
+      plcEipOption = 'PLC';
+    } else if (ioSetting2.ethernetIpEnabled) {
+      plcEipOption = 'EIP';
+    }
+  }
+
+  final namesBySourcePort = <String, Map<int, String>>{
+    'DIO': <int, String>{},
+    'PLC': <int, String>{},
+    'EIP': <int, String>{},
+  };
+  for (final s in enabled) {
+    if (!s.portNoByIndex.containsKey(0)) continue;
+    final n0 = s.portNoByIndex[0]! + 1;
+    final type = s.portTypeByIndex[0];
+    final label = mapping[s.name] ?? s.name;
+    if (type != null && type != 0) {
+      final src = plcEipOption == 'PLC' ? 'PLC' : 'EIP';
+      namesBySourcePort[src]![n0] = label;
+    } else {
+      namesBySourcePort['DIO']![n0] = label;
+    }
+  }
+
+  String fallbackName(String source, int port) {
+    if (source == 'DIO') return 'Output$port';
+    if (source == 'PLC') return 'PLO$port';
+    if (source == 'EIP') return 'ESO$port';
+    return 'Port$port';
+  }
+
+  debugPrint(' ActivePort Names:');
+  for (final source in ['DIO', 'PLC', 'EIP']) {
+    final ports = active[source];
+    if (ports == null || ports.isEmpty) continue;
+    final sorted = ports.toList()..sort();
+    for (final p in sorted) {
+      final name = namesBySourcePort[source]?[p] ?? fallbackName(source, p);
+      debugPrint('  - $source:$p -> $name');
+    }
+  }
+
+  debugPrint(' Enabled (INI) Signals:');
+  for (final source in ['DIO', 'PLC', 'EIP']) {
+    final map = namesBySourcePort[source]!;
+    if (map.isEmpty) continue;
+    final keys = map.keys.toList()..sort();
+    for (final p in keys) {
+      debugPrint('  - $source:$p -> ${map[p]}');
+    }
+  }
+
+  final definedPorts = <String, Set<int>>{
+    'DIO': namesBySourcePort['DIO']!.keys.toSet(),
+    'PLC': namesBySourcePort['PLC']!.keys.toSet(),
+    'EIP': namesBySourcePort['EIP']!.keys.toSet(),
+  };
+  final undefinedActivePorts = <String, List<int>>{};
+  for (final source in ['DIO', 'PLC', 'EIP']) {
+    final act = active[source] ?? <int>{};
+    final def = definedPorts[source] ?? <int>{};
+    final diff = act.difference(def).toList()..sort();
+    if (diff.isNotEmpty) {
+      undefinedActivePorts[source] = diff;
+    }
+  }
+  if (undefinedActivePorts.isEmpty) {
+    debugPrint(' Undefined ActivePorts: none');
+  } else {
+    debugPrint(' Undefined ActivePorts: $undefinedActivePorts');
+  }
 }
 
 /// ZIQインポートテストモードを実行します
@@ -83,60 +246,19 @@ Future<void> _runZiqImportTestMode() async {
       final dio = files['DioMonitorLog.csv'];
       final plc = files['Plc_DioMonitorLog.csv'];
       final fnl = files['FNL_DioMonitorLog.csv'];
-
-      print('ZIQ_IMPORT_TEST: "$kZiqPath" ziqファイルパス');
-      print(' - vxVisMgr.ini: ${ini != null ? 'OK' : 'MISSING'}');
-      print(' - DioMonitorLog.csv: ${dio != null ? 'OK' : 'MISSING'}');
-      print(' - Plc_DioMonitorLog.csv: ${plc != null ? 'OK' : 'MISSING'}');
-      print(' - FNL_DioMonitorLog.csv: ${fnl != null ? 'OK' : 'MISSING'}');
-
-      if (ini != null) {
-        final ioActive = VxVisMgrParser.parseIOActive(ini);
-        final ioSetting = VxVisMgrParser.parseIOSetting(ini);
-        final enabled =
-            VxVisMgrParser.parseStatusSignalSettings(
-              ini,
-            ).where((s) => s.enabled).toList();
-
-        if (ioActive != null) {
-          print(
-            ' IOActive: pinPorts=${ioActive.pinPorts}, poutPorts=${ioActive.poutPorts}',
-          );
-        }
-        if (ioSetting != null) {
-          final trigger =
-              (ioSetting.plcCommandEnabled ||
-                      ioSetting.ethernetIpCommandEnabled)
-                  ? 'Command Trigger'
-                  : (ioSetting.triggerMode == 0
-                      ? 'Code Trigger'
-                      : 'Single Trigger');
-          final plcEip =
-              ioSetting.plcLinkEnabled
-                  ? 'PLC'
-                  : (ioSetting.ethernetIpEnabled ? 'EIP' : 'None');
-          print(' IOSetting: trigger=$trigger, PLC/EIP=$plcEip');
-        }
-        print(' Enabled signals: ${enabled.length}');
-      }
-
-      final csvPairs = <MapEntry<String, String>>[];
-      if (dio != null && dio.isNotEmpty) csvPairs.add(MapEntry('DIO', dio));
-      if (plc != null && plc.isNotEmpty) csvPairs.add(MapEntry('PLC', plc));
-      if (fnl != null && fnl.isNotEmpty) csvPairs.add(MapEntry('EIP', fnl));
-      if (csvPairs.isNotEmpty) {
-        final timeline = CsvIoLogParser.parseTimelineMulti(csvPairs);
-        final active = ActivePortDetector.detectActivePorts(csvPairs);
-        final activeIn = ActivePortDetector.detectActiveInputPorts(csvPairs);
-        final activePrintable = <String, List<int>>{
-          for (final e in active.entries) e.key: (e.value.toList()..sort()),
-        };
-        print(' Active output ports: $activePrintable');
-        print(
-          ' Active input ports: ${{for (final e in activeIn.entries) e.key: (e.value.toList()..sort())}}',
-        );
-        print(' Timeline entries: ${timeline.entries.length}');
-      }
+      _printZiqFilesStatus(
+        ziqLabel: '"$kZiqPath" ziqファイルパス',
+        ini: ini,
+        dio: dio,
+        plc: plc,
+        fnl: fnl,
+      );
+      await _runZiqImportTestFromContents(
+        ini: ini,
+        dio: dio,
+        plc: plc,
+        fnl: fnl,
+      );
       io.exit(0);
     }
 
@@ -150,147 +272,14 @@ Future<void> _runZiqImportTestMode() async {
     final dio = pickedFiles['DioMonitorLog.csv'];
     final plc = pickedFiles['Plc_DioMonitorLog.csv'];
     final fnl = pickedFiles['FNL_DioMonitorLog.csv'];
-
-    print('ZIQ_IMPORT_TEST: ziqファイル選択');
-    print(' - vxVisMgr.ini: ${ini != null ? 'OK' : 'MISSING'}');
-    print(' - DioMonitorLog.csv: ${dio != null ? 'OK' : 'MISSING'}');
-    print(' - Plc_DioMonitorLog.csv: ${plc != null ? 'OK' : 'MISSING'}');
-    print(' - FNL_DioMonitorLog.csv: ${fnl != null ? 'OK' : 'MISSING'}');
-
-    if (ini != null) {
-      final ioActive = VxVisMgrParser.parseIOActive(ini);
-      final ioSetting = VxVisMgrParser.parseIOSetting(ini);
-      final enabled =
-          VxVisMgrParser.parseStatusSignalSettings(
-            ini,
-          ).where((s) => s.enabled).toList();
-
-      if (ioActive != null) {
-        print(
-          ' IOActive: pinPorts=${ioActive.pinPorts}, poutPorts=${ioActive.poutPorts}',
-        );
-      }
-      if (ioSetting != null) {
-        final trigger =
-            (ioSetting.plcCommandEnabled || ioSetting.ethernetIpCommandEnabled)
-                ? 'Command Trigger'
-                : (ioSetting.triggerMode == 0
-                    ? 'Code Trigger'
-                    : 'Single Trigger');
-        final plcEip =
-            ioSetting.plcLinkEnabled
-                ? 'PLC'
-                : (ioSetting.ethernetIpEnabled ? 'EIP' : 'None');
-        print(' IOSetting: trigger=$trigger, PLC/EIP=$plcEip');
-      }
-      print(' Enabled signals: ${enabled.length}');
-    }
-
-    final csvPairs = <MapEntry<String, String>>[];
-    if (dio != null && dio.isNotEmpty) csvPairs.add(MapEntry('DIO', dio));
-    if (plc != null && plc.isNotEmpty) csvPairs.add(MapEntry('PLC', plc));
-    if (fnl != null && fnl.isNotEmpty) csvPairs.add(MapEntry('EIP', fnl));
-    if (csvPairs.isNotEmpty) {
-      final timeline = CsvIoLogParser.parseTimelineMulti(csvPairs);
-      final active = ActivePortDetector.detectActivePorts(csvPairs);
-      final activeIn = ActivePortDetector.detectActiveInputPorts(csvPairs);
-      final activePrintable = <String, List<int>>{
-        for (final e in active.entries) e.key: (e.value.toList()..sort()),
-      };
-      print(
-        ' Timeline: rows=${timeline.entries.length} (信号データが存在します), inPorts=${timeline.inPortCount}, outPorts=${timeline.outPortCount}',
-      );
-      print(' ActivePorts: $activePrintable');
-      final activeInPrintable = <String, List<int>>{
-        for (final e in activeIn.entries) e.key: (e.value.toList()..sort()),
-      };
-      print(' ActiveInputPorts: $activeInPrintable');
-
-      if (ini != null) {
-        final mapping = await VxVisMgrMappingLoader.loadMapping();
-        final enabled =
-            VxVisMgrParser.parseStatusSignalSettings(
-              ini,
-            ).where((s) => s.enabled).toList();
-
-        String plcEipOption = 'None';
-        final ioSetting2 = VxVisMgrParser.parseIOSetting(ini);
-        if (ioSetting2 != null) {
-          if (ioSetting2.plcLinkEnabled) {
-            plcEipOption = 'PLC';
-          } else if (ioSetting2.ethernetIpEnabled) {
-            plcEipOption = 'EIP';
-          }
-        }
-
-        final namesBySourcePort = <String, Map<int, String>>{
-          'DIO': <int, String>{},
-          'PLC': <int, String>{},
-          'EIP': <int, String>{},
-        };
-        for (final s in enabled) {
-          if (!s.portNoByIndex.containsKey(0)) continue;
-          final n0 = s.portNoByIndex[0]! + 1;
-          final type = s.portTypeByIndex[0];
-          final label = mapping[s.name] ?? s.name;
-          if (type != null && type != 0) {
-            final src = plcEipOption == 'PLC' ? 'PLC' : 'EIP';
-            namesBySourcePort[src]![n0] = label;
-          } else {
-            namesBySourcePort['DIO']![n0] = label;
-          }
-        }
-
-        String fallbackName(String source, int port) {
-          if (source == 'DIO') return 'Output$port';
-          if (source == 'PLC') return 'PLO$port';
-          if (source == 'EIP') return 'ESO$port';
-          return 'Port$port';
-        }
-
-        print(' ActivePort Names:');
-        for (final source in ['DIO', 'PLC', 'EIP']) {
-          final ports = active[source];
-          if (ports == null || ports.isEmpty) continue;
-          final sorted = ports.toList()..sort();
-          for (final p in sorted) {
-            final name =
-                namesBySourcePort[source]?[p] ?? fallbackName(source, p);
-            print('  - $source:$p -> $name');
-          }
-        }
-
-        print(' Enabled (INI) Signals:');
-        for (final source in ['DIO', 'PLC', 'EIP']) {
-          final map = namesBySourcePort[source]!;
-          if (map.isEmpty) continue;
-          final keys = map.keys.toList()..sort();
-          for (final p in keys) {
-            print('  - $source:$p -> ${map[p]}');
-          }
-        }
-
-        final definedPorts = <String, Set<int>>{
-          'DIO': namesBySourcePort['DIO']!.keys.toSet(),
-          'PLC': namesBySourcePort['PLC']!.keys.toSet(),
-          'EIP': namesBySourcePort['EIP']!.keys.toSet(),
-        };
-        final undefinedActivePorts = <String, List<int>>{};
-        for (final source in ['DIO', 'PLC', 'EIP']) {
-          final act = active[source] ?? <int>{};
-          final def = definedPorts[source] ?? <int>{};
-          final diff = act.difference(def).toList()..sort();
-          if (diff.isNotEmpty) {
-            undefinedActivePorts[source] = diff;
-          }
-        }
-        if (undefinedActivePorts.isEmpty) {
-          print(' Undefined ActivePorts: none');
-        } else {
-          print(' Undefined ActivePorts: $undefinedActivePorts');
-        }
-      }
-    }
+    _printZiqFilesStatus(
+      ziqLabel: 'ziqファイル選択',
+      ini: ini,
+      dio: dio,
+      plc: plc,
+      fnl: fnl,
+    );
+    await _runZiqImportTestFromContents(ini: ini, dio: dio, plc: plc, fnl: fnl);
 
     io.exit(0);
   } catch (e, st) {
@@ -303,8 +292,8 @@ Future<void> _runZiqImportTestMode() async {
 ///
 /// テーマ設定、ローカライゼーション、言語設定を管理し、
 /// MaterialAppを構築してアプリ全体の設定を行います。
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class TimingChartGeneratorApp extends StatelessWidget {
+  const TimingChartGeneratorApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -358,21 +347,23 @@ class MyApp extends StatelessWidget {
           supportedLocales: S.delegate.supportedLocales,
           locale: localeNotifier.locale,
 
-          home: const MyHomePage(),
+          home: const TimingChartGeneratorHomePage(),
         );
       },
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key});
+class TimingChartGeneratorHomePage extends StatefulWidget {
+  const TimingChartGeneratorHomePage({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<TimingChartGeneratorHomePage> createState() =>
+      _TimingChartGeneratorHomePageState();
 }
 
-class _MyHomePageState extends State<MyHomePage>
+class _TimingChartGeneratorHomePageState
+    extends State<TimingChartGeneratorHomePage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
@@ -386,22 +377,7 @@ class _MyHomePageState extends State<MyHomePage>
   List<IoChannelSource> _chartIoSources = [];
   List<TimingChartAnnotation> _chartAnnotations = [];
   late final TimingChartController _chartController;
-
-  // ZIQインポート結果を保持（エクスポート機能で使用される可能性がある）
-  String? _vxVisMgrIniContent;
-  String? _dioMonitorLogCsvContent;
-  String? _plcDioMonitorLogCsvContent;
-  String? _fnlDioMonitorLogCsvContent;
-
-  List<String> _enabledStatusSignals = [];
-
-  List<StatusSignalSetting> _enabledSignalStructures = [];
-
-  List<OutputAssignment> _dioOutputAssignments = [];
-  List<OutputAssignment> _plcEipOutputAssignments = [];
   String _plcEipOption = 'None';
-
-  Map<String, String> _vxvisNameToSuggestionId = {};
 
   bool _isImportingZiq = false;
 
@@ -446,17 +422,8 @@ class _MyHomePageState extends State<MyHomePage>
   List<TextEditingController> get _hwTriggerControllers =>
       _controllersNotifier.hwTriggerControllers;
 
-  /// DIO入力とPLC/EIP入力を交換します
-  ///
-  /// 入力フィールドの値を交換し、対応するチャート信号の値も更新します。
-  /// チャートとフォームの両方の状態を同期させます。
-  Future<void> _transferInputs(
-    List<TextEditingController> dioControllers,
-    List<TextEditingController> plcControllers,
-  ) async {
-    final form = _formTabKey.currentState;
+  Map<String, List<int>> _snapshotNameToValues() {
     final chart = _timingChartKey.currentState;
-
     final currentNames =
         chart?.getSignalIdNames() ?? _chartSignals.map((s) => s.name).toList();
     final currentValues =
@@ -468,6 +435,43 @@ class _MyHomePageState extends State<MyHomePage>
     for (int i = 0; i < currentNames.length; i++) {
       nameToValues[currentNames[i]] = List<int>.from(currentValues[i]);
     }
+    return nameToValues;
+  }
+
+  void _commitNameToValues(Map<String, List<int>> nameToValues) {
+    final updatedSignals =
+        _chartSignals.map((signal) {
+          final stored = nameToValues[signal.name];
+          if (stored != null) {
+            return signal.copyWith(values: stored);
+          }
+          return signal;
+        }).toList();
+
+    setState(() {
+      _chartSignals = updatedSignals;
+    });
+
+    final form = _formTabKey.currentState;
+    form?.registerExternalSignalValues(nameToValues);
+
+    final chart = _timingChartKey.currentState;
+    if (chart != null) {
+      chart.updateSignalNames(updatedSignals.map((e) => e.name).toList());
+      chart.updateSignals(updatedSignals.map((e) => e.values).toList());
+    }
+  }
+
+  /// DIO入力とPLC/EIP入力を交換します
+  ///
+  /// 入力フィールドの値を交換し、対応するチャート信号の値も更新します。
+  /// チャートとフォームの両方の状態を同期させます。
+  Future<void> _transferInputs(
+    List<TextEditingController> dioControllers,
+    List<TextEditingController> plcControllers,
+  ) async {
+    final form = _formTabKey.currentState;
+    final nameToValues = _snapshotNameToValues();
 
     final int len = math.min(dioControllers.length, plcControllers.length);
     for (int i = 0; i < len; i++) {
@@ -502,25 +506,7 @@ class _MyHomePageState extends State<MyHomePage>
       }
     }
 
-    final updatedSignals =
-        _chartSignals.map((signal) {
-          final stored = nameToValues[signal.name];
-          if (stored != null) {
-            return signal.copyWith(values: stored);
-          }
-          return signal;
-        }).toList();
-
-    setState(() {
-      _chartSignals = updatedSignals;
-    });
-
-    form?.registerExternalSignalValues(nameToValues);
-
-    if (chart != null) {
-      chart.updateSignalNames(updatedSignals.map((e) => e.name).toList());
-      chart.updateSignals(updatedSignals.map((e) => e.values).toList());
-    }
+    _commitNameToValues(nameToValues);
   }
 
   /// DIO出力とPLC/EIP出力を交換します
@@ -532,19 +518,7 @@ class _MyHomePageState extends State<MyHomePage>
     List<TextEditingController> plcControllers,
   ) async {
     final form = _formTabKey.currentState;
-    final chart = _timingChartKey.currentState;
-
-    final currentNames =
-        chart?.getSignalIdNames() ?? _chartSignals.map((s) => s.name).toList();
-    final currentValues =
-        chart != null
-            ? chart.getChartData()
-            : _chartSignals.map((s) => s.values).toList();
-
-    final nameToValues = <String, List<int>>{};
-    for (int i = 0; i < currentNames.length; i++) {
-      nameToValues[currentNames[i]] = List<int>.from(currentValues[i]);
-    }
+    final nameToValues = _snapshotNameToValues();
 
     final int len = math.min(dioControllers.length, plcControllers.length);
     for (int i = 0; i < len; i++) {
@@ -571,25 +545,7 @@ class _MyHomePageState extends State<MyHomePage>
       plcControllers[i].text = tmp;
     }
 
-    final updatedSignals =
-        _chartSignals.map((signal) {
-          final stored = nameToValues[signal.name];
-          if (stored != null) {
-            return signal.copyWith(values: stored);
-          }
-          return signal;
-        }).toList();
-
-    setState(() {
-      _chartSignals = updatedSignals;
-    });
-
-    form?.registerExternalSignalValues(nameToValues);
-
-    if (chart != null) {
-      chart.updateSignalNames(updatedSignals.map((e) => e.name).toList());
-      chart.updateSignals(updatedSignals.map((e) => e.values).toList());
-    }
+    _commitNameToValues(nameToValues);
   }
 
   /// チャートの信号が変更された際の処理を行います
@@ -1142,6 +1098,63 @@ class _MyHomePageState extends State<MyHomePage>
     );
   }
 
+  List<Widget> _buildAppBarActions(S s) {
+    final locale = Provider.of<LocaleNotifier>(context).locale;
+    return [
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+        child: Center(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.language, color: Colors.white),
+              const SizedBox(width: 4),
+              Text(
+                locale.languageCode == 'ja'
+                    ? 'JP'
+                    : locale.languageCode.toUpperCase(),
+                style: GoogleFonts.notoSansJp(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(width: 12),
+              IconButton(
+                tooltip: s.menu_help,
+                icon: const Icon(Icons.help_outline),
+                color: Colors.white,
+                visualDensity: VisualDensity.compact,
+                onPressed: () => _showGlobalHelpDialog(context),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ];
+  }
+
+  Widget _buildImportingOverlay() {
+    return Positioned.fill(
+      child: Container(
+        color: Colors.black.withAlpha((0.35 * 255).round()),
+        child: const Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 12),
+              Text(
+                'ZIPファイルが正常にインポートされました...',
+                style: TextStyle(color: Colors.white),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   /// ウィジェットの破棄処理を行います
   ///
   /// タブコントローラーとすべてのテキストコントローラーを破棄します。
@@ -1174,41 +1187,7 @@ class _MyHomePageState extends State<MyHomePage>
         backgroundColor: Theme.of(context).colorScheme.primary,
         iconTheme: IconThemeData(color: Colors.white),
         title: Text(s.appTitle),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Center(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.language, color: Colors.white),
-                  const SizedBox(width: 4),
-                  Text(
-                    Provider.of<LocaleNotifier>(context).locale.languageCode ==
-                            'ja'
-                        ? 'JP'
-                        : Provider.of<LocaleNotifier>(
-                          context,
-                        ).locale.languageCode.toUpperCase(),
-                    style: GoogleFonts.notoSansJp(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  IconButton(
-                    tooltip: s.menu_help,
-                    icon: const Icon(Icons.help_outline),
-                    color: Colors.white,
-                    visualDensity: VisualDensity.compact,
-                    onPressed: () => _showGlobalHelpDialog(context),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
+        actions: _buildAppBarActions(s),
 
         bottom: TabBar(
           controller: _tabController,
@@ -1298,17 +1277,6 @@ class _MyHomePageState extends State<MyHomePage>
 
                   // 状態の更新
                   setState(() {
-                    _vxVisMgrIniContent = result.vxVisMgrIniContent;
-                    _dioMonitorLogCsvContent = result.dioMonitorLogCsvContent;
-                    _plcDioMonitorLogCsvContent =
-                        result.plcDioMonitorLogCsvContent;
-                    _fnlDioMonitorLogCsvContent =
-                        result.fnlDioMonitorLogCsvContent;
-                    _vxvisNameToSuggestionId = result.vxvisNameToSuggestionId;
-                    _enabledStatusSignals = result.enabledStatusSignals;
-                    _enabledSignalStructures = result.enabledSignalStructures;
-                    _dioOutputAssignments = result.dioOutputAssignments;
-                    _plcEipOutputAssignments = result.plcEipOutputAssignments;
                     _plcEipOption = result.plcEipOption;
                     _chartSignals = result.chartSignals;
                     _chartPortNumbers = result.chartPortNumbers;
@@ -1704,25 +1672,7 @@ class _MyHomePageState extends State<MyHomePage>
               ),
             ],
           ),
-          if (_isImportingZiq)
-            Positioned.fill(
-              child: Container(
-                color: Colors.black.withAlpha((0.35 * 255).round()),
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: const [
-                      CircularProgressIndicator(),
-                      SizedBox(height: 12),
-                      Text(
-                        'ZIPファイルが正常にインポートされました...',
-                        style: TextStyle(color: Colors.white),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+          if (_isImportingZiq) _buildImportingOverlay(),
         ],
       ),
     );

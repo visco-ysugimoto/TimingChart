@@ -44,12 +44,22 @@ import 'form_tab_signal_mapper.dart';
 import 'form_tab_controller_mapper.dart';
 import 'form_tab_constants.dart';
 import 'form_tab_output_preset.dart';
+import 'form_tab_rules.dart';
 
 class FormTab extends StatefulWidget {
+  /// 入力（DIO）信号名
   final List<TextEditingController> inputControllers;
+
+  /// 入力（PLC/EIP）信号名
   final List<TextEditingController> plcEipInputControllers;
+
+  /// 出力（DIO）信号名
   final List<TextEditingController> outputControllers;
+
+  /// 出力（PLC/EIP）信号名
   final List<TextEditingController> plcEipOutputControllers;
+
+  /// HW Trigger 信号名
   final List<TextEditingController> hwTriggerControllers;
   final FormControllersNotifier controllersNotifier;
   final ValueChanged<String?> onTriggerOptionChanged;
@@ -109,9 +119,17 @@ class FormTab extends StatefulWidget {
 // FormTab の状態を管理するクラス
 class FormTabState extends State<FormTab>
     with AutomaticKeepAliveClientMixin, TickerProviderStateMixin {
+  /// NOTE:
+  /// - この State は「フォーム入力 → SignalData/チャート生成 → 親へ通知」までの橋渡し役です。
+  /// - UI の見た目（ヘッダー/入力欄/テーブル）は `build()` 配下の private widget に分割し、
+  ///   ここでは “状態と振る舞い（ロジック）” が追えるようにしています。
+  ///
+  /// 画面の大きな流れ:
+  /// - 入力欄（Controller）/テーブル（_tableData）/可視性（_*Visibility）を更新
+  /// - `_updateSignalDataList()` が「直前の値をなるべく引き継ぎながら」 SignalData を再構築
+  /// - Update/Template で onUpdateChart を呼び出し、親（MyHomePage）へ反映
+
   // AutomaticKeepAliveClientMixin により、タブ切り替え後も状態を保持するため true を返す
-  @override
-  // タブ切り替え後も状態を保持するため true を返す
   @override
   bool get wantKeepAlive => true;
 
@@ -119,35 +137,33 @@ class FormTabState extends State<FormTab>
   static const double _buttonHorizontalPadding = 16.0;
   static const double _buttonVerticalPadding = 12.0;
 
-  // テーブルデータ用の状態変数
-  // 初期行数
-
-  // テーブルの行数（初期値6）
+  // --- 画面状態（テーブル） ---
+  /// Camera Configuration Table の行数（初期値: `FormTabConstants.defaultRowCount`）
   int _rowCount = FormTabConstants.defaultRowCount;
 
-  // テーブルデータを保持する2次元配列
+  /// テーブルのセル状態（row x camera）
   List<List<CellMode>> _tableData = [];
 
-  // SignalDataのリストを保持
-
-  // SignalData のリストを保持
+  // --- 画面状態（信号一覧） ---
+  /// 表示用の信号リスト（可視性を含む）
   List<SignalData> _signalDataList = [];
+
+  /// 波形値の引き継ぎ用。信号名ではなく portKey で保持する（名前変更/順序入れ替えに強くする）
   Map<String, List<int>> _portValues = {};
 
-  // 実際のチャートデータを保持（更新時に使用）
-
-  // 実際のチャートデータを保持
+  /// 直近の “出力済みチャート（可視信号のみ）”。
+  /// - getSignalDataList() の復元や updateChartData() のマージに使う
   List<List<int>> _actualChartData = [];
 
-  // 行モード：各行に対してセルとは独立に設定できるモード（none / 同時取込）
-
-  // 各行の行モード設定を保持
+  // --- 画面状態（テーブル付随） ---
+  /// 行モード：セルとは独立に設定できるモード（none / 同時取込）
   List<RowMode> _rowModes = [];
 
-  // 各カラムの一括変更用モード設定を保持
+  /// カラム一括変更のための現在値（UI用）
   List<CellMode> _columnModes = [];
 
-  // 入力信号の表示/非表示状態を管理
+  // --- 画面状態（可視性） ---
+  /// チェックボックスの状態（SignalData の isVisible と同期する）
   List<bool> _inputVisibility = [];
   List<bool> _outputVisibility = [];
   List<bool> _hwTriggerVisibility = [];
@@ -162,14 +178,19 @@ class FormTabState extends State<FormTab>
   int _prevHwPort = -1;
   int _prevCamera = -1;
 
-  // PLC / EIP オプション
+  // --- 画面状態（サブモード） ---
+  /// PLC/EIP のモード（None/PLC/EIP）。UIのTabBar構成にも影響する。
   String _plcEipOption = PlcEipOptions.none;
+
+  /// 外部から追加で渡される “信号名→波形” の一時バッファ（次回更新で取り込み後にクリア）
   Map<String, List<int>> _externalSignalValues = {};
 
-  // 出力用のサブタブ（IO / PLC-EIP）
+  // --- UI補助（タブ） ---
+  /// 出力用のサブタブ（DIO / PLC-EIP）
   TabController? _outputTabController;
   int _outputTabIndex = 0;
-  // 入力用のサブタブ（IO / PLC-EIP）
+
+  /// 入力用のサブタブ（DIO / PLC-EIP）
   TabController? _inputTabController;
   int _inputTabIndex = 0;
 
@@ -177,8 +198,9 @@ class FormTabState extends State<FormTab>
   void setPlcEipOption(String value) {
     if (value != PlcEipOptions.none &&
         value != PlcEipOptions.plc &&
-        value != PlcEipOptions.eip)
+        value != PlcEipOptions.eip) {
       return;
+    }
     setState(() {
       _plcEipOption = value;
     });
@@ -186,7 +208,9 @@ class FormTabState extends State<FormTab>
     _ensureInputTabController();
   }
 
-  // 出力タブコントローラーを初期化または破棄する
+  /// 出力タブコントローラーを初期化または破棄する
+  ///
+  /// NOTE: None の場合は TabController を保持しない（TabBarも出さない）
   void _ensureOutputTabController() {
     if (_plcEipOption == PlcEipOptions.none) {
       _outputTabController?.dispose();
@@ -209,7 +233,9 @@ class FormTabState extends State<FormTab>
     }
   }
 
-  // 入力タブコントローラーを初期化または破棄する
+  /// 入力タブコントローラーを初期化または破棄する
+  ///
+  /// NOTE: None の場合は TabController を保持しない（TabBarも出さない）
   void _ensureInputTabController() {
     if (_plcEipOption == PlcEipOptions.none) {
       _inputTabController?.dispose();
@@ -274,7 +300,11 @@ class FormTabState extends State<FormTab>
     super.dispose();
   }
 
-  // トリガーオプションに応じて入力名を自動設定する
+  /// トリガーオプションに応じて入力名を自動設定する
+  ///
+  /// 既存仕様:
+  /// - Single Trigger: Input1 を TRIGGER に寄せる
+  /// - Code Trigger: Control/Group/Task の領域は自動命名（ユーザー入力は受け付けない）
   void applyInputNamesForTriggerOption() {
     final fs = formState;
     if (fs.triggerOption == TriggerOptions.single) {
@@ -289,22 +319,25 @@ class FormTabState extends State<FormTab>
     }
   }
 
-  // Code Trigger モード用の入力名を設定する
+  /// Code Trigger モード用の入力名を設定する（自動命名）
+  ///
+  /// NOTE: “表示名”自体が仕様（下流の波形/変換が文字列に依存する）なので、
+  /// ここでの命名規則は慎重に変更すること。
   void _assignCodeTriggerInputNames(TimingFormState fs) {
     final controllers = widget.inputControllers;
     String? nameForIndex(int index) {
       if (fs.inputCount >= FormTabConstants.maxInputPorts) {
         if (index >= FormTabConstants.codeTrigger32ControlStart &&
             index <= FormTabConstants.codeTrigger32ControlEnd) {
-          return 'Control Code${index}(bit)';
+          return 'Control Code$index(bit)';
         }
         if (index >= FormTabConstants.codeTrigger32GroupStart &&
             index <= FormTabConstants.codeTrigger32GroupEnd) {
-          return 'Group Code${index}(bit)';
+          return 'Group Code$index(bit)';
         }
         if (index >= FormTabConstants.codeTrigger32TaskStart &&
             index <= FormTabConstants.codeTrigger32TaskEnd) {
-          return 'Task Code${index}(bit)';
+          return 'Task Code$index(bit)';
         }
       } else if (fs.inputCount == FormTabConstants.standardInputPorts) {
         if (index >= FormTabConstants.codeTrigger16ControlStart &&
@@ -313,11 +346,11 @@ class FormTabState extends State<FormTab>
         }
         if (index >= FormTabConstants.codeTrigger16GroupStart &&
             index <= FormTabConstants.codeTrigger16GroupEnd) {
-          return 'Group Code${index}(bit)';
+          return 'Group Code$index(bit)';
         }
         if (index >= FormTabConstants.codeTrigger16TaskStart &&
             index <= FormTabConstants.codeTrigger16TaskEnd) {
-          return 'Task Code${index}(bit)';
+          return 'Task Code$index(bit)';
         }
       }
       return null;
@@ -342,8 +375,11 @@ class FormTabState extends State<FormTab>
       );
 
   @override
-  // 依存関係が変更されたときに呼ばれる（初期化と状態同期）
-  @override
+  /// Provider の state が変わったタイミングで呼ばれる（初期化と状態同期）
+  ///
+  /// 目的:
+  /// - 初回だけ、テーブル/可視性/SignalData を初期化
+  /// - input/output/hw/camera が変わった時、配列サイズや SignalData を追従させる
   void didChangeDependencies() {
     super.didChangeDependencies();
 
@@ -386,7 +422,7 @@ class FormTabState extends State<FormTab>
       _initializeSignalDataList();
     }
 
-    // IO ポート数 = 6 のときは Code Trigger を強制的に Single Trigger へ変更
+    // 仕様: Input=6 では Code Trigger を選べないため、状態を Single に戻す
     if (fs.inputCount == FormTabConstants.minInputPorts &&
         fs.triggerOption == TriggerOptions.code) {
       SchedulerBinding.instance.addPostFrameCallback((_) {
@@ -694,7 +730,14 @@ class FormTabState extends State<FormTab>
   // Code Trigger用の信号タイプと可視性を決定
   // （旧）Code Trigger用の補助関数群は、マッピングロジック整理に伴い未使用になったため削除
 
-  // 現在の設定から信号データリストを生成・更新する（メイン処理）
+  /// 現在の設定から信号データリストを生成・更新する（メイン処理）
+  ///
+  /// ここでやっていること:
+  /// - 前回の値（_signalDataList / _portValues）を回収し、可能な限り波形を引き継ぐ
+  /// - Controller の入力/可視性/PLC-EIP の状態に応じて SignalData を再構築
+  ///
+  /// NOTE:
+  /// - portKey（例: dio-input:0）で値を保持しているため、信号名が変わっても引き継ぎやすい
   void _updateSignalDataList() {
     final Map<String, List<int>> prevPortValues = {
       for (final entry in _portValues.entries)
@@ -967,7 +1010,7 @@ class FormTabState extends State<FormTab>
           );
           if (isPlcEipInput) {
             sources.add(
-              _plcEipOption == 'PLC'
+              _plcEipOption == PlcEipOptions.plc
                   ? IoChannelSource.plc
                   : IoChannelSource.eip,
             );
@@ -984,7 +1027,7 @@ class FormTabState extends State<FormTab>
           );
           if (isPlcEipOutput) {
             sources.add(
-              _plcEipOption == 'PLC'
+              _plcEipOption == PlcEipOptions.plc
                   ? IoChannelSource.plc
                   : IoChannelSource.eip,
             );
@@ -1034,7 +1077,10 @@ class FormTabState extends State<FormTab>
     _applyOptionPostRules(names, chartData, types, ports, optionSignalName);
   }
 
-  // "Update Chart" ボタンが押されたときの処理
+  /// "Update Chart" ボタンが押されたときの処理
+  ///
+  /// - 現在のフォーム状態からチャートを生成し、親へ通知する
+  /// - Code/Command の場合は Option 波形を注入して整合性を取る
   Future<void> _onUpdateChart() async {
     _updateSignalDataList();
 
@@ -1084,7 +1130,7 @@ class FormTabState extends State<FormTab>
     // 信号データを更新する
     _actualChartData = List.from(outChartData);
 
-    // 信号データの確認（デバッグ用）
+    // デバッグ用（必要なら後で logger に寄せる）
     debugPrint('信号データの確認:');
     debugPrint('  信号名: $names');
     debugPrint('  信号タイプ: $types');
@@ -1146,7 +1192,11 @@ class FormTabState extends State<FormTab>
 
   // Template 信号データの更新
 
-  // "Template" ボタンが押されたときの処理（テンプレートエンジンを使用）
+  /// "Template" ボタンが押されたときの処理（テンプレートエンジンを使用）
+  ///
+  /// 目的:
+  /// - テーブル（_tableData / _rowModes）から “推奨のタイミング” を計算し、
+  ///   ChartTemplateEngine で波形テンプレートを生成して反映する
   Future<void> _onTemplatePressed() async {
     // 信号データを更新する
     // 32 信号データの更新
@@ -1240,6 +1290,8 @@ class FormTabState extends State<FormTab>
       contactWaitTimes: contactWaitTimes,
       hwTriggerTimes: hwTriggerTimes,
     );
+
+    if (!mounted) return;
 
     if (generatedSignals.isEmpty) {
       ScaffoldMessenger.of(
@@ -1366,6 +1418,7 @@ class FormTabState extends State<FormTab>
       true,
     );
 
+    if (!mounted) return;
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('信号データの更新が完了しました')));
@@ -1375,56 +1428,40 @@ class FormTabState extends State<FormTab>
   List<SignalData> getSignalDataList() {
     if (_actualChartData.isNotEmpty &&
         _actualChartData.any((row) => row.any((val) => val != 0))) {
-      debugPrint("getSignalDataList: _actualChartData縺九ｉ髱槭ぞ繝ｭ繝・・繧ｿ繧呈､懷・");
-
       List<SignalData> result = [];
       int dataIndex = 0;
 
-      // 入力信号を追加・井ｽ咲ｽｮ繧剃ｿ晄戟・・
+      // 入力信号
       for (int i = 0; i < formState.inputCount; i++) {
-        if (widget.inputControllers[i].text.isNotEmpty) {
-          SignalType signalType = SignalType.input;
-          if (formState.triggerOption == 'Code Trigger') {
-            if (formState.inputCount >= 32) {
-              if (i >= 1 && i <= 8) {
-                signalType = SignalType.control;
-              } else if (i >= 9 && i <= 14) {
-                signalType = SignalType.group;
-              } else if (i >= 15 && i <= 20) {
-                signalType = SignalType.task;
-              }
-            } else if (formState.inputCount == 16) {
-              if (i >= 1 && i <= 4) {
-                signalType = SignalType.control;
-              } else if (i >= 5 && i <= 7) {
-                signalType = SignalType.group;
-              } else if (i >= 8 && i <= 13) {
-                signalType = SignalType.task;
-              }
-            }
-          }
+        if (i >= widget.inputControllers.length) break;
+        if (widget.inputControllers[i].text.isEmpty) continue;
 
-          List<int> values;
-          if (dataIndex < _actualChartData.length) {
-            values = List.from(_actualChartData[dataIndex]);
-            dataIndex++;
-          } else {
-            values = List.filled(32, 0);
-          }
+        final SignalType signalType = FormTabRules.inferInputSignalType(
+          triggerOption: formState.triggerOption,
+          inputCount: formState.inputCount,
+          index: i,
+        );
 
-          result.add(
-            SignalData(
-              name: widget.inputControllers[i].text,
-              signalType: signalType,
-              values: values,
-              isVisible:
-                  i < _inputVisibility.length ? _inputVisibility[i] : true,
-            ),
-          );
+        List<int> values;
+        if (dataIndex < _actualChartData.length) {
+          values = List.from(_actualChartData[dataIndex]);
+          dataIndex++;
+        } else {
+          values = List.filled(FormTabConstants.defaultWaveLength, 0);
         }
+
+        result.add(
+          SignalData(
+            name: widget.inputControllers[i].text,
+            signalType: signalType,
+            values: values,
+            isVisible: i < _inputVisibility.length ? _inputVisibility[i] : true,
+          ),
+        );
       }
 
       for (int i = 0; i < formState.hwPort; i++) {
+        if (i >= widget.hwTriggerControllers.length) break;
         if (widget.hwTriggerControllers[i].text.isNotEmpty) {
           if (dataIndex < _actualChartData.length) {
             result.add(
@@ -1438,16 +1475,14 @@ class FormTabState extends State<FormTab>
                         : true,
               ),
             );
-            debugPrint(
-              "HWTrigger[$i] 信号データ: ${_actualChartData[dataIndex].take(10)}..., 信号データに0が含まれているか: ${_actualChartData[dataIndex].any((v) => v != 0)}",
-            );
             dataIndex++;
           }
         }
       }
 
-      // 蜃ｺ蜉帑ｿ｡蜿ｷ・井ｽ咲ｽｮ繧剃ｿ晄戟・・
+      // 出力信号
       for (int i = 0; i < formState.outputCount; i++) {
+        if (i >= widget.outputControllers.length) break;
         if (widget.outputControllers[i].text.isNotEmpty) {
           if (dataIndex < _actualChartData.length) {
             result.add(
@@ -1459,21 +1494,19 @@ class FormTabState extends State<FormTab>
                     i < _outputVisibility.length ? _outputVisibility[i] : true,
               ),
             );
-            debugPrint(
-              "Output[$i] 信号データ: ${_actualChartData[dataIndex].take(10)}..., 信号データに0が含まれているか: ${_actualChartData[dataIndex].any((v) => v != 0)}",
-            );
             dataIndex++;
           }
         }
       }
 
-      if (_plcEipOption != 'None') {
+      if (_plcEipOption != PlcEipOptions.none) {
         for (int i = 0; i < formState.outputCount; i++) {
           if (i >= widget.plcEipOutputControllers.length) continue;
           final text = widget.plcEipOutputControllers[i].text;
           if (text.isEmpty) continue;
 
-          final String prefix = _plcEipOption == 'PLC' ? 'PLO' : 'ESO';
+          final String prefix =
+              _plcEipOption == PlcEipOptions.plc ? 'PLO' : 'ESO';
           final String name = '$prefix${i + 1}: $text';
 
           if (dataIndex < _actualChartData.length) {
@@ -1502,13 +1535,11 @@ class FormTabState extends State<FormTab>
       }
 
       if (result.isNotEmpty) {
-        debugPrint("getSignalDataList: 信号データの数: ${result.length}");
         return result;
       }
     }
 
     _updateSignalDataList();
-    debugPrint("getSignalDataList: 信号データの数: ${_signalDataList.length}");
     return List.from(_signalDataList);
   }
 
@@ -1877,75 +1908,213 @@ class FormTabState extends State<FormTab>
 
   @override
   // UI を構築する（メインビルドメソッド）
-  @override
   Widget build(BuildContext context) {
     super.build(context);
 
     // UI 更新用に Provider を監視（ビルドと状態更新をトリガー）
-    final watchedState = context.watch<FormStateNotifier>().state;
+    final fs = context.watch<FormStateNotifier>().state;
 
-    // ボタンスタイルを定義
-    final clearButtonStyle = ElevatedButton.styleFrom(
-      backgroundColor: Colors.red.shade100,
-      foregroundColor: Colors.red.shade900,
-      minimumSize: Size(120, _buttonHeight),
-      padding: EdgeInsets.symmetric(
-        horizontal: _buttonHorizontalPadding,
-        vertical: _buttonVerticalPadding,
-      ),
+    // UIスタイルはまとめて生成（build内のノイズを減らし、画面構造を読みやすくする）
+    final buttonStyles = _FormTabButtonStyles.from(
+      context,
+      height: _buttonHeight,
+      horizontalPadding: _buttonHorizontalPadding,
+      verticalPadding: _buttonVerticalPadding,
     );
-    // Update Chart ボタン用スタイル
-    final updateButtonStyle = ElevatedButton.styleFrom(
-      backgroundColor: Colors.blue.shade100,
-      foregroundColor: Colors.blue.shade900,
-      minimumSize: Size(120, _buttonHeight),
-      padding: EdgeInsets.symmetric(
-        horizontal: _buttonHorizontalPadding,
-        vertical: _buttonVerticalPadding,
-      ),
+    final headerStyles = _FormTabHeaderStyles.from(context);
+
+    // PLC/EIP の有無で TabController を持つ/捨てるので、build前に状態を保証する
+    _ensureOutputTabController();
+    _ensureInputTabController();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _FormTabHeaderSection(
+          formState: fs,
+          plcEipOption: _plcEipOption,
+          onTriggerOptionChanged: widget.onTriggerOptionChanged,
+          onPlcEipOptionChanged: (newValue) {
+            if (newValue == null) return;
+            setState(() {
+              _plcEipOption = newValue;
+            });
+            widget.onPlcEipOptionChanged(newValue);
+            _ensureOutputTabController();
+            _ensureInputTabController();
+          },
+          onInputPortChanged: widget.onInputPortChanged,
+          onOutputPortChanged: widget.onOutputPortChanged,
+          onHwPortChanged: widget.onHwPortChanged,
+          onCameraChanged: widget.onCameraChanged,
+          showTransferButtons: _plcEipOption != PlcEipOptions.none,
+          onTransferInputs:
+              () => _transferInputControllers(
+                widget.inputControllers,
+                widget.plcEipInputControllers,
+              ),
+          onTransferOutputs:
+              () => _transferOutputControllers(
+                widget.outputControllers,
+                widget.plcEipOutputControllers,
+              ),
+          onClear: () {
+            _clearTableData();
+            widget.onClearFields();
+          },
+          onTemplatePressed: _onTemplatePressed,
+          onUpdateChartPressed: _onUpdateChart,
+          buttonStyles: buttonStyles,
+        ),
+
+        Expanded(
+          child: _FormTabBodySection(
+            formState: fs,
+            plcEipOption: _plcEipOption,
+            inputTabController: _inputTabController,
+            outputTabController: _outputTabController,
+            inputTabIndex: _inputTabIndex,
+            outputTabIndex: _outputTabIndex,
+            inputControllers: widget.inputControllers,
+            plcEipInputControllers: widget.plcEipInputControllers,
+            outputControllers: widget.outputControllers,
+            plcEipOutputControllers: widget.plcEipOutputControllers,
+            hwTriggerControllers: widget.hwTriggerControllers,
+            inputVisibility: _inputVisibility,
+            outputVisibility: _outputVisibility,
+            hwTriggerVisibility: _hwTriggerVisibility,
+            onToggleVisibility: _toggleSignalVisibility,
+            headerStyles: headerStyles,
+            addRowButtonStyle: buttonStyles.addRow,
+            removeRowButtonStyle: buttonStyles.removeRow,
+            rowCount: _rowCount,
+            tableData: _tableData,
+            rowModes: _rowModes,
+            columnModes: _columnModes,
+            onAddRow: _addRow,
+            onRemoveRow: _removeRow,
+            onToggleRowMode: _changeRowMode,
+            onChangeCellMode: _changeCellMode,
+            onChangeColumnMode: _changeColumnMode,
+          ),
+        ),
+      ],
+    );
+  }
+
+  SignalType _inferSignalType(TimingFormState fs, int index) {
+    return FormTabRules.inferInputSignalType(
+      triggerOption: fs.triggerOption,
+      inputCount: fs.inputCount,
+      index: index,
+    );
+  }
+
+  bool _inferVisibility(TimingFormState fs, int index) {
+    return FormTabRules.inferInputVisibility(
+      triggerOption: fs.triggerOption,
+      inputCount: fs.inputCount,
+      index: index,
+    );
+  }
+
+  String get plcOption => _plcEipOption;
+
+  String formatPlcLabel(int index, String user) {
+    final prefix = _plcEipOption == PlcEipOptions.plc ? 'PLO' : 'ESO';
+    return user.isNotEmpty
+        ? '$prefix${index + 1}: $user'
+        : '$prefix${index + 1}';
+  }
+}
+
+class _FormTabButtonStyles {
+  /// FormTab 内で使うボタンスタイルの束。
+  ///
+  /// NOTE: “同じpadding/高さで色だけ違う” という意図を揃えるためにまとめている。
+  final ButtonStyle clear;
+  final ButtonStyle update;
+  final ButtonStyle template;
+  final ButtonStyle addRow;
+  final ButtonStyle removeRow;
+
+  const _FormTabButtonStyles({
+    required this.clear,
+    required this.update,
+    required this.template,
+    required this.addRow,
+    required this.removeRow,
+  });
+
+  static _FormTabButtonStyles from(
+    BuildContext context, {
+    required double height,
+    required double horizontalPadding,
+    required double verticalPadding,
+  }) {
+    final EdgeInsets padding = EdgeInsets.symmetric(
+      horizontal: horizontalPadding,
+      vertical: verticalPadding,
     );
 
-    // Template ボタン用スタイル
-    final templateButtonStyle = ElevatedButton.styleFrom(
-      backgroundColor: Colors.orange.shade100,
-      foregroundColor: Colors.orange.shade900,
-      minimumSize: Size(120, _buttonHeight),
-      padding: EdgeInsets.symmetric(
-        horizontal: _buttonHorizontalPadding,
-        vertical: _buttonVerticalPadding,
+    return _FormTabButtonStyles(
+      clear: ElevatedButton.styleFrom(
+        backgroundColor: Colors.red.shade100,
+        foregroundColor: Colors.red.shade900,
+        minimumSize: Size(120, height),
+        padding: padding,
+      ),
+      update: ElevatedButton.styleFrom(
+        backgroundColor: Colors.blue.shade100,
+        foregroundColor: Colors.blue.shade900,
+        minimumSize: Size(120, height),
+        padding: padding,
+      ),
+      template: ElevatedButton.styleFrom(
+        backgroundColor: Colors.orange.shade100,
+        foregroundColor: Colors.orange.shade900,
+        minimumSize: Size(120, height),
+        padding: padding,
+      ),
+      addRow: ElevatedButton.styleFrom(
+        backgroundColor: Colors.green.shade100,
+        foregroundColor: Colors.green.shade900,
+        minimumSize: Size(120, height),
+        padding: padding,
+      ),
+      removeRow: ElevatedButton.styleFrom(
+        backgroundColor: Colors.red.shade100,
+        foregroundColor: Colors.red.shade900,
+        minimumSize: Size(120, height),
+        padding: padding,
       ),
     );
-    // Add Row ボタン用スタイル
-    final addRowButtonStyle = ElevatedButton.styleFrom(
-      backgroundColor: Colors.green.shade100,
-      foregroundColor: Colors.green.shade900,
-      minimumSize: Size(120, _buttonHeight),
-      padding: EdgeInsets.symmetric(
-        horizontal: _buttonHorizontalPadding,
-        vertical: _buttonVerticalPadding,
-      ),
-    );
-    // Remove Row ボタン用スタイル
-    final removeRowButtonStyle = ElevatedButton.styleFrom(
-      backgroundColor: Colors.red.shade100,
-      foregroundColor: Colors.red.shade900,
-      minimumSize: Size(120, _buttonHeight),
-      padding: EdgeInsets.symmetric(
-        horizontal: _buttonHorizontalPadding,
-        vertical: _buttonVerticalPadding,
-      ),
-    );
+  }
+}
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+class _FormTabHeaderStyles {
+  /// FormTab 内で使う “見出し（ヘッダー）” の見た目を統一するための束。
+  final BoxDecoration headerDecoration;
+  final BoxDecoration inactiveHeaderDecoration;
+  final EdgeInsets headerPadding;
+  final double headerHeight;
+
+  const _FormTabHeaderStyles({
+    required this.headerDecoration,
+    required this.inactiveHeaderDecoration,
+    required this.headerPadding,
+    required this.headerHeight,
+  });
+
+  static _FormTabHeaderStyles from(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final Color headerBg =
         Theme.of(context).colorScheme.surfaceContainerHighest;
-    final Color background = headerBg.withAlpha((0.3 * 255).round());
+    final Color background = headerBg.withAlpha(
+      (FormTabConstants.alphaBlendValue * 255).round(),
+    );
     final Color borderColor =
         isDark ? Colors.grey.shade700 : Colors.grey.shade300;
-    // final Color tableBackground = Theme.of(context)
-    //     .colorScheme
-    //     .surfaceContainerHighest
-    //     .withAlpha((0.3 * 255).round());
 
     final headerDecoration = BoxDecoration(
       color: background,
@@ -1967,490 +2136,417 @@ class FormTabState extends State<FormTab>
       border: Border(bottom: BorderSide(color: borderColor, width: 1)),
     );
 
-    const headerPadding = EdgeInsets.symmetric(horizontal: 16, vertical: 10);
-    const headerHeight = 48.0; // 繝倥ャ繝繝ｼ縺ｮ鬮倥＆
+    return _FormTabHeaderStyles(
+      headerDecoration: headerDecoration,
+      inactiveHeaderDecoration: inactiveHeaderDecoration,
+      headerPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      headerHeight: 48.0,
+    );
+  }
+}
 
-    _ensureOutputTabController();
+class _FormTabHeaderSection extends StatelessWidget {
+  /// 画面上部の “設定UI + 操作ボタン” の塊。
+  ///
+  /// - Trigger/PLC/Input/Output/HW/Camera を選ぶ
+  /// - Transfer/Clear/Template/Update を実行する
+  final TimingFormState formState;
+  final String plcEipOption;
+  final ValueChanged<String?> onTriggerOptionChanged;
+  final ValueChanged<String?> onPlcEipOptionChanged;
+  final ValueChanged<int?> onInputPortChanged;
+  final ValueChanged<int?> onOutputPortChanged;
+  final ValueChanged<int?> onHwPortChanged;
+  final ValueChanged<int?> onCameraChanged;
+  final bool showTransferButtons;
+  final VoidCallback onTransferInputs;
+  final VoidCallback onTransferOutputs;
+  final VoidCallback onClear;
+  final Future<void> Function() onTemplatePressed;
+  final Future<void> Function() onUpdateChartPressed;
+  final _FormTabButtonStyles buttonStyles;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
+  const _FormTabHeaderSection({
+    required this.formState,
+    required this.plcEipOption,
+    required this.onTriggerOptionChanged,
+    required this.onPlcEipOptionChanged,
+    required this.onInputPortChanged,
+    required this.onOutputPortChanged,
+    required this.onHwPortChanged,
+    required this.onCameraChanged,
+    required this.showTransferButtons,
+    required this.onTransferInputs,
+    required this.onTransferOutputs,
+    required this.onClear,
+    required this.onTemplatePressed,
+    required this.onUpdateChartPressed,
+    required this.buttonStyles,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final List<String> triggerItems = FormTabRules.triggerOptionsForInputCount(
+      formState.inputCount,
+    );
+    final String dropdownValue =
+        triggerItems.contains(formState.triggerOption)
+            ? formState.triggerOption
+            : TriggerOptions.single;
+
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  // Trigger Option
-                  Expanded(
-                    child: Builder(
-                      builder: (context) {
-                        final List<String> triggerItems =
-                            formState.inputCount == 6
-                                ? ['Single Trigger', 'Command Trigger']
-                                : [
-                                  'Single Trigger',
-                                  'Code Trigger',
-                                  'Command Trigger',
-                                ];
-
-                        final String dropdownValue =
-                            triggerItems.contains(formState.triggerOption)
-                                ? formState.triggerOption
-                                : 'Single Trigger';
-
-                        return CustomDropdown<String>(
-                          value: dropdownValue,
-                          items: triggerItems,
-                          onChanged: widget.onTriggerOptionChanged,
-                          label: 'Trigger Option',
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-
-                  // PLC / EIP
-                  Expanded(
-                    child: CustomDropdown<String>(
-                      value: _plcEipOption,
-                      items: const ['None', 'PLC', 'EIP'],
-                      onChanged: (String? newValue) {
-                        if (newValue == null) return;
-                        setState(() {
-                          _plcEipOption = newValue;
-                        });
-                        widget.onPlcEipOptionChanged(newValue);
-                        _ensureOutputTabController();
-                        _ensureInputTabController();
-                      },
-                      label: 'PLC / EIP',
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-
-                  // Input Port
-                  Expanded(
-                    child: CustomDropdown<int>(
-                      value:
-                          const [6, 16, 32, 64].contains(formState.inputCount)
-                              ? formState.inputCount
-                              : const [6, 16, 32, 64].firstWhere(
-                                (v) => v >= formState.inputCount,
-                                orElse: () => 64,
-                              ),
-                      items: const [6, 16, 32, 64],
-                      onChanged: widget.onInputPortChanged,
-                      label: 'Input Port',
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-
-                  // Output Port
-                  Expanded(
-                    child: CustomDropdown<int>(
-                      value:
-                          const [6, 16, 32, 64].contains(formState.outputCount)
-                              ? formState.outputCount
-                              : const [6, 16, 32, 64].firstWhere(
-                                (v) => v >= formState.outputCount,
-                                orElse: () => 64,
-                              ),
-                      items: const [6, 16, 32, 64],
-                      onChanged: widget.onOutputPortChanged,
-                      label: 'Output Port',
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-
-                  // HW Port
-                  Expanded(
-                    child: CustomDropdown<int>(
-                      value:
-                          (formState.hwPort == 0 ||
-                                  formState.hwPort == formState.camera)
-                              ? formState.hwPort
-                              : formState.camera,
-                      items: [0, formState.camera],
-                      onChanged: widget.onHwPortChanged,
-                      label: 'HW Port',
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-
-                  // Camera
-                  Expanded(
-                    child: CustomDropdown<int>(
-                      value: watchedState.camera,
-                      items: List.generate(8, (index) => index + 1),
-                      onChanged: widget.onCameraChanged,
-                      label: 'Camera',
-                    ),
-                  ),
-                ],
+              Expanded(
+                child: CustomDropdown<String>(
+                  value: dropdownValue,
+                  items: triggerItems,
+                  onChanged: onTriggerOptionChanged,
+                  label: 'Trigger Option',
+                ),
               ),
-
-              const SizedBox(height: 16),
-
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  if (_plcEipOption != 'None') ...[
-                    ElevatedButton.icon(
-                      onPressed:
-                          () => _transferInputControllers(
-                            widget.inputControllers,
-                            widget.plcEipInputControllers,
-                          ),
-                      icon: const Icon(Icons.swap_horiz),
-                      label: const Text('DI⇔PLI/ESI'),
-                    ),
-                    const SizedBox(width: 12),
-                    ElevatedButton.icon(
-                      onPressed:
-                          () => _transferOutputControllers(
-                            widget.outputControllers,
-                            widget.plcEipOutputControllers,
-                          ),
-                      icon: const Icon(Icons.swap_horiz),
-                      label: const Text('DO⇔PLO/ESO'),
-                    ),
-                    const SizedBox(width: 16),
+              const SizedBox(width: 16),
+              Expanded(
+                child: CustomDropdown<String>(
+                  value: plcEipOption,
+                  items: const [
+                    PlcEipOptions.none,
+                    PlcEipOptions.plc,
+                    PlcEipOptions.eip,
                   ],
-                  /*if (widget.showImportExportButtons) ...[
-                    ElevatedButton.icon(
-                      onPressed: _importConfig,
-                      icon: const Icon(Icons.upload_file),
-                      label: const Text('繧､繝ｳ繝昴・繝・),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green.shade100,
-                        foregroundColor: Colors.green.shade900,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    ElevatedButton.icon(
-                      onPressed: _exportConfig,
-                      icon: const Icon(Icons.download),
-                      label: const Text('繧ｨ繧ｯ繧ｹ繝昴・繝・),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue.shade100,
-                        foregroundColor: Colors.blue.shade900,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                  ],*/
-                  ElevatedButton(
-                    onPressed: () {
-                      _clearTableData();
-                      widget.onClearFields();
-                    },
-                    style: clearButtonStyle,
-                    child: const Text('Clear'),
-                  ),
-                  const SizedBox(width: 16),
-                  ElevatedButton(
-                    onPressed: _onTemplatePressed,
-                    style: templateButtonStyle,
-                    child: const Text('Template'),
-                  ),
-                  const SizedBox(width: 16),
-                  ElevatedButton(
-                    onPressed: () => _onUpdateChart(),
-                    style: updateButtonStyle,
-                    child: const Text('Update Chart'),
-                  ),
-                ],
+                  onChanged: onPlcEipOptionChanged,
+                  label: 'PLC / EIP',
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: CustomDropdown<int>(
+                  value:
+                      FormTabRules.portOptions.contains(formState.inputCount)
+                          ? formState.inputCount
+                          : FormTabRules.portOptions.firstWhere(
+                            (v) => v >= formState.inputCount,
+                            orElse: () => FormTabRules.portOptions.last,
+                          ),
+                  items: FormTabRules.portOptions,
+                  onChanged: onInputPortChanged,
+                  label: 'Input Port',
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: CustomDropdown<int>(
+                  value:
+                      FormTabRules.portOptions.contains(formState.outputCount)
+                          ? formState.outputCount
+                          : FormTabRules.portOptions.firstWhere(
+                            (v) => v >= formState.outputCount,
+                            orElse: () => FormTabRules.portOptions.last,
+                          ),
+                  items: FormTabRules.portOptions,
+                  onChanged: onOutputPortChanged,
+                  label: 'Output Port',
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: CustomDropdown<int>(
+                  value:
+                      (formState.hwPort == 0 ||
+                              formState.hwPort == formState.camera)
+                          ? formState.hwPort
+                          : formState.camera,
+                  items: [0, formState.camera],
+                  onChanged: onHwPortChanged,
+                  label: 'HW Port',
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: CustomDropdown<int>(
+                  value: formState.camera,
+                  items: List.generate(8, (index) => index + 1),
+                  onChanged: onCameraChanged,
+                  label: 'Camera',
+                ),
               ),
             ],
           ),
-        ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              if (showTransferButtons) ...[
+                ElevatedButton.icon(
+                  onPressed: onTransferInputs,
+                  icon: const Icon(Icons.swap_horiz),
+                  label: const Text('DI⇔PLI/ESI'),
+                ),
+                const SizedBox(width: 12),
+                ElevatedButton.icon(
+                  onPressed: onTransferOutputs,
+                  icon: const Icon(Icons.swap_horiz),
+                  label: const Text('DO⇔PLO/ESO'),
+                ),
+                const SizedBox(width: 16),
+              ],
+              ElevatedButton(
+                onPressed: onClear,
+                style: buttonStyles.clear,
+                child: const Text('Clear'),
+              ),
+              const SizedBox(width: 16),
+              ElevatedButton(
+                onPressed: onTemplatePressed,
+                style: buttonStyles.template,
+                child: const Text('Template'),
+              ),
+              const SizedBox(width: 16),
+              ElevatedButton(
+                onPressed: onUpdateChartPressed,
+                style: buttonStyles.update,
+                child: const Text('Update Chart'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
 
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Row(
+class _FormTabBodySection extends StatelessWidget {
+  /// 画面下部の “信号入力（3カラム） + カメラ設定テーブル” の塊。
+  ///
+  /// - 左: Input / Output / HW Trigger の各入力欄
+  /// - 右: Camera Configuration Table
+  static const double _signalsScrollBottomPadding = 640.0;
+
+  final TimingFormState formState;
+  final String plcEipOption;
+
+  final TabController? inputTabController;
+  final TabController? outputTabController;
+  final int inputTabIndex;
+  final int outputTabIndex;
+
+  final List<TextEditingController> inputControllers;
+  final List<TextEditingController> plcEipInputControllers;
+  final List<TextEditingController> outputControllers;
+  final List<TextEditingController> plcEipOutputControllers;
+  final List<TextEditingController> hwTriggerControllers;
+
+  final List<bool> inputVisibility;
+  final List<bool> outputVisibility;
+  final List<bool> hwTriggerVisibility;
+  final void Function(int index, SignalType type) onToggleVisibility;
+
+  final _FormTabHeaderStyles headerStyles;
+
+  final ButtonStyle addRowButtonStyle;
+  final ButtonStyle removeRowButtonStyle;
+
+  final int rowCount;
+  final List<List<CellMode>> tableData;
+  final List<RowMode> rowModes;
+  final List<CellMode> columnModes;
+  final VoidCallback onAddRow;
+  final VoidCallback onRemoveRow;
+  final void Function(int row) onToggleRowMode;
+  final void Function(int row, int col, CellMode mode) onChangeCellMode;
+  final void Function(int col, CellMode mode) onChangeColumnMode;
+
+  const _FormTabBodySection({
+    required this.formState,
+    required this.plcEipOption,
+    required this.inputTabController,
+    required this.outputTabController,
+    required this.inputTabIndex,
+    required this.outputTabIndex,
+    required this.inputControllers,
+    required this.plcEipInputControllers,
+    required this.outputControllers,
+    required this.plcEipOutputControllers,
+    required this.hwTriggerControllers,
+    required this.inputVisibility,
+    required this.outputVisibility,
+    required this.hwTriggerVisibility,
+    required this.onToggleVisibility,
+    required this.headerStyles,
+    required this.addRowButtonStyle,
+    required this.removeRowButtonStyle,
+    required this.rowCount,
+    required this.tableData,
+    required this.rowModes,
+    required this.columnModes,
+    required this.onAddRow,
+    required this.onRemoveRow,
+    required this.onToggleRowMode,
+    required this.onChangeCellMode,
+    required this.onChangeColumnMode,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bool useTabs = plcEipOption != PlcEipOptions.none;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 5,
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: _SignalHeader(
+                        title: 'Input Signals',
+                        decoration: headerStyles.headerDecoration,
+                        padding: headerStyles.headerPadding,
+                        height: headerStyles.headerHeight,
+                        tabBar:
+                            (useTabs && inputTabController != null)
+                                ? TabBar(
+                                  controller: inputTabController,
+                                  isScrollable: true,
+                                  tabAlignment: TabAlignment.center,
+                                  labelPadding: const EdgeInsets.symmetric(
+                                    horizontal: 8.0,
+                                  ),
+                                  tabs: const [
+                                    Tab(text: 'DI'),
+                                    Tab(text: 'PLI/ESI'),
+                                  ],
+                                )
+                                : null,
+                      ),
+                    ),
+                    Expanded(
+                      child: _SignalHeader(
+                        title: 'Output Signals',
+                        decoration: headerStyles.headerDecoration,
+                        padding: headerStyles.headerPadding,
+                        height: headerStyles.headerHeight,
+                        tabBar:
+                            (useTabs && outputTabController != null)
+                                ? TabBar(
+                                  controller: outputTabController,
+                                  isScrollable: true,
+                                  tabAlignment: TabAlignment.center,
+                                  labelPadding: const EdgeInsets.symmetric(
+                                    horizontal: 8.0,
+                                  ),
+                                  tabs: const [
+                                    Tab(text: 'DO'),
+                                    Tab(text: 'PLO/ESO'),
+                                  ],
+                                )
+                                : null,
+                      ),
+                    ),
+                    Expanded(
+                      child: _SignalHeader(
+                        title: 'HW Trigger Signals',
+                        decoration:
+                            formState.hwPort > 0
+                                ? headerStyles.headerDecoration
+                                : headerStyles.inactiveHeaderDecoration,
+                        padding: headerStyles.headerPadding,
+                        height: headerStyles.headerHeight,
+                        titleColor:
+                            formState.hwPort > 0 ? null : Colors.grey.shade500,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
                 Expanded(
-                  flex: 5,
-                  child: Column(
+                  child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Container(
-                              decoration: headerDecoration,
-                              padding: headerPadding,
-                              alignment: Alignment.centerLeft,
-                              height: headerHeight,
-                              child: Row(
-                                children: [
-                                  const Text(
-                                    'Input Signals',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                    ),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 8.0),
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.only(
+                              bottom: _signalsScrollBottomPadding,
+                            ),
+                            child: InputSection(
+                              controllers:
+                                  (!useTabs || inputTabIndex == 0)
+                                      ? inputControllers
+                                      : plcEipInputControllers,
+                              count: formState.inputCount,
+                              visibilityList: inputVisibility,
+                              onVisibilityChanged:
+                                  (index) => onToggleVisibility(
+                                    index,
+                                    SignalType.input,
                                   ),
-                                  const SizedBox(width: 12),
-                                  if (_plcEipOption != 'None' &&
-                                      _inputTabController != null)
-                                    Expanded(
-                                      child: Align(
-                                        alignment: Alignment.centerRight,
-                                        child: TabBar(
-                                          controller: _inputTabController,
-                                          isScrollable: true,
-                                          tabAlignment: TabAlignment.center,
-                                          labelPadding:
-                                              const EdgeInsets.symmetric(
-                                                horizontal: 8.0,
-                                              ),
-                                          tabs: const [
-                                            Tab(text: 'DI'),
-                                            Tab(text: 'PLI/ESI'),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
+                              triggerOption: formState.triggerOption,
                             ),
                           ),
-                          Expanded(
-                            child: Container(
-                              decoration: headerDecoration,
-                              padding: headerPadding,
-                              alignment: Alignment.centerLeft,
-                              height: headerHeight,
-                              child: Row(
-                                children: [
-                                  const Text(
-                                    'Output Signals',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                    ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 8.0),
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.only(
+                              bottom: _signalsScrollBottomPadding,
+                            ),
+                            child: OutputSection(
+                              controllers:
+                                  (!useTabs || outputTabIndex == 0)
+                                      ? outputControllers
+                                      : plcEipOutputControllers,
+                              count: formState.outputCount,
+                              visibilityList: outputVisibility,
+                              onVisibilityChanged:
+                                  (index) => onToggleVisibility(
+                                    index,
+                                    SignalType.output,
                                   ),
-                                  const SizedBox(width: 12),
-                                  if (_plcEipOption != 'None' &&
-                                      _outputTabController != null)
-                                    Expanded(
-                                      child: Align(
-                                        alignment: Alignment.centerRight,
-                                        child: TabBar(
-                                          controller: _outputTabController,
-                                          isScrollable: true,
-                                          tabAlignment: TabAlignment.center,
-                                          labelPadding:
-                                              const EdgeInsets.symmetric(
-                                                horizontal: 8.0,
-                                              ),
-                                          tabs: const [
-                                            Tab(text: 'DO'),
-                                            Tab(text: 'PLO/ESO'),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
                             ),
                           ),
-                          Expanded(
-                            child: Container(
-                              decoration:
-                                  formState.hwPort > 0
-                                      ? headerDecoration
-                                      : inactiveHeaderDecoration,
-                              padding: headerPadding,
-                              alignment: Alignment.centerLeft,
-                              height: headerHeight,
-                              child: Row(
-                                children: [
-                                  Expanded(
+                        ),
+                      ),
+                      Expanded(
+                        child:
+                            formState.hwPort > 0
+                                ? SingleChildScrollView(
+                                  padding: const EdgeInsets.only(
+                                    bottom: _signalsScrollBottomPadding,
+                                  ),
+                                  child: HwTriggerSection(
+                                    controllers: hwTriggerControllers,
+                                    count: formState.hwPort,
+                                    visibilityList: hwTriggerVisibility,
+                                    onVisibilityChanged:
+                                        (index) => onToggleVisibility(
+                                          index,
+                                          SignalType.hwTrigger,
+                                        ),
+                                  ),
+                                )
+                                : const Center(
+                                  child: Padding(
+                                    padding: EdgeInsets.symmetric(
+                                      vertical: 16.0,
+                                    ),
                                     child: Text(
-                                      'HW Trigger Signals',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                        color:
-                                            formState.hwPort > 0
-                                                ? null
-                                                : Colors.grey.shade500,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
+                                      "HW Trigger Ports are not available.",
+                                      style: TextStyle(color: Colors.grey),
                                     ),
                                   ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 8),
-
-                      Expanded(
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Padding(
-                                padding: const EdgeInsets.only(right: 8.0),
-                                child: SingleChildScrollView(
-                                  padding: const EdgeInsets.only(bottom: 640.0),
-                                  child: Builder(
-                                    builder: (_) {
-                                      final bool useTabs =
-                                          _plcEipOption != 'None';
-                                      final bool showDio =
-                                          !useTabs || _inputTabIndex == 0;
-                                      return InputSection(
-                                        controllers:
-                                            showDio
-                                                ? widget.inputControllers
-                                                : widget.plcEipInputControllers,
-                                        count: formState.inputCount,
-                                        visibilityList: _inputVisibility,
-                                        onVisibilityChanged:
-                                            (index) => _toggleSignalVisibility(
-                                              index,
-                                              SignalType.input,
-                                            ),
-                                        triggerOption: formState.triggerOption,
-                                      );
-                                    },
-                                  ),
                                 ),
-                              ),
-                            ),
-
-                            Expanded(
-                              child: Padding(
-                                padding: const EdgeInsets.only(right: 8.0),
-                                child: SingleChildScrollView(
-                                  padding: const EdgeInsets.only(bottom: 640.0),
-                                  child: Builder(
-                                    builder: (_) {
-                                      final bool useTabs =
-                                          _plcEipOption != 'None';
-                                      final bool showDio =
-                                          !useTabs || _outputTabIndex == 0;
-                                      return OutputSection(
-                                        controllers:
-                                            showDio
-                                                ? widget.outputControllers
-                                                : widget
-                                                    .plcEipOutputControllers,
-                                        count: formState.outputCount,
-                                        visibilityList: _outputVisibility,
-                                        onVisibilityChanged:
-                                            (index) => _toggleSignalVisibility(
-                                              index,
-                                              SignalType.output,
-                                            ),
-                                      );
-                                    },
-                                  ),
-                                ),
-                              ),
-                            ),
-
-                            Expanded(
-                              child:
-                                  formState.hwPort > 0
-                                      ? SingleChildScrollView(
-                                        padding: const EdgeInsets.only(
-                                          bottom: 640.0,
-                                        ),
-                                        child: HwTriggerSection(
-                                          controllers:
-                                              widget.hwTriggerControllers,
-                                          count: formState.hwPort,
-                                          visibilityList: _hwTriggerVisibility,
-                                          onVisibilityChanged:
-                                              (index) =>
-                                                  _toggleSignalVisibility(
-                                                    index,
-                                                    SignalType.hwTrigger,
-                                                  ),
-                                        ),
-                                      )
-                                      : const Center(
-                                        child: Padding(
-                                          padding: EdgeInsets.symmetric(
-                                            vertical: 16.0,
-                                          ),
-                                          child: Text(
-                                            "HW Trigger Ports are not available.",
-                                            style: TextStyle(
-                                              color: Colors.grey,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(width: 32),
-
-                Expanded(
-                  flex: 5,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Container(
-                        decoration: headerDecoration,
-                        padding: headerPadding,
-                        alignment: Alignment.centerLeft,
-                        height: headerHeight,
-                        child: const Text(
-                          'Camera Configuration Table',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          ElevatedButton.icon(
-                            onPressed: _addRow,
-                            icon: const Icon(Icons.add),
-                            label: const Text('Add Row'),
-                            style: addRowButtonStyle,
-                          ),
-                          const SizedBox(width: 16),
-                          ElevatedButton.icon(
-                            onPressed: _rowCount > 1 ? _removeRow : null,
-                            icon: const Icon(Icons.remove),
-                            label: const Text('Remove Row'),
-                            style: removeRowButtonStyle,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Expanded(
-                        child: CameraConfigurationTable(
-                          cameraCount: formState.camera,
-                          rowCount: _rowCount,
-                          tableData: _tableData,
-                          rowModes: _rowModes,
-                          columnModes: _columnModes,
-                          canSelectHwTrigger: formState.hwPort > 0,
-                          onToggleRowMode: _changeRowMode,
-                          onChangeCellMode: _changeCellMode,
-                          onChangeColumnMode: _changeColumnMode,
-                        ),
                       ),
                     ],
                   ),
@@ -2458,42 +2554,110 @@ class FormTabState extends State<FormTab>
               ],
             ),
           ),
-        ),
-      ],
+          const SizedBox(width: 32),
+          Expanded(
+            flex: 5,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  decoration: headerStyles.headerDecoration,
+                  padding: headerStyles.headerPadding,
+                  alignment: Alignment.centerLeft,
+                  height: headerStyles.headerHeight,
+                  child: const Text(
+                    'Camera Configuration Table',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: onAddRow,
+                      icon: const Icon(Icons.add),
+                      label: const Text('Add Row'),
+                      style: addRowButtonStyle,
+                    ),
+                    const SizedBox(width: 16),
+                    ElevatedButton.icon(
+                      onPressed: rowCount > 1 ? onRemoveRow : null,
+                      icon: const Icon(Icons.remove),
+                      label: const Text('Remove Row'),
+                      style: removeRowButtonStyle,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: CameraConfigurationTable(
+                    cameraCount: formState.camera,
+                    rowCount: rowCount,
+                    tableData: tableData,
+                    rowModes: rowModes,
+                    columnModes: columnModes,
+                    canSelectHwTrigger: formState.hwPort > 0,
+                    onToggleRowMode: onToggleRowMode,
+                    onChangeCellMode: onChangeCellMode,
+                    onChangeColumnMode: onChangeColumnMode,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
+}
 
-  SignalType _inferSignalType(TimingFormState fs, int index) {
-    if (fs.triggerOption != 'Code Trigger') return SignalType.input;
-    if (fs.inputCount >= 32) {
-      if (index >= 1 && index <= 8) return SignalType.control;
-      if (index >= 9 && index <= 14) return SignalType.group;
-      if (index >= 15 && index <= 20) return SignalType.task;
-    } else if (fs.inputCount == 16) {
-      if (index >= 1 && index <= 4) return SignalType.control;
-      if (index >= 5 && index <= 7) return SignalType.group;
-      if (index >= 8 && index <= 13) return SignalType.task;
-    }
-    return SignalType.input;
-  }
+class _SignalHeader extends StatelessWidget {
+  /// Input/Output/HW の見出し行（必要に応じて TabBar を右側に表示）
+  final String title;
+  final BoxDecoration decoration;
+  final EdgeInsets padding;
+  final double height;
+  final Color? titleColor;
+  final Widget? tabBar;
 
-  bool _inferVisibility(TimingFormState fs, int index) {
-    if (fs.triggerOption != 'Code Trigger') return true;
-    if (fs.inputCount >= 32) {
-      return index == 0 || index > 20;
-    }
-    if (fs.inputCount == 16) {
-      return index == 0 || index > 13;
-    }
-    return true;
-  }
+  const _SignalHeader({
+    required this.title,
+    required this.decoration,
+    required this.padding,
+    required this.height,
+    this.titleColor,
+    this.tabBar,
+  });
 
-  String get plcOption => _plcEipOption;
-
-  String formatPlcLabel(int index, String user) {
-    final prefix = _plcEipOption == 'PLC' ? 'PLO' : 'ESO';
-    return user.isNotEmpty
-        ? '$prefix${index + 1}: $user'
-        : '$prefix${index + 1}';
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: decoration,
+      padding: padding,
+      alignment: Alignment.centerLeft,
+      height: height,
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: titleColor,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (tabBar != null) ...[
+            const SizedBox(width: 12),
+            Expanded(
+              child: Align(alignment: Alignment.centerRight, child: tabBar!),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../models/chart/signal_data.dart';
 import '../../models/chart/signal_type.dart';
 import '../../models/form/form_state.dart';
+import 'form_tab_constants.dart';
 
 /// `FormTab` の SignalData 再構築（マッピング）を担当するヘルパー。
 ///
@@ -174,7 +175,7 @@ class FormTabSignalMapper {
     }
 
     // PLC/EIP入力信号
-    if (plcEipOption != 'None') {
+    if (plcEipOption != PlcEipOptions.none) {
       for (int i = 0; i < formState.inputCount; i++) {
         if (i < plcEipInputControllers.length &&
             plcEipInputControllers[i].text.isNotEmpty) {
@@ -279,11 +280,12 @@ class FormTabSignalMapper {
     }
 
     // PLC/EIP出力
-    if (plcEipOption != 'None') {
+    if (plcEipOption != PlcEipOptions.none) {
       for (int i = 0; i < formState.outputCount; i++) {
         if (i < plcEipOutputControllers.length &&
             plcEipOutputControllers[i].text.isNotEmpty) {
-          final String prefix = plcEipOption == 'PLC' ? 'PLO' : 'ESO';
+          final String prefix =
+              plcEipOption == PlcEipOptions.plc ? 'PLO' : 'ESO';
           final String base = '$prefix${i + 1}';
           final String user = plcEipOutputControllers[i].text;
 
@@ -396,7 +398,7 @@ class FormTabSignalMapper {
     }
 
     // PLC/EIP入力
-    if (plcEipOption != 'None') {
+    if (plcEipOption != PlcEipOptions.none) {
       for (int i = 0; i < formState.inputCount; i++) {
         final int key = formState.inputCount + i;
         final v = inputSignalMap[key];

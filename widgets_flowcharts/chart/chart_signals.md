@@ -7,6 +7,8 @@
 - 信号波形の描画（High/Lowレベル）
 - 信号タイプに応じた色設定
 - 非等間隔時間単位（ミリ秒）のサポート
+- Control/Group/Task の表示/非表示（`showAllSignalTypes`）
+- 選択範囲のハイライト描画（`drawSelectionHighlight`）
 
 ## 描画フロー
 
@@ -46,6 +48,12 @@ flowchart TD
 5. 各時間ステップをループして波形を描画
    - 水平線を描画（High/Lowレベル）
    - 垂直線を描画（遷移）
+6. 最後の値（末尾）も 1セル分の水平線として描画（空配列対策）
+
+### drawSelectionHighlight()
+選択範囲（行・時間）の矩形ハイライトを描画します。
+- ms 表記時は `stepDurationsMs` の累積で X 座標を計算
+- step 表記時は等間隔で X 座標を計算
 
 ## パラメータ
 
@@ -54,6 +62,7 @@ flowchart TD
 - `cellHeight`: セル高さ
 - `labelWidth`: ラベル領域の幅
 - `signalTypes`: 信号タイプのリスト
+- `showAllSignalTypes`: Control/Group/Task を含めて表示するか
 - `signalColors`: 信号タイプごとの色マップ
 - `timeUnitIsMs`: 時間単位がミリ秒かどうか
 - `msPerStep`: 1ステップあたりのミリ秒

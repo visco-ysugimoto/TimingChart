@@ -12,14 +12,16 @@ flowchart TD
     C --> D[TextEditingController.text更新]
     
     B -->|Update Chart| E[FormTab._onUpdateChart]
-    E --> F[SignalData生成]
+    E --> F[更新パラメータ生成<br/>(names / values / types / ports / ioSources)]
     F --> G[onUpdateChartコールバック]
+    G --> GG[TimingChartGeneratorHomePage]
+    GG --> GH[ChartUpdateService.updateChart]
     
     B -->|チャート操作| H{操作の種類}
-    H -->|パン| I[TimingChart._handlePanUpdate]
-    H -->|ズーム| J[TimingChart._handleScaleUpdate]
+    H -->|パン| I[TimingChart._onPanUpdate]
+    H -->|ズーム| J[TimingChart._handlePointerSignal<br/>(Ctrl/Meta + ホイール)]
     H -->|タップ| K[TimingChart._handleTap]
-    H -->|信号編集| L[TimingChart._toggleSignalValue]
+    H -->|信号編集| L[_toggleSingleSignal / _toggleSignalsInSelection]
     
     B -->|設定変更| M[SettingsWindow]
     M --> N[SettingsNotifier更新]
@@ -59,18 +61,23 @@ void _onFieldChanged(String value) {
 **フロー:**
 1. ユーザーが「Update Chart」ボタンを押す
 2. `FormTab._onUpdateChart()` が呼び出される
-3. `ChartDataGenerator.generateSignalData()` でSignalDataを生成
+3. `FormTabState` が `names / values / types / ports / ioSources` を生成（可視信号のみ）
 4. `onUpdateChart` コールバックが呼び出される
-5. `MyHomePage` で状態が更新される
-6. `TimingChart` が再ビルドされる
+5. `TimingChartGeneratorHomePage` が `ChartUpdateService.updateChart(...)` で既存値/順序をマージして状態更新
+6. `TimingChartController` / `TimingChartState` に反映され、チャートが再描画される
 
 **コード例:**
 ```dart
 void _onUpdateChart() {
-  final signalData = ChartDataGenerator.generateSignalData(
-    // パラメータ
+  // FormTab 側で生成（可視信号のみ）
+  widget.onUpdateChart(
+    outNames,
+    outChartData,
+    outTypes,
+    outPorts,
+    outIoSources,
+    false,
   );
-  widget.onUpdateChart(signalData);
 }
 ```
 
@@ -80,13 +87,13 @@ void _onUpdateChart() {
 
 **フロー:**
 1. ユーザーがチャート上でドラッグ
-2. `TimingChart._handlePanUpdate()` が呼び出される
+2. `TimingChart._onPanUpdate()` が呼び出される
 3. ビューポートのオフセットが更新される
 4. チャートが再描画される
 
 **コード例:**
 ```dart
-void _handlePanUpdate(DragUpdateDetails details) {
+void _onPanUpdate(DragUpdateDetails details) {
   setState(() {
     _viewportOffset += details.delta;
     // 範囲チェック
@@ -99,18 +106,14 @@ void _handlePanUpdate(DragUpdateDetails details) {
 
 **フロー:**
 1. ユーザーがマウスホイールまたはピンチジェスチャー
-2. `TimingChart._handleScaleUpdate()` が呼び出される
+2. `TimingChart._handlePointerSignal()` が呼び出される（Ctrl/Meta が押されている場合）
 3. ズーム係数が更新される
 4. チャートが再描画される
 
 **コード例:**
 ```dart
-void _handleScaleUpdate(ScaleUpdateDetails details) {
-  setState(() {
-    _zoomFactor *= details.scale;
-    // 範囲チェック
-    _clampZoomFactor();
-  });
+void _handlePointerSignal(PointerSignalEvent event) {
+  // Ctrl/Meta + ホイールでズーム（アンカー補正あり）
 }
 ```
 
@@ -124,10 +127,10 @@ void _handleScaleUpdate(ScaleUpdateDetails details) {
 
 **コード例:**
 ```dart
-void _handleTap(TapDownDetails details) {
+void _handleTap(TapUpDetails details) {
   final signalIndex = _getSignalIndexFromPosition(details.localPosition);
   final timeIndex = _getTimeIndexFromPosition(details.localPosition);
-  _toggleSignalValue(signalIndex, timeIndex);
+  _toggleSingleSignal(signalIndex, timeIndex);
 }
 ```
 
@@ -135,19 +138,15 @@ void _handleTap(TapDownDetails details) {
 
 **フロー:**
 1. ユーザーが信号セルをタップ
-2. `TimingChart._toggleSignalValue()` が呼び出される
+2. `_toggleSingleSignal()`（または選択範囲があれば `_toggleSignalsInSelection()`）が呼び出される
 3. 信号値がトグルされる（0 ↔ 1）
 4. アンドゥスタックに追加される
 5. チャートが再描画される
 
 **コード例:**
 ```dart
-void _toggleSignalValue(int signalIndex, int timeIndex) {
-  final currentValue = _signals[signalIndex][timeIndex];
-  final newValue = currentValue == 0 ? 1 : 0;
-  _signals[signalIndex][timeIndex] = newValue;
-  _controller?.addUndoState();
-  setState(() {});
+void _toggleSingleSignal(int visibleRow, int time) {
+  // visibleRow/time のセルを 0/1 反転し、コントローラへコミットする
 }
 ```
 

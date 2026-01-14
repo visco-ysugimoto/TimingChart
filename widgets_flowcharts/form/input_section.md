@@ -7,6 +7,7 @@
 - 入力信号の設定
 - 信号タイプの自動判定（Control/Group/Task）
 - ロックされた信号の表示（編集不可）
+- 可視性チェックボックス（ロック対象は表示しない）
 
 ## データフロー
 
@@ -47,8 +48,14 @@ flowchart TD
 
 ### _getSignalType()
 信号タイプを取得します。
-- `triggerOption` と `count` に基づいて判定
-- Code Trigger モードの場合、特定のインデックス範囲で Control/Group/Task を返す
+- `FormTabRules.inferInputSignalType(triggerOption, inputCount, index)` に委譲
+- Code Trigger モードの場合、`FormTabConstants` の範囲定義に従って Control/Group/Task を返す
+
+## UI 振る舞い（現状実装）
+
+- **ロック判定**: `SignalType.control/group/task` の行は `TextField(enabled: false)` を表示
+- **通常行**: `SuggestionTextField`（候補ロード + 重複チェック）を表示
+- **可視性**: ロック行以外にのみ `Checkbox` を表示し、`onVisibilityChanged(index)` を呼び出す
 
 ## パラメータ
 

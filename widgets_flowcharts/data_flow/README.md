@@ -16,14 +16,15 @@ flowchart TD
     B --> C[TextEditingController]
     C --> D[FormTab]
     D --> E[Update Chart ボタン]
-    E --> F[SignalData生成]
-    F --> G[MyHomePage]
-    G --> H[TimingChart]
+    E --> F[更新パラメータ生成<br/>(names / values / types / ports / ioSources)]
+    F --> G[TimingChartGeneratorHomePage]
+    G --> H[ChartUpdateService.updateChart]
+    H --> CHART[TimingChartController / TimingChartState に反映]
     
-    I[設定変更] --> J[SettingsWindow]
+    S[設定変更] --> J[SettingsWindow]
     J --> K[SettingsNotifier]
     K --> L[Provider.watch]
-    L --> H
+    L --> CHART
     
     style A fill:#e1f5ff
     style F fill:#fff3e0

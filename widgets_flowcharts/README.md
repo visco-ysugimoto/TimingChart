@@ -2,6 +2,73 @@
 
 このディレクトリには、`lib/widgets` フォルダ内の各ウィジェットのデータフローと処理フローがフォルダごとに整理されています。
 
+## main.dart からの全体図（入口）
+
+アプリ全体の起動〜画面遷移/主要フローは、まずこちらを参照してください。
+
+- **詳細版**: [MAIN_FLOWCHART.md](../MAIN_FLOWCHART.md)
+- **画像（SVG）**: [diagrams/main_overview.svg](diagrams/main_overview.svg)
+- **ビューア（SVG表示 + ダウンロード）**: [diagrams/main_overview.html](diagrams/main_overview.html)
+- **Mermaid生コード**: [diagrams/main_overview.mmd](diagrams/main_overview.mmd)
+
+```mermaid
+flowchart TD
+    START[アプリ起動] --> MAIN[main()]
+    MAIN --> TEST{ kZiqImportTest ?<br/>ZIQ_IMPORT_TEST }
+
+    %% --- Test mode ---
+    TEST -->|Yes| ZIQTEST[_runZiqImportTestMode]
+    ZIQTEST --> ZIQFILES[ZIQ/ZIP から必要ファイル抽出<br/>vxVisMgr.ini / DioMonitorLog.csv / Plc_*.csv / FNL_*.csv]
+    ZIQFILES --> PARSEINI[INI解析<br/>IOActive/IOSetting/StatusSignal]
+    PARSEINI --> PARSECSV[CSV解析<br/>Timeline/ActivePorts]
+    PARSECSV --> OUT[結果をコンソール出力して終了]
+
+    %% --- Normal mode ---
+    TEST -->|No| RUNAPP[runApp(MultiProvider)]
+    RUNAPP --> P1[FormStateNotifier]
+    RUNAPP --> P2[FormControllersNotifier]
+    RUNAPP --> P3[LocaleNotifier]
+    RUNAPP --> P4[SettingsNotifier]
+
+    RUNAPP --> APP[TimingChartGeneratorApp]
+    APP --> HOME[TimingChartGeneratorHomePage]
+
+    HOME --> TABS[TabController (2 tabs)]
+    TABS --> TAB0[Tab0: FormTab]
+    TABS --> TAB1[Tab1: TimingChart]
+
+    %% Form -> Chart update
+    TAB0 --> UC[Update Chart]
+    UC --> CB[onUpdateChart callback]
+    CB --> UPD[ChartUpdateService.updateChart<br/>(既存値/順序をマージ)]
+    UPD --> S1[setState: _chartSignals/_chartPortNumbers/_chartIoSources]
+    S1 --> CTRL[TimingChartController.setSignalNames/setSignals]
+    CTRL --> TAB1
+
+    %% Import/Export/Settings
+    TAB0 --> ZIQ[ZIQ Import]
+    ZIQ --> ZIQSVC[ZiqImportService.importZiq]
+    ZIQSVC --> APPLY[フォーム/設定/チャートへ反映<br/>(ports, names, durations, timeUnitIsMs...)]
+
+    TAB0 --> EXP[Export]
+    EXP --> EXPSVC[ExportService.*<br/>(JSON/JPEG/XLSX)]
+
+    HOME --> DRAWER[Drawer]
+    DRAWER --> SETTINGS[SettingsWindow]
+    DRAWER --> HELP[HelpDialog]
+    DRAWER --> ABOUT[VersionInfoDialog]
+
+    %% Notes
+    SETTINGS -.-> NOTE1[showIoNumbers は HomePage state + SharedPreferences で保持]
+    SETTINGS -.-> NOTE2[言語は LocaleNotifier を更新]
+
+    style START fill:#e1f5ff
+    style HOME fill:#e1f5ff
+    style TAB0 fill:#fff3e0
+    style TAB1 fill:#f3e5f5
+    style SETTINGS fill:#e8f5e9
+```
+
 ## ディレクトリ構造
 
 ```
@@ -41,7 +108,10 @@ widgets_flowcharts/
 
 ```mermaid
 flowchart TD
-    A[MyHomePage] --> B[TabController]
+    A[main.dart] --> AP[MultiProvider]
+    AP --> APP[TimingChartGeneratorApp]
+    APP --> HOME[TimingChartGeneratorHomePage]
+    HOME --> B[TabController]
     B --> C[Tab 0: FormTab]
     B --> D[Tab 1: TimingChart]
     
@@ -56,18 +126,23 @@ flowchart TD
     G --> J
     H --> K[CustomDropdown]
     
-    I --> L[SignalData生成]
-    L --> M[onUpdateChartコールバック]
+    I --> L[更新パラメータ生成<br/>(names / values / types / ports / ioSources)]
+    L --> M[onUpdateChart コールバック]
+    M --> S[TimingChartGeneratorHomePage<br/>onUpdateChart ハンドラ]
+    S --> U[ChartUpdateService.updateChart<br/>(既存値/順序のマージ)]
+    U --> V[setState: _chartSignals / _chartPortNumbers / _chartIoSources 更新]
+    V --> W[TimingChartController.setSignalNames/setSignals]
     
     D --> N[ChartGridManager]
     D --> O[ChartSignalsManager]
     D --> P[ChartAnnotationsManager]
     D --> Q[ChartCoordinateMapper]
-    D --> R[ChartDrawingUtil]
+    D --> R[chart_drawing_util.dart<br/>drawing utils]
     
-    A --> X[SettingsWindow]
+    HOME --> X[SettingsWindow]
     
     style A fill:#e1f5ff
+    style HOME fill:#e1f5ff
     style C fill:#fff3e0
     style D fill:#f3e5f5
     style X fill:#e8f5e9

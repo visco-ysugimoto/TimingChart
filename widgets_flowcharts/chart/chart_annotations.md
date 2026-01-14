@@ -8,6 +8,8 @@
 - コメントボックスの位置計算（衝突回避）
 - 破線と矢印の描画
 - アノテーションのソート
+- 当たり判定用の矩形情報を保持（`annotationRects`）
+- 下部時間ラベル表示時の被り回避（`showBottomUnitLabels`）
 
 ## 描画フロー
 
@@ -69,6 +71,7 @@ flowchart TD
 - `selectedAnnotationId`: 選択中のアノテーションID
 - `dashedColor`: 破線の色
 - `arrowColor`: 矢印の色
+- `showBottomUnitLabels`: 下部時間ラベル（単位）表示時に、コメント/矢印の配置を下へ逃がす
 - `timeUnitIsMs`: 時間単位がミリ秒かどうか
 - `msPerStep`: 1ステップあたりのミリ秒
 - `stepDurationsMs`: 各ステップの継続時間（ミリ秒）の配列
@@ -77,17 +80,17 @@ flowchart TD
 
 ### 破線
 - コメントボックスから信号行への破線
-- `ChartDrawingUtil.drawDashedLine()` を使用
+- `chart_drawing_util.dart` の `drawDashedLine()` を使用
 
 ### 矢印
 - 時間範囲を示す矢印
 - 開始位置と終了位置を結ぶ矢印
-- `ChartDrawingUtil.drawArrowLine()` を使用
+- `chart_drawing_util.dart` の `drawArrowLine()` / `drawArrow()` を使用
 
 ### コメントボックス
 - テキストを含む矩形
 - 選択中のアノテーションは強調表示
-- `ChartDrawingUtil.drawCommentBox()` を使用
+- `chart_drawing_util.dart` の `drawCommentBox()` を使用
 
 ## 衝突回避アルゴリズム
 
@@ -100,5 +103,5 @@ flowchart TD
 
 - `lib/widgets/chart/chart_annotations.dart` - 実装ファイル
 - [timing_chart.md](timing_chart.md) - TimingChartの詳細
-- [drawing_util.md](drawing_util.md) - ChartDrawingUtilの詳細
+- [drawing_util.md](drawing_util.md) - 描画ユーティリティの詳細
 

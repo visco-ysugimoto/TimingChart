@@ -29,6 +29,20 @@ part 'timing_chart_selection_ops.dart';
 part 'timing_chart_gestures.dart';
 part 'timing_chart_edit_steps.dart';
 part 'timing_chart_zoom_scroll.dart';
+part 'timing_chart_keyboard.dart';
+part 'timing_chart_row_reorder.dart';
+
+// NOTE: `part` 構成（責務別）
+// - types: 型/計算（`timing_chart_types.dart`）
+// - auto comments: 自動コメント生成（`timing_chart_auto_comments.dart`）
+// - painters: 描画（`timing_chart_painters.dart`）
+// - export: 画像/データのエクスポート（`timing_chart_export.dart`）
+// - selection ops: 選択操作（`timing_chart_selection_ops.dart`）
+// - gestures: ポインタ/ジェスチャー（`timing_chart_gestures.dart`）
+// - edit steps: Edit grid（`timing_chart_edit_steps.dart`）
+// - zoom/scroll: ズーム/スクロール（`timing_chart_zoom_scroll.dart`）
+// - keyboard: キーボード/フォーカス（`timing_chart_keyboard.dart`）
+// - row reorder: 行の並べ替え（`timing_chart_row_reorder.dart`）
 
 // 翻訳サポート用
 
@@ -344,6 +358,12 @@ class TimingChartState extends State<TimingChart>
     if (c.stepDurationsMs.isNotEmpty) return c.stepDurationsMs;
     return settings.stepDurationsMs;
   }
+
+  // NOTE: キーボード/フォーカス処理は `timing_chart_keyboard.dart` に分離しました。
+  bool _handleModifierKeyEvent(KeyEvent event) =>
+      _handleModifierKeyEventImpl(event);
+
+  void _onKeyEvent(KeyEvent event) => _onKeyEventImpl(event);
 
   /// ウィジェットが最初に作成されたときに状態を初期化します
   ///
@@ -2322,6 +2342,10 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
+  // NOTE: ステップ継続時間の一括編集ダイアログは `timing_chart_edit_steps.dart` に分離しました。
+  Future<void> _onEditStepDurationsPressed() =>
+      _onEditStepDurationsPressedImpl();
+
   /// ステップ継続時間を一括編集するためのボタンを構築します
   ///
   /// カンマ区切りの値を使用してすべてのステップ継続時間を一度に編集できる
@@ -2339,65 +2363,6 @@ class TimingChartState extends State<TimingChart>
       icon: const Icon(Icons.tune, size: 16),
       label: const Text('Edit steps'),
       onPressed: onPressed,
-    );
-  }
-
-  Future<void> _onEditStepDurationsPressed() async {
-    final settings = Provider.of<SettingsNotifier>(context, listen: false);
-    final maxLen =
-        signals.isEmpty ? 0 : signals.map((e) => e.length).fold(0, math.max);
-    settings.ensureStepDurationsLength(maxLen);
-    final controller = TextEditingController(
-      text: settings.stepDurationsMs.join(','),
-    );
-    final bool prevCanRequest = _focusNode.canRequestFocus;
-    _focusNode.canRequestFocus = false;
-    FocusScope.of(context).unfocus();
-
-    final ok =
-        await showDialog<bool>(
-          context: context,
-          builder: _buildEditStepDurationsDialog(controller),
-        ) ??
-        false;
-    _focusNode.canRequestFocus = prevCanRequest;
-    if (mounted) _focusNode.requestFocus();
-    if (!ok) return;
-
-    final parts = controller.text.split(',');
-    final parsed = <double>[];
-    for (final p in parts) {
-      final v = double.tryParse(p.trim());
-      if (v != null && v > 0) parsed.add(v);
-    }
-    if (parsed.isNotEmpty) {
-      settings.setStepDurationsMs(parsed);
-      _useControllerStepDurations = true;
-      _controller?.setStepDurationsMs(settings.stepDurationsMs);
-    }
-  }
-
-  Widget Function(BuildContext) _buildEditStepDurationsDialog(
-    TextEditingController controller,
-  ) {
-    return (ctx) => AlertDialog(
-      title: const Text('Step durations (ms, comma-separated)'),
-      content: TextField(
-        controller: controller,
-        minLines: 3,
-        maxLines: 6,
-        decoration: const InputDecoration(hintText: 'e.g. 1,1,2,0.5,0.5,3'),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, false),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, true),
-          child: const Text('Apply'),
-        ),
-      ],
     );
   }
 
@@ -2438,8 +2403,9 @@ class TimingChartState extends State<TimingChart>
   /// [annId] - 更新するアノテーションのID
   /// [visibleRowIndex] - 指す表示信号行インデックス
   void _setAnnotationArrowToSignal(String annId, int visibleRowIndex) {
-    if (visibleRowIndex < 0 || visibleRowIndex >= _visibleIndexes.length)
+    if (visibleRowIndex < 0 || visibleRowIndex >= _visibleIndexes.length) {
       return;
+    }
     setState(() {
       final idx = annotations.indexWhere((a) => a.id == annId);
       if (idx != -1) {
@@ -2467,75 +2433,7 @@ class TimingChartState extends State<TimingChart>
     super.dispose();
   }
 
-  /// 修飾キー（Ctrl/Cmd）の押下/解放イベントを処理します
-  ///
-  /// CtrlまたはCmdキーが押されたり解放されたりしたときに_isModifierPressed状態を更新します。
-  /// 特定のインタラクションモードを有効/無効にするために使用されます。
-  ///
-  /// [event] - キーボードイベント
-  /// イベント伝播を許可するためにfalseを返します
-  bool _handleModifierKeyEvent(KeyEvent event) {
-    final bool pressed =
-        HardwareKeyboard.instance.isControlPressed ||
-        HardwareKeyboard.instance.isMetaPressed;
-    if (pressed != _isModifierPressed) {
-      setState(() {
-        _isModifierPressed = pressed;
-      });
-    }
-    return false;
-  }
-
-  /// チャート操作のキーボードイベントを処理します
-  ///
-  /// キーボードショートカットを処理します：
-  /// - Ctrl/Cmd+Z: アンドゥ
-  /// - Ctrl/Cmd+Y: リドゥ
-  /// - Ctrl/Cmd+A: すべての信号を選択
-  /// - 0/1キー: 選択範囲の信号値を0または1に設定
-  ///
-  /// [event] - キーボードイベント
-  void _onKeyEvent(KeyEvent event) {
-    if (event is! KeyDownEvent) return;
-    final bool isModifierPressed =
-        HardwareKeyboard.instance.isControlPressed ||
-        HardwareKeyboard.instance.isMetaPressed;
-
-    if (_handleHorizontalScrollKeysImpl(event)) return;
-
-    // アンドゥ/リドゥショートカット
-    if (isModifierPressed) {
-      if (event.logicalKey == LogicalKeyboardKey.keyZ) {
-        // Ctrl+Z または Cmd+Z = アンドゥ
-        if (_controller?.canUndo ?? false) {
-          _controller?.undo();
-        }
-        return;
-      } else if (event.logicalKey == LogicalKeyboardKey.keyY) {
-        // Ctrl+Y または Cmd+Y = リドゥ
-        if (_controller?.canRedo ?? false) {
-          _controller?.redo();
-        }
-        return;
-      }
-    }
-
-    if (isModifierPressed && event.logicalKey == LogicalKeyboardKey.keyA) {
-      _selectAllSignals();
-      return;
-    }
-
-    // 選択範囲がある場合、1/0キーで信号を設定
-    if (_hasValidSelection) {
-      if (event.logicalKey == LogicalKeyboardKey.digit1) {
-        _setSignalsInSelection(1);
-        return;
-      } else if (event.logicalKey == LogicalKeyboardKey.digit0) {
-        _setSignalsInSelection(0);
-        return;
-      }
-    }
-  }
+  // NOTE: キーボード処理は `timing_chart_keyboard.dart` に分離しました。
 
   // NOTE: 全選択/選択範囲の一括設定は `timing_chart_selection_ops.dart` に分離しました。
 
@@ -2546,47 +2444,8 @@ class TimingChartState extends State<TimingChart>
   ///
   /// [visibleIndex] - 移動する表示信号行インデックス
   /// [direction] - 移動方向（-1は上、+1は下）
-  void _moveSignal(int visibleIndex, int direction) {
-    final int targetVisible = visibleIndex + direction;
-    if (targetVisible < 0 || targetVisible >= _visibleIndexes.length) return;
-
-    final int srcIdx = _visibleIndexes[visibleIndex];
-    final int dstIdx = _visibleIndexes[targetVisible];
-
-    setState(() {
-      final tmpSignal = signals[srcIdx];
-      signals[srcIdx] = signals[dstIdx];
-      signals[dstIdx] = tmpSignal;
-
-      final tmpName = signalNames[srcIdx];
-      signalNames[srcIdx] = signalNames[dstIdx];
-      signalNames[dstIdx] = tmpName;
-
-      final tmpType = widget.signalTypes[srcIdx];
-      widget.signalTypes[srcIdx] = widget.signalTypes[dstIdx];
-      widget.signalTypes[dstIdx] = tmpType;
-
-      if (widget.portNumbers.length > srcIdx &&
-          widget.portNumbers.length > dstIdx) {
-        final tmpPort = widget.portNumbers[srcIdx];
-        widget.portNumbers[srcIdx] = widget.portNumbers[dstIdx];
-        widget.portNumbers[dstIdx] = tmpPort;
-      }
-
-      if (widget.ioSources.length > srcIdx &&
-          widget.ioSources.length > dstIdx) {
-        final tmpSource = widget.ioSources[srcIdx];
-        widget.ioSources[srcIdx] = widget.ioSources[dstIdx];
-        widget.ioSources[dstIdx] = tmpSource;
-      }
-
-      final tmpId = _idSignalNames[srcIdx];
-      _idSignalNames[srcIdx] = _idSignalNames[dstIdx];
-      _idSignalNames[dstIdx] = tmpId;
-
-      _forceRepaint();
-    });
-  }
+  void _moveSignal(int visibleIndex, int direction) =>
+      _moveSignalImpl(visibleIndex, direction);
 
   /// 1つの行を新しい位置に移動して信号行を並べ替えます
   ///
@@ -2595,28 +2454,8 @@ class TimingChartState extends State<TimingChart>
   ///
   /// [fromVisible] - ソース表示行インデックス
   /// [toVisible] - 宛先表示行インデックス
-  void _reorderSignalRows(int fromVisible, int toVisible) {
-    if (fromVisible == toVisible) return;
-
-    if (fromVisible < toVisible) {
-      for (int i = fromVisible; i < toVisible; i++) {
-        _moveSignal(i, 1);
-      }
-    } else {
-      for (int i = fromVisible; i > toVisible; i--) {
-        _moveSignal(i, -1);
-      }
-    }
-
-    // 行入替は signals と signalNames の両方を更新する操作なので、
-    // コントローラへ順序も含めてコミットしないと、次の setSignals() で
-    // 「古い順序」が上書きされて並びが戻ってしまう。
-    _controller?.setSignalsAndNames(
-      signals: signals,
-      signalNames: _idSignalNames,
-    );
-    _notifySignalsChanged();
-  }
+  void _reorderSignalRows(int fromVisible, int toVisible) =>
+      _reorderSignalRowsImpl(fromVisible, toVisible);
 }
 
 // NOTE: Painter は `timing_chart_painters.dart` に分離しました。

@@ -6,6 +6,7 @@
 
 - 出力信号の設定
 - 可視性の制御（チェックボックス）
+- 候補入力 + 重複チェック（`SuggestionTextField(enableDuplicateCheck: true)`）
 
 ## データフロー
 

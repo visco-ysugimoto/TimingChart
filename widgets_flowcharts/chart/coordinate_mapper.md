@@ -44,6 +44,10 @@ X座標を時間に変換します。
 ### getSignalCenterY()
 信号インデックスから中央のY座標を取得します。
 
+### getSignalHighY() / getSignalLowY()
+信号インデックスから High/Low レベルのY座標を取得します。
+（波形描画の基準位置計算に使用）
+
 ### getSignalTopY()
 信号インデックスから上端のY座標を取得します。
 
@@ -52,6 +56,10 @@ X座標を時間に変換します。
 
 ### getNearestSignalIndex()
 Y座標から最も近い信号インデックスを取得します。
+
+**補足:**
+- `y < topPadding` の場合は `0`
+- `y` が最下端を超える場合は `signalCount - 1` にクリップします
 
 ### calculateTimeGridInterval()
 時間間隔からグリッド間隔を計算します。

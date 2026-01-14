@@ -23,6 +23,9 @@ flowchart TD
     
     B --> H[widget.controllerのリスナー登録]
     H --> I[_onExternalControllerChanged]
+
+    B --> H2{重複チェック有効?}
+    H2 -->|Yes| H3[excludeControllers の変更リスナー登録]
     
     B --> J[言語変更リスナー登録]
     J --> K[suggestionLanguageVersion.addListener]
@@ -36,17 +39,20 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[ユーザー入力] --> B[_onFieldChanged呼び出し]
-    B --> C[ラベル → ID変換]
-    C --> D[widget.controller.text更新]
-    D --> E[重複チェック]
-    E --> F{重複あり?}
-    F -->|Yes| G[エラー表示]
-    F -->|No| H[正常]
+    A[ユーザー入力（ラベル）] --> B[Autocomplete/TextField に反映]
+    B --> C[重複チェック（label→id変換して比較）]
+    C --> D{重複あり?}
+    D -->|Yes| E[errorText表示 + 背景を赤系に]
+    D -->|No| F[入力済みをアクセント色でハイライト]
+    
+    B --> G{確定タイミング}
+    G -->|フォーカス喪失| H[_commitFieldToParent]
+    G -->|onEditingComplete| H
+    H --> I[ラベル→IDへ変換して widget.controller.text に反映]
     
     style A fill:#e1f5ff
     style C fill:#fff3e0
-    style F fill:#ffebee
+    style D fill:#ffebee
 ```
 
 ## 主要メソッド
@@ -56,6 +62,7 @@ flowchart TD
 - `_updateSuggestions()` を呼び出し
 - `_internalController` を作成
 - `widget.controller` のリスナーを登録
+- （重複チェック有効時）`excludeControllers` の変更リスナーを登録
 - 言語変更リスナーを登録
 
 ### _updateSuggestions()
@@ -68,11 +75,9 @@ flowchart TD
 - `widget.controller.text` をラベルに変換
 - `_internalController.text` を更新
 
-### _onFieldChanged()
-フィールドの変更を処理します。
-- ラベルをIDに変換
-- `widget.controller.text` を更新
-- 重複チェックを実行
+### _onFocusChange() / _commitFieldToParent()
+確定タイミング（フォーカス喪失や編集完了）で、入力された **ラベル** を候補リストから **ID** に変換し、
+`widget.controller.text` に反映します。
 
 ### _idToLabel()
 IDをラベルに変換します。
@@ -98,6 +103,10 @@ IDをラベルに変換します。
 ## 重複チェック
 
 `enableDuplicateCheck` がtrueの場合、`excludeControllers` に含まれるコントローラーの値と重複していないかチェックします。
+
+**現状実装のポイント:**
+- 候補一覧は「使用済みID」を除外してフィルタされます（入力時の候補から重複を避ける）
+- 入力フィールドは **重複時に `errorText` を表示** し、背景色も赤系に変わります
 
 ## 関連ファイル
 

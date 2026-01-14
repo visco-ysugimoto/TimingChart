@@ -9,7 +9,7 @@ import '../models/form/form_state.dart';
 ///
 /// まずは既存コードと併用できるよう、最低限の getter / updater のみ実装しています。
 class FormStateNotifier extends ChangeNotifier {
-  // 初期値は従来の `MyHomePage.initState` と同一にしておく
+  // 初期値は従来の `TimingChartGeneratorHomePage.initState` と同一にしておく
   TimingFormState _state = const TimingFormState(
     triggerOption: 'Single Trigger',
     ioPort: 32,

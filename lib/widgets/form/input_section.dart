@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/chart/signal_type.dart';
 import '../common/suggestion_text_field.dart';
 import '../../suggestion_loader.dart';
+import 'form_tab_rules.dart';
 
 class InputSection extends StatelessWidget {
   final List<TextEditingController> controllers;
@@ -23,34 +24,11 @@ class InputSection extends StatelessWidget {
 
   // SignalTypeを取得する関数
   SignalType _getSignalType(int index) {
-    final totalInputs = count;
-
-    if (triggerOption == 'Code Trigger') {
-      if (totalInputs >= 32) {
-        if (index >= 1 && index <= 8) {
-          // Input2~9
-          return SignalType.control;
-        } else if (index >= 9 && index <= 14) {
-          // Input10~15
-          return SignalType.group;
-        } else if (index >= 15 && index <= 20) {
-          // Input16~21
-          return SignalType.task;
-        }
-      } else if (totalInputs == 16) {
-        if (index >= 1 && index <= 4) {
-          // Input2~5
-          return SignalType.control;
-        } else if (index >= 5 && index <= 7) {
-          // Input6~8
-          return SignalType.group;
-        } else if (index >= 8 && index <= 13) {
-          // Input9~14
-          return SignalType.task;
-        }
-      }
-    }
-    return SignalType.input;
+    return FormTabRules.inferInputSignalType(
+      triggerOption: triggerOption,
+      inputCount: count,
+      index: index,
+    );
   }
 
   @override

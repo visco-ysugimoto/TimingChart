@@ -25,8 +25,8 @@ flowchart TD
     D --> G
     E --> H[CustomDropdown]
     
-    F --> I[SignalData生成]
-    I --> J[onUpdateChartコールバック]
+    F --> I[更新パラメータ生成<br/>(names / values / types / ports / ioSources)]
+    I --> J[onUpdateChart コールバック]
     
     style A fill:#e1f5ff
     style F fill:#fff3e0

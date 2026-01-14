@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="980" viewBox="0 0 1400 980">
+  <defs>
+    <style>
+      .title { font: 700 22px system-ui, -apple-system, "Segoe UI", "Noto Sans JP", Meiryo, sans-serif; fill: #111827; }
+      .label { font: 600 13px system-ui, -apple-system, "Segoe UI", "Noto Sans JP", Meiryo, sans-serif; fill: #111827; }
+      .small { font: 500 12px system-ui, -apple-system, "Segoe UI", "Noto Sans JP", Meiryo, sans-serif; fill: #111827; }
+      .muted { font: 500 11px system-ui, -apple-system, "Segoe UI", "Noto Sans JP", Meiryo, sans-serif; fill: #374151; }
+      .box { stroke: #11182733; stroke-width: 1.2; rx: 12; ry: 12; }
+      .note { stroke: #11182722; stroke-width: 1; rx: 10; ry: 10; }
+      .arrow { stroke: #111827aa; stroke-width: 2; fill: none; }
+    </style>
+    <marker id="arrowHead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#111827aa"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1400" height="980" fill="#ffffff"/>
+  <text x="28" y="42" class="title">main.dart からの全体図（SVG）</text>
+  <text x="28" y="64" class="muted">Mermaidを使わず、ローカルでそのまま表示できる図です（ネット不要）。</text>
+
+  <!-- Nodes -->
+  <!-- Top row -->
+  <rect class="box" x="40" y="90" width="160" height="54" fill="#e1f5ff"/>
+  <text x="120" y="122" text-anchor="middle" class="label">アプリ起動</text>
+
+  <rect class="box" x="250" y="90" width="160" height="54" fill="#e1f5ff"/>
+  <text x="330" y="122" text-anchor="middle" class="label">main()</text>
+
+  <polygon points="510,90 650,117 510,144 370,117" fill="#fff7ed" stroke="#11182733" stroke-width="1.2"/>
+  <text x="510" y="113" text-anchor="middle" class="label">ZIQ_IMPORT_TEST</text>
+  <text x="510" y="130" text-anchor="middle" class="small">（有効？）</text>
+
+  <!-- Test mode branch -->
+  <rect class="box" x="760" y="40" width="250" height="54" fill="#fff7ed"/>
+  <text x="885" y="72" text-anchor="middle" class="label">_runZiqImportTestMode</text>
+
+  <rect class="box" x="1040" y="40" width="320" height="54" fill="#ffffff"/>
+  <text x="1200" y="65" text-anchor="middle" class="small">ZIQ/ZIP から必要ファイル抽出</text>
+  <text x="1200" y="82" text-anchor="middle" class="muted">ini / csv（DIO/PLC/EIP 等）</text>
+
+  <rect class="box" x="1040" y="110" width="320" height="54" fill="#ffffff"/>
+  <text x="1200" y="135" text-anchor="middle" class="small">INI解析（IOActive/IOSetting/StatusSignal）</text>
+
+  <rect class="box" x="1040" y="180" width="320" height="54" fill="#ffffff"/>
+  <text x="1200" y="205" text-anchor="middle" class="small">CSV解析（Timeline/ActivePorts）</text>
+
+  <rect class="box" x="1040" y="250" width="320" height="54" fill="#ffffff"/>
+  <text x="1200" y="282" text-anchor="middle" class="label">結果をコンソール出力</text>
+
+  <!-- Normal mode branch -->
+  <rect class="box" x="760" y="170" width="250" height="54" fill="#ffffff"/>
+  <text x="885" y="202" text-anchor="middle" class="label">runApp(MultiProvider)</text>
+
+  <rect class="box" x="760" y="240" width="250" height="130" fill="#ffffff"/>
+  <text x="885" y="266" text-anchor="middle" class="label">Provider 初期化</text>
+  <text x="785" y="292" class="small">FormStateNotifier</text>
+  <text x="785" y="312" class="small">FormControllersNotifier</text>
+  <text x="785" y="332" class="small">LocaleNotifier</text>
+  <text x="785" y="352" class="small">SettingsNotifier</text>
+
+  <rect class="box" x="760" y="400" width="250" height="54" fill="#ffffff"/>
+  <text x="885" y="432" text-anchor="middle" class="label">TimingChartGeneratorApp</text>
+
+  <rect class="box" x="760" y="470" width="250" height="54" fill="#ffffff"/>
+  <text x="885" y="502" text-anchor="middle" class="label">TimingChartGeneratorHomePage</text>
+
+  <rect class="box" x="760" y="540" width="250" height="54" fill="#ffffff"/>
+  <text x="885" y="572" text-anchor="middle" class="label">TabController（2タブ）</text>
+
+  <rect class="box" x="640" y="630" width="210" height="62" fill="#fff3e0"/>
+  <text x="745" y="660" text-anchor="middle" class="label">Tab0: FormTab</text>
+  <text x="745" y="680" text-anchor="middle" class="muted">入力/設定/更新</text>
+
+  <rect class="box" x="920" y="630" width="210" height="62" fill="#f3e5f5"/>
+  <text x="1025" y="660" text-anchor="middle" class="label">Tab1: TimingChart</text>
+  <text x="1025" y="680" text-anchor="middle" class="muted">描画/編集</text>
+
+  <!-- Update chart flow -->
+  <rect class="box" x="420" y="740" width="210" height="54" fill="#ffffff"/>
+  <text x="525" y="772" text-anchor="middle" class="label">Update Chart</text>
+
+  <rect class="box" x="420" y="810" width="210" height="54" fill="#ffffff"/>
+  <text x="525" y="842" text-anchor="middle" class="label">onUpdateChart</text>
+
+  <rect class="box" x="660" y="740" width="300" height="54" fill="#ffffff"/>
+  <text x="810" y="772" text-anchor="middle" class="small">ChartUpdateService.updateChart</text>
+  <text x="810" y="790" text-anchor="middle" class="muted">既存値/順序をマージ</text>
+
+  <rect class="box" x="660" y="810" width="300" height="54" fill="#ffffff"/>
+  <text x="810" y="842" text-anchor="middle" class="small">setState: _chartSignals/_portNumbers/_ioSources</text>
+
+  <rect class="box" x="990" y="740" width="300" height="54" fill="#ffffff"/>
+  <text x="1140" y="772" text-anchor="middle" class="small">TimingChartController</text>
+  <text x="1140" y="790" text-anchor="middle" class="muted">setSignalNames / setSignals</text>
+
+  <!-- Import/Export/Settings -->
+  <rect class="note" x="40" y="410" width="320" height="165" fill="#ffffff"/>
+  <text x="60" y="436" class="label">その他フロー（代表）</text>
+  <text x="60" y="462" class="small">ZIQ Import → ZiqImportService.importZiq →</text>
+  <text x="60" y="482" class="small">フォーム/設定/チャートへ反映（ports/names/durations 等）</text>
+  <text x="60" y="512" class="small">Export → ExportService（JSON/JPEG/XLSX）</text>
+  <text x="60" y="542" class="small">Drawer → SettingsWindow / HelpDialog / VersionInfoDialog</text>
+
+  <rect class="note" x="40" y="590" width="320" height="90" fill="#ffffff"/>
+  <text x="60" y="616" class="label">補足</text>
+  <text x="60" y="642" class="small">- showIoNumbers は HomePage state + SharedPreferences</text>
+  <text x="60" y="662" class="small">- 言語は LocaleNotifier を更新</text>
+
+  <!-- Arrows -->
+  <path class="arrow" marker-end="url(#arrowHead)" d="M200,117 L250,117"/>
+  <path class="arrow" marker-end="url(#arrowHead)" d="M410,117 L370,117"/>
+
+  <!-- Decision outgoing -->
+  <path class="arrow" marker-end="url(#arrowHead)" d="M580,98 L740,67"/>
+  <text x="655" y="72" class="muted">Yes</text>
+
+  <path class="arrow" marker-end="url(#arrowHead)" d="M580,136 L740,197"/>
+  <text x="655" y="192" class="muted">No</text>
+
+  <!-- Test mode chain -->
+  <path class="arrow" marker-end="url(#arrowHead)" d="M1010,67 L1040,67"/>
+  <path class="arrow" marker-end="url(#arrowHead)" d="M1200,94 L1200,110"/>
+  <path class="arrow" marker-end="url(#arrowHead)" d="M1200,164 L1200,180"/>
+  <path class="arrow" marker-end="url(#arrowHead)" d="M1200,234 L1200,250"/>
+
+  <!-- Normal mode chain -->
+  <path class="arrow" marker-end="url(#arrowHead)" d="M885,224 L885,240"/>
+  <path class="arrow" marker-end="url(#arrowHead)" d="M885,370 L885,400"/>
+  <path class="arrow" marker-end="url(#arrowHead)" d="M885,454 L885,470"/>
+  <path class="arrow" marker-end="url(#arrowHead)" d="M885,524 L885,540"/>
+  <path class="arrow" marker-end="url(#arrowHead)" d="M885,594 L885,630"/>
+
+  <!-- Tabs -->
+  <path class="arrow" marker-end="url(#arrowHead)" d="M760,567 L745,630"/>
+  <path class="arrow" marker-end="url(#arrowHead)" d="M1010,567 L1025,630"/>
+
+  <!-- Update chart flow connections -->
+  <path class="arrow" marker-end="url(#arrowHead)" d="M745,692 L630,767"/>
+  <path class="arrow" marker-end="url(#arrowHead)" d="M525,794 L525,810"/>
+  <path class="arrow" marker-end="url(#arrowHead)" d="M630,837 L660,837"/>
+  <path class="arrow" marker-end="url(#arrowHead)" d="M810,794 L810,810"/>
+  <path class="arrow" marker-end="url(#arrowHead)" d="M960,767 L990,767"/>
+  <path class="arrow" marker-end="url(#arrowHead)" d="M1140,794 L1025,630"/>
+</svg>
+

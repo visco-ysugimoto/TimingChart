@@ -23,15 +23,15 @@ flowchart TD
     C -->|3| G[外観設定]
     C -->|4| H[言語設定]
     
-    D --> I[SettingsNotifierから設定取得]
+    D --> I[設定値の取得]
     E --> I
     F --> I
     G --> I
     H --> I
     
     I --> J[設定変更]
-    J --> K[SettingsNotifier更新]
-    K --> L[Provider.watchにより自動反映]
+    J --> K[SettingsNotifier / LocaleNotifier / 親State を更新]
+    K --> L[Provider.watch + setState により反映]
     
     style A fill:#e1f5ff
     style B fill:#fff3e0
@@ -80,7 +80,11 @@ flowchart TD
 
 ## SettingsNotifier との連携
 
-`SettingsNotifier` から設定を取得し、変更時に更新します。変更は `Provider.watch()` により自動的に反映されます。
+`SettingsWindow` は主に `SettingsNotifier` を `Provider.watch()` で監視してUIへ反映します。
+
+- **showIoNumbers**: `SettingsNotifier` ではなく `TimingChartGeneratorHomePage` 側の state（+ SharedPreferences）で保持し、
+  `SettingsWindow(showIoNumbers, onShowIoNumbersChanged)` 経由で変更します。
+- **言語**: `LocaleNotifier` を更新します（`SettingsNotifier` ではありません）。
 
 ## 関連ファイル
 

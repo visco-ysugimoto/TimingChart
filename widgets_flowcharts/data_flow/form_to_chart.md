@@ -6,41 +6,27 @@
 
 ```mermaid
 flowchart LR
-    A[Update Chart ボタン押下] --> B[FormTab内でSignalData生成]
-    B --> C[ChartDataGenerator.generateSignalData]
-    C --> C1[入力信号データ生成]
-    C --> C2[出力信号データ生成]
-    C --> C3[HWトリガー信号データ生成]
-    C --> C4[信号タイプ配列生成]
-    C --> C5[ポート番号配列生成]
+    A[Update Chart ボタン押下] --> B[FormTab._onUpdateChart]
+    B --> C[FormTabState で更新パラメータ生成]
+    C --> C1[generateSignalNames()]
+    C --> C2[generateFilteredChartData()]
+    C --> C3[generateSignalTypes()]
+    C --> C4[generatePortNumbers()]
+    C --> C5[generateIoChannelSources()]
     
-    C1 --> D[SignalDataオブジェクト作成]
-    C2 --> D
-    C3 --> D
-    C4 --> D
-    C5 --> D
+    C --> D[可視信号のみへフィルタ]
+    D --> E[onUpdateChart コールバック]
+    E --> F[TimingChartGeneratorHomePage]
     
-    D --> E[onUpdateChartコールバック]
-    E --> F[MyHomePageにSignalDataを渡す]
-    
-    F --> G[MyHomePageで状態更新]
-    G --> G1[_signalNames更新]
-    G --> G2[_signals更新]
-    G --> G3[_signalTypes更新]
-    G --> G4[_portNumbers更新]
-    
-    G1 --> H[TimingChartに新しいデータを渡す]
-    G2 --> H
-    G3 --> H
-    G4 --> H
-    
-    H --> I[TimingChart再ビルド]
-    I --> J[新しいデータでチャート描画]
+    F --> G[ChartUpdateService.updateChart<br/>(既存値/順序をマージ)]
+    G --> H[setState: _chartSignals / _chartPortNumbers / _chartIoSources 更新]
+    H --> I[TimingChartController.setSignalNames/setSignals]
+    I --> J[TimingChart に反映・再描画]
     
     style A fill:#ffebee
-    style D fill:#e3f2fd
+    style C fill:#e3f2fd
     style F fill:#fff3e0
-    style H fill:#e8f5e9
+    style I fill:#e8f5e9
     style J fill:#c8e6c9
 ```
 
@@ -52,13 +38,13 @@ flowchart LR
 
 ### 2. SignalData 生成
 
-`ChartDataGenerator.generateSignalData()` が呼び出され、以下のデータが生成されます：
+`FormTab._onUpdateChart()` 内で、以下の更新パラメータが生成されます：
 
-- **入力信号データ**: 入力コントローラーから信号名と初期値を取得
-- **出力信号データ**: 出力コントローラーから信号名と初期値を取得
-- **HWトリガー信号データ**: HWトリガーコントローラーから信号名と初期値を取得
-- **信号タイプ配列**: 各信号のタイプ（Input/Output/HWTrigger/Control/Group/Task）
-- **ポート番号配列**: 各信号のポート番号
+- **信号名**: `generateSignalNames()`
+- **信号値（チャートデータ）**: `generateFilteredChartData()`（可視信号のみ）
+- **信号タイプ**: `generateSignalTypes()`
+- **ポート番号**: `generatePortNumbers()`（可視信号のみへ整合）
+- **IOソース**: `generateIoChannelSources()`
 
 ### 3. SignalData オブジェクト作成
 
@@ -75,20 +61,21 @@ SignalData(
 
 ### 4. onUpdateChart コールバック
 
-`SignalData` オブジェクトが `onUpdateChart` コールバックを通じて `MyHomePage` に渡されます。
+更新パラメータが `onUpdateChart` コールバックを通じて `TimingChartGeneratorHomePage` に渡されます。
 
-### 5. MyHomePage で状態更新
+### 5. TimingChartGeneratorHomePage で状態更新
 
-`MyHomePage` で以下の状態が更新されます：
+`TimingChartGeneratorHomePage` で以下の状態が更新されます：
 
-- `_signalNames`: 信号名のリスト
-- `_signals`: 信号値のリスト
-- `_signalTypes`: 信号タイプのリスト
-- `_portNumbers`: ポート番号のリスト
+- `ChartUpdateService.updateChart(...)` で「既存値の維持」と「表示順の維持」を行った上で、
+  - `_chartSignals`
+  - `_chartPortNumbers`
+  - `_chartIoSources`
+  を `setState` で更新します。
 
 ### 6. TimingChart にデータを渡す
 
-更新されたデータが `TimingChart` のプロパティとして渡されます：
+更新されたデータは、`TimingChart(controller: ...)` 経由で反映されます（必要に応じて `TimingChartState` にも反映）：
 
 - `initialSignalNames`
 - `initialSignals`
@@ -128,7 +115,8 @@ signals: [
 
 - `lib/widgets/form/form_tab.dart` - FormTabの実装
 - `lib/widgets/chart/timing_chart.dart` - TimingChartの実装
-- `lib/models/chart/chart_data_generator.dart` - SignalData生成ロジック
+- `lib/services/chart_update_service.dart` - 既存値/順序を保ちながら更新するサービス
+- `lib/models/chart/chart_data_generator.dart` - 初期チャートデータ生成ユーティリティ（必要時）
 - [../form/form_tab.md](../form/form_tab.md) - FormTabの詳細
 - [../chart/timing_chart.md](../chart/timing_chart.md) - TimingChartの詳細
 

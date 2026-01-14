@@ -1,6 +1,7 @@
-# ChartDrawingUtil フロー
+# 描画ユーティリティ（`chart_drawing_util.dart`）
 
-`ChartDrawingUtil` は、キャンバス上に破線や矢印を描画するユーティリティ関数を提供します。
+`lib/widgets/chart/chart_drawing_util.dart` は、キャンバス上に破線や矢印、コメントボックス等を描画する
+**ユーティリティ関数（トップレベル関数）** を提供します。
 
 ## 主要な機能
 
@@ -26,6 +27,9 @@
 2. パターン長を計算（`dashWidth + dashSpace`）
 3. 破線の数を計算
 4. 各破線セグメントを描画
+
+**補足:**
+- 実装ではデバッグ用に `debugPrint` が多めに入っています（必要なら将来的に抑制/削減できます）
 
 ### drawArrowhead()
 矢印ヘッドを描画します。
@@ -65,11 +69,21 @@
 - `textPainter`: テキストペインター
 - `annId`: アノテーションID
 - `selectedAnnotationId`: 選択中のアノテーションID
+- `borderColor`: コメントごとの枠線色（非選択時、null可）
 
 **処理:**
 - 矩形を描画
 - テキストを描画
 - 選択中の場合は強調表示
+
+### drawArrow()
+左右に矢印ヘッドが付いた水平矢印を描画します。
+
+### drawWavyVerticalLine()
+垂直方向の波線を描画します（開始点→終了点）。
+
+### drawDoubleWavyVerticalLine()
+2本の波線を垂直に並べ、その間を塗りつぶして描画します（省略表現などに使用）。
 
 ## 使用例
 

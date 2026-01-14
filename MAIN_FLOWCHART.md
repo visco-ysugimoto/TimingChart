@@ -1,5 +1,65 @@
 # main.dart 処理フローチャート
 
+## 0. 全体図（main.dart からの流れ）
+
+```mermaid
+flowchart TD
+    START[アプリ起動] --> MAIN[main()]
+    MAIN --> TEST{ kZiqImportTest ?<br/>ZIQ_IMPORT_TEST }
+
+    %% --- Test mode ---
+    TEST -->|Yes| ZIQTEST[_runZiqImportTestMode]
+    ZIQTEST --> ZIQFILES[ZIQ/ZIP から必要ファイル抽出<br/>vxVisMgr.ini / DioMonitorLog.csv / Plc_*.csv / FNL_*.csv]
+    ZIQFILES --> PARSEINI[INI解析<br/>IOActive/IOSetting/StatusSignal]
+    PARSEINI --> PARSECSV[CSV解析<br/>Timeline/ActivePorts]
+    PARSECSV --> OUT[結果をコンソール出力して終了]
+
+    %% --- Normal mode ---
+    TEST -->|No| RUNAPP[runApp(MultiProvider)]
+    RUNAPP --> P1[FormStateNotifier]
+    RUNAPP --> P2[FormControllersNotifier]
+    RUNAPP --> P3[LocaleNotifier]
+    RUNAPP --> P4[SettingsNotifier]
+
+    RUNAPP --> APP[TimingChartGeneratorApp]
+    APP --> HOME[TimingChartGeneratorHomePage]
+
+    HOME --> TABS[TabController (2 tabs)]
+    TABS --> TAB0[Tab0: FormTab]
+    TABS --> TAB1[Tab1: TimingChart]
+
+    %% Form -> Chart update
+    TAB0 --> UC[Update Chart]
+    UC --> CB[onUpdateChart callback]
+    CB --> UPD[ChartUpdateService.updateChart<br/>(既存値/順序をマージ)]
+    UPD --> S1[setState: _chartSignals/_chartPortNumbers/_chartIoSources]
+    S1 --> CTRL[TimingChartController.setSignalNames/setSignals]
+    CTRL --> TAB1
+
+    %% Import/Export/Settings
+    TAB0 --> ZIQ[ZIQ Import]
+    ZIQ --> ZIQSVC[ZiqImportService.importZiq]
+    ZIQSVC --> APPLY[フォーム/設定/チャートへ反映<br/>(ports, names, durations, timeUnitIsMs...)]
+
+    TAB0 --> EXP[Export]
+    EXP --> EXPSVC[ExportService.*<br/>(JSON/JPEG/XLSX)]
+
+    HOME --> DRAWER[Drawer]
+    DRAWER --> SETTINGS[SettingsWindow]
+    DRAWER --> HELP[HelpDialog]
+    DRAWER --> ABOUT[VersionInfoDialog]
+
+    %% Notes
+    SETTINGS -.-> NOTE1[showIoNumbers は HomePage state + SharedPreferences で保持]
+    SETTINGS -.-> NOTE2[言語は LocaleNotifier を更新]
+
+    style START fill:#e1f5ff
+    style HOME fill:#e1f5ff
+    style TAB0 fill:#fff3e0
+    style TAB1 fill:#f3e5f5
+    style SETTINGS fill:#e8f5e9
+```
+
 ## 1. アプリケーション起動フロー
 
 ```
@@ -37,12 +97,12 @@
     │            │   ├─ LocaleNotifier
     │            │   └─ SettingsNotifier
     │            │
-    │            └─→ MyApp起動
+    │            └─→ TimingChartGeneratorApp起動
     │                 │
-    │                 └─→ MyHomePage表示
+    │                 └─→ TimingChartGeneratorHomePage表示
 ```
 
-## 2. MyHomePage 初期化フロー
+## 2. TimingChartGeneratorHomePage 初期化フロー
 
 ```
 [initState呼び出し]
