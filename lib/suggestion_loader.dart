@@ -153,3 +153,12 @@ Future<String> labelOfId(String id) async {
 
   return map[id] ?? id;
 }
+
+/// 同期的にIDを表示名へ変換（キャッシュがある場合のみ）
+String labelOfIdSync(String id) {
+  final cache = _translationCache[_currentLang];
+  if (cache != null && cache.containsKey(id)) {
+    return cache[id]!;
+  }
+  return id;
+}

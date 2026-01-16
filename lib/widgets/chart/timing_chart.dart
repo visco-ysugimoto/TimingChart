@@ -373,7 +373,10 @@ class TimingChartState extends State<TimingChart>
   void initState() {
     super.initState();
     _idSignalNames = List.from(widget.initialSignalNames);
-    signalNames = List.from(_idSignalNames);
+    signalNames = _buildImmediateSignalNames(
+      _idSignalNames,
+      priorLabels: const {},
+    );
 
     _translateNames();
 
@@ -413,10 +416,15 @@ class TimingChartState extends State<TimingChart>
       final List<int> controllerOmission = List<int>.from(
         _controller!.omissionTimeIndices,
       );
+      final priorLabels = _buildPriorLabelMap();
 
       setState(() {
         signals = controllerSignals;
         _idSignalNames = controllerNames;
+        signalNames = _buildImmediateSignalNames(
+          _idSignalNames,
+          priorLabels: priorLabels,
+        );
         annotations = controllerAnnotations;
         _omissionTimeIndices = controllerOmission;
         _forceRepaint();
@@ -537,8 +545,13 @@ class TimingChartState extends State<TimingChart>
     if (listEquals(_idSignalNames, newIdNames)) {
       return;
     }
+    final priorLabels = _buildPriorLabelMap();
     setState(() {
       _idSignalNames = List.from(newIdNames);
+      signalNames = _buildImmediateSignalNames(
+        _idSignalNames,
+        priorLabels: priorLabels,
+      );
       _forceRepaint();
     });
     _controller?.setSignalNames(_idSignalNames);
@@ -570,6 +583,36 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
+  Map<String, String> _buildPriorLabelMap() {
+    final map = <String, String>{};
+    final int safeLen = math.min(_idSignalNames.length, signalNames.length);
+    for (int i = 0; i < safeLen; i++) {
+      map[_idSignalNames[i]] = signalNames[i];
+    }
+    return map;
+  }
+
+  String _translateIdImmediate(String id, Map<String, String> priorLabels) {
+    final cached = priorLabels[id];
+    if (cached != null) return cached;
+    final int colonIdx = id.indexOf(':');
+    if (colonIdx > 0) {
+      final prefix = id.substring(0, colonIdx + 1);
+      final raw = id.substring(colonIdx + 1).trim();
+      final label = labelOfIdSync(raw);
+      return '$prefix $label';
+    }
+    return labelOfIdSync(id);
+  }
+
+  List<String> _buildImmediateSignalNames(
+    List<String> newIds, {
+    Map<String, String>? priorLabels,
+  }) {
+    final labels = priorLabels ?? _buildPriorLabelMap();
+    return newIds.map((id) => _translateIdImmediate(id, labels)).toList();
+  }
+
   List<List<int>> getChartData() {
     return List.from(signals);
   }
@@ -586,11 +629,15 @@ class TimingChartState extends State<TimingChart>
           widget.initialAnnotations,
           oldWidget.initialAnnotations,
         );
+    final priorLabels = namesChanged ? _buildPriorLabelMap() : null;
     if (namesChanged || signalsChanged || annotationsChanged) {
       setState(() {
         if (namesChanged) {
           _idSignalNames = List.from(widget.initialSignalNames);
-          signalNames = List.from(_idSignalNames);
+          signalNames = _buildImmediateSignalNames(
+            _idSignalNames,
+            priorLabels: priorLabels,
+          );
           _translateNames();
         }
         if (signalsChanged) {
