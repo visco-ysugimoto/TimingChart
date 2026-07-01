@@ -880,6 +880,7 @@ class TimingChartState extends State<TimingChart>
   /// ラベル領域をタップすると、行全体が選択されます。
   /// 信号セルをタップすると、その値が切り替わります。
   /// 既存の選択範囲内をタップすると、その選択範囲内のすべての信号が切り替わります。
+  /// 選択範囲外をタップすると、選択のみ解除されます（信号値は変更しません）。
   ///
   /// [details] - タップ位置を含むタップジェスチャーの詳細
   void _handleTap(TapUpDetails details) {

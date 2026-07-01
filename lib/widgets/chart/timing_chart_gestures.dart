@@ -160,7 +160,6 @@ extension _TimingChartGesturesExt on TimingChartState {
         _toggleSignalsInSelection();
       } else {
         _clearSelection();
-        _toggleSingleSignal(clickSig, clickTim);
       }
     } else {
       _toggleSingleSignal(clickSig, clickTim);
