@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -337,6 +338,30 @@ class _SettingsWindowState extends State<SettingsWindow> {
           padding: const EdgeInsets.all(16),
           children: [
             ListTile(
+              leading: const Icon(Icons.folder),
+              title: Text(s.settings_export_base_directory),
+              subtitle: Text(
+                settings.lastExportDirectory ??
+                    s.settings_export_base_directory_not_set,
+              ),
+              trailing: const Icon(Icons.edit),
+              onTap: () async {
+                final path = await FilePicker.getDirectoryPath(
+                  dialogTitle: s.settings_pick_export_directory,
+                  initialDirectory: settings.lastExportDirectory,
+                );
+                if (path != null && path.isNotEmpty) {
+                  settings.lastExportDirectory = path;
+                }
+              },
+            ),
+            SwitchListTile(
+              secondary: const Icon(Icons.flash_on),
+              title: Text(s.settings_quick_export),
+              value: settings.quickExportEnabled,
+              onChanged: (v) => settings.quickExportEnabled = v,
+            ),
+            ListTile(
               leading: const Icon(Icons.folder_open),
               title: Text(s.default_export_folder),
               subtitle: Text(settings.exportFolder),
@@ -452,23 +477,29 @@ class _SettingsWindowState extends State<SettingsWindow> {
         return ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            RadioListTile<Locale>(
-              value: const Locale('ja'),
+            RadioGroup<Locale>(
               groupValue: context.watch<LocaleNotifier>().locale,
-              title: Text(s.language_japanese),
               onChanged: (locale) {
-                context.read<LocaleNotifier>().setLocale(locale!);
-                setSuggestionLanguage(SuggestionLanguage.ja);
+                if (locale == null) return;
+                context.read<LocaleNotifier>().setLocale(locale);
+                setSuggestionLanguage(
+                  locale.languageCode == 'ja'
+                      ? SuggestionLanguage.ja
+                      : SuggestionLanguage.en,
+                );
               },
-            ),
-            RadioListTile<Locale>(
-              value: const Locale('en'),
-              groupValue: context.watch<LocaleNotifier>().locale,
-              title: Text(s.language_english),
-              onChanged: (locale) {
-                context.read<LocaleNotifier>().setLocale(locale!);
-                setSuggestionLanguage(SuggestionLanguage.en);
-              },
+              child: Column(
+                children: [
+                  RadioListTile<Locale>(
+                    value: const Locale('ja'),
+                    title: Text(s.language_japanese),
+                  ),
+                  RadioListTile<Locale>(
+                    value: const Locale('en'),
+                    title: Text(s.language_english),
+                  ),
+                ],
+              ),
             ),
           ],
         );
@@ -485,7 +516,7 @@ class _SettingsWindowState extends State<SettingsWindow> {
 
 class _CameraCountDialog extends StatefulWidget {
   final int initial;
-  const _CameraCountDialog({Key? key, required this.initial}) : super(key: key);
+  const _CameraCountDialog({required this.initial});
 
   @override
   State<_CameraCountDialog> createState() => _CameraCountDialogState();

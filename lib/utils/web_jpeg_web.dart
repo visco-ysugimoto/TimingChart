@@ -1,4 +1,5 @@
-// ignore: avoid_web_libraries_in_flutter
+// ignore_for_file: deprecated_member_use, avoid_web_libraries_in_flutter
+// Web専用。package:web への移行は今後のタスク。
 import 'dart:html' as html;
 import 'dart:async';
 import 'dart:convert';
@@ -53,8 +54,6 @@ Future<Uint8List> pngToJpegBytes(
     ctx.fillRect(0, 0, width, height);
     ctx.drawImageScaled(imgEl, 0, 0, width, height);
 
-    // Prefer Canvas.toBlob (fast, no base64 overhead). Some browsers/environments can fail here;
-    // fall back to toDataUrl + base64 decode in that case.
     late final html.Blob jpegBlob;
     try {
       jpegBlob = await canvas.toBlob('image/jpeg', q);
@@ -91,5 +90,3 @@ Future<Uint8List> pngToJpegBytes(
     html.Url.revokeObjectUrl(pngUrl);
   }
 }
-
-

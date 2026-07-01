@@ -201,5 +201,53 @@
   "ctx_delete_columns": "Delete selected columns",
   "@ctx_delete_columns": {
       "description": "Context menu: Delete selected columns"
+  },
+  "settings_export_base_directory": "Export base folder (full path)",
+  "@settings_export_base_directory": {
+      "description": "Settings: base directory for quick export"
+  },
+  "settings_export_base_directory_not_set": "Not set (show save dialog)",
+  "@settings_export_base_directory_not_set": {
+      "description": "Placeholder when export base folder is empty"
+  },
+  "settings_pick_export_directory": "Choose folder",
+  "@settings_pick_export_directory": {
+      "description": "Button to pick export directory"
+  },
+  "settings_quick_export": "Quick save (skip dialog)",
+  "@settings_quick_export": {
+      "description": "Toggle quick export without file dialog"
+  },
+  "export_open_folder": "Open folder",
+  "@export_open_folder": {
+      "description": "SnackBar action to open export folder"
+  },
+  "export_success_json": "Exported JSON successfully",
+  "@export_success_json": {
+      "description": "SnackBar after JSON export success"
+  },
+  "export_failed_json": "JSON export failed",
+  "@export_failed_json": {
+      "description": "SnackBar after JSON export failure"
+  },
+  "export_success_jpeg": "Exported JPEG successfully",
+  "@export_success_jpeg": {
+      "description": "SnackBar after JPEG export success"
+  },
+  "export_failed_jpeg": "JPEG export failed",
+  "@export_failed_jpeg": {
+      "description": "SnackBar after JPEG export failure"
+  },
+  "export_success_xlsx": "Exported XLSX successfully",
+  "@export_success_xlsx": {
+      "description": "SnackBar after XLSX export success"
+  },
+  "export_failed_xlsx": "XLSX export failed",
+  "@export_failed_xlsx": {
+      "description": "SnackBar after XLSX export failure"
+  },
+  "import_success_config": "Configuration imported",
+  "@import_success_config": {
+      "description": "SnackBar after config import success"
   }
 }

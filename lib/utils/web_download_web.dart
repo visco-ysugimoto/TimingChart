@@ -1,4 +1,5 @@
-// ignore: avoid_web_libraries_in_flutter
+// ignore_for_file: deprecated_member_use, avoid_web_libraries_in_flutter
+// Web専用。package:web への移行は今後のタスク。
 import 'dart:html' as html;
 import 'dart:typed_data';
 
@@ -18,4 +19,3 @@ void downloadBytes(
   anchor.remove();
   html.Url.revokeObjectUrl(url);
 }
-

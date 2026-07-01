@@ -10,25 +10,20 @@ part of 'timing_chart.dart';
 ///   - `onSecondaryTapDown` など `async void` にしづらい箇所は `discarded_futures` を明示して呼び出す。
 extension _TimingChartGesturesExt on TimingChartState {
   void _onPanDownImpl(DragDownDetails details) {
-    final box = context.findRenderObject() as RenderBox?;
-    if (box == null) return;
-    final localPos = box.globalToLocal(details.globalPosition);
-    final adjustedPos = Offset(
-      localPos.dx -
-          chartMarginLeft +
-          (_hScrollController.hasClients ? _hScrollController.offset : 0),
-      localPos.dy -
-          chartMarginTop +
-          (_vScrollController.hasClients ? _vScrollController.offset : 0),
-    );
+    final chartLocalPos = details.localPosition;
     for (final entry in _annotationHitRects.entries) {
       final rect = entry.value;
+      final adjustedPos = Offset(
+        chartLocalPos.dx -
+            chartMarginLeft +
+            (_hScrollController.hasClients ? _hScrollController.offset : 0),
+        chartLocalPos.dy -
+            _effectiveChartTopMargin +
+            (_vScrollController.hasClients ? _vScrollController.offset : 0),
+      );
       if (rect.contains(adjustedPos)) {
         _setState(() {
-          _draggingAnnotationId = entry.key;
-          _draggingStartLocal = adjustedPos;
-          _draggingInitialBoxTopLeft = rect.topLeft;
-          _selectedAnnotationId = entry.key;
+          _beginAnnotationDrag(entry.key, chartLocalPos, rect);
         });
         break;
       }
@@ -49,7 +44,7 @@ extension _TimingChartGesturesExt on TimingChartState {
           chartMarginLeft +
           (_hScrollController.hasClients ? _hScrollController.offset : 0),
       chartLocalPos.dy -
-          chartMarginTop +
+          _effectiveChartTopMargin +
           (_vScrollController.hasClients ? _vScrollController.offset : 0),
     );
 
@@ -148,7 +143,7 @@ extension _TimingChartGesturesExt on TimingChartState {
       }
       final selectionRectContent = Rect.fromLTWH(
         xStartPx,
-        chartMarginTop + (stSigAbs * _cellHeight).toDouble(),
+        _effectiveChartTopMargin + (stSigAbs * _cellHeight).toDouble(),
         (xEndPx - xStartPx).clamp(0.0, double.infinity),
         (edSigAbs - stSigAbs + 1) * _cellHeight,
       );
@@ -173,27 +168,21 @@ extension _TimingChartGesturesExt on TimingChartState {
   }
 
   void _onPanStartImpl(DragStartDetails details) {
-    final box = context.findRenderObject() as RenderBox?;
-    if (box == null) return;
-    final localPos = box.globalToLocal(details.globalPosition);
-    final chartLocalPos = Offset(localPos.dx, localPos.dy - _fixedHeaderHeight);
+    final chartLocalPos = details.localPosition;
 
     final adjustedPosForAnn = Offset(
       chartLocalPos.dx -
           chartMarginLeft +
           (_hScrollController.hasClients ? _hScrollController.offset : 0),
       chartLocalPos.dy -
-          chartMarginTop +
+          _effectiveChartTopMargin +
           (_vScrollController.hasClients ? _vScrollController.offset : 0),
     );
     for (final entry in _annotationHitRects.entries) {
       final rect = entry.value;
       if (rect.contains(adjustedPosForAnn)) {
         _setState(() {
-          _draggingAnnotationId = entry.key;
-          _draggingStartLocal = adjustedPosForAnn;
-          _draggingInitialBoxTopLeft = rect.topLeft;
-          _selectedAnnotationId = entry.key;
+          _beginAnnotationDrag(entry.key, chartLocalPos, rect);
         });
         _dragStartGlobal = null;
         return;
@@ -215,7 +204,7 @@ extension _TimingChartGesturesExt on TimingChartState {
     }
 
     if (chartLocalPos.dy >
-        chartMarginTop + _visibleIndexes.length * _cellHeight) {
+        _effectiveChartTopMargin + _visibleIndexes.length * _cellHeight) {
       _dragStartGlobal = null;
       return;
     }
@@ -241,43 +230,9 @@ extension _TimingChartGesturesExt on TimingChartState {
 
   void _onPanUpdateImpl(DragUpdateDetails details) {
     if (_draggingAnnotationId != null &&
-        _draggingStartLocal != null &&
-        _draggingInitialBoxTopLeft != null) {
-      final chartLocalPos = details.localPosition;
-      final adjustedPos = Offset(
-        chartLocalPos.dx -
-            chartMarginLeft +
-            (_hScrollController.hasClients ? _hScrollController.offset : 0),
-        chartLocalPos.dy -
-            chartMarginTop +
-            (_vScrollController.hasClients ? _vScrollController.offset : 0),
-      );
-      final delta = adjustedPos - _draggingStartLocal!;
-      Offset deltaClamped = delta;
-      final proposedTopLeft = _draggingInitialBoxTopLeft! + delta;
-      if (proposedTopLeft.dy < 0) {
-        deltaClamped = Offset(delta.dx, -_draggingInitialBoxTopLeft!.dy);
-      }
-
-      final annIndex = annotations.indexWhere(
-        (a) => a.id == _draggingAnnotationId,
-      );
-      if (annIndex != -1) {
-        final current = annotations[annIndex];
-        final newOffsetX = (current.offsetX ?? 0) + deltaClamped.dx;
-        final newOffsetY = (current.offsetY ?? 0) + deltaClamped.dy;
-        _setState(() {
-          annotations[annIndex] = current.copyWith(
-            offsetX: newOffsetX,
-            offsetY: newOffsetY,
-          );
-          _highlightTimeIndices = [..._highlightTimeIndices];
-          _forceRepaint();
-        });
-        _controller?.setAnnotations(annotations);
-        _draggingStartLocal = _draggingStartLocal! + deltaClamped;
-        _draggingInitialBoxTopLeft = _draggingInitialBoxTopLeft! + deltaClamped;
-      }
+        _draggingInitialBoxTopLeft != null &&
+        _draggingStartFingerLocalY != null) {
+      _applyAnnotationDragFromChartLocalPos(details.localPosition);
       return;
     }
     if (_isLabelDrag) {
@@ -317,9 +272,7 @@ extension _TimingChartGesturesExt on TimingChartState {
   void _onPanEndImpl(DragEndDetails details) {
     if (_draggingAnnotationId != null) {
       _setState(() {
-        _draggingAnnotationId = null;
-        _draggingStartLocal = null;
-        _draggingInitialBoxTopLeft = null;
+        _clearAnnotationDragState();
       });
       _forceRepaint();
       return;
@@ -362,17 +315,14 @@ extension _TimingChartGesturesExt on TimingChartState {
           chartMarginLeft +
           (_hScrollController.hasClients ? _hScrollController.offset : 0),
       chartLocalPos.dy -
-          chartMarginTop +
+          _effectiveChartTopMargin +
           (_vScrollController.hasClients ? _vScrollController.offset : 0),
     );
     for (final entry in _annotationHitRects.entries) {
       final rect = entry.value;
       if (rect.contains(adjustedPos)) {
         _setState(() {
-          _draggingAnnotationId = entry.key;
-          _draggingStartLocal = adjustedPos;
-          _draggingInitialBoxTopLeft = rect.topLeft;
-          _selectedAnnotationId = entry.key;
+          _beginAnnotationDrag(entry.key, chartLocalPos, rect);
         });
         return;
       }
@@ -380,50 +330,18 @@ extension _TimingChartGesturesExt on TimingChartState {
   }
 
   void _onLongPressMoveUpdateImpl(LongPressMoveUpdateDetails details) {
-    if (_draggingAnnotationId == null || _draggingStartLocal == null) return;
-    final chartLocalPos = details.localPosition;
-    final adjustedPos = Offset(
-      chartLocalPos.dx -
-          chartMarginLeft +
-          (_hScrollController.hasClients ? _hScrollController.offset : 0),
-      chartLocalPos.dy -
-          chartMarginTop +
-          (_vScrollController.hasClients ? _vScrollController.offset : 0),
-    );
-    final delta = adjustedPos - _draggingStartLocal!;
-    Offset deltaClamped = delta;
-    final proposedTopLeft = (_draggingInitialBoxTopLeft ?? Offset.zero) + delta;
-    if (_draggingInitialBoxTopLeft != null && proposedTopLeft.dy < 0) {
-      deltaClamped = Offset(delta.dx, -_draggingInitialBoxTopLeft!.dy);
+    if (_draggingAnnotationId == null ||
+        _draggingInitialBoxTopLeft == null ||
+        _draggingStartFingerLocalY == null) {
+      return;
     }
-    final annIndex = annotations.indexWhere(
-      (a) => a.id == _draggingAnnotationId,
-    );
-    if (annIndex != -1) {
-      final current = annotations[annIndex];
-      final newOffsetX = (current.offsetX ?? 0) + deltaClamped.dx;
-      final newOffsetY = (current.offsetY ?? 0) + deltaClamped.dy;
-      _setState(() {
-        annotations[annIndex] = current.copyWith(
-          offsetX: newOffsetX,
-          offsetY: newOffsetY,
-        );
-        _highlightTimeIndices = [..._highlightTimeIndices];
-        _forceRepaint();
-      });
-      _controller?.setAnnotations(annotations);
-      _draggingStartLocal = _draggingStartLocal! + deltaClamped;
-      _draggingInitialBoxTopLeft =
-          (_draggingInitialBoxTopLeft ?? Offset.zero) + deltaClamped;
-    }
+    _applyAnnotationDragFromChartLocalPos(details.localPosition);
   }
 
   void _onLongPressEndImpl(LongPressEndDetails details) {
     if (_draggingAnnotationId != null) {
       _setState(() {
-        _draggingAnnotationId = null;
-        _draggingStartLocal = null;
-        _draggingInitialBoxTopLeft = null;
+        _clearAnnotationDragState();
       });
       _forceRepaint();
     }
@@ -465,7 +383,7 @@ extension _TimingChartGesturesExt on TimingChartState {
             );
     final adjustedPos = Offset(
       chartLocalPos.dx - chartMarginLeft,
-      chartLocalPos.dy - chartMarginTop,
+      chartLocalPos.dy - _effectiveChartTopMargin,
     );
 
     final settingsRO = Provider.of<SettingsNotifier>(context, listen: false);
@@ -507,7 +425,6 @@ extension _TimingChartGesturesExt on TimingChartState {
           value: 'deleteComment',
           child: Text(s.ctx_delete_comment),
         ),
-
         PopupMenuItem(
           value: 'toggleArrowHorizontal',
           child: Text(
@@ -641,5 +558,231 @@ extension _TimingChartGesturesExt on TimingChartState {
           break;
       }
     }
+  }
+
+  /// ドラッグ中の上部余白プレビュー（ペインター計測と同じ +8px パディング）
+  double _computeDragPreviewTopExtent({
+    required String? draggingId,
+    double? draggingBoxTop,
+  }) {
+    const double topPadding = 8.0;
+    const maxTop = TimingChartState._maxTopCommentAreaHeight;
+    double extent = 0.0;
+
+    void consider(double top) {
+      if (top < 0) {
+        extent = math.max(extent, math.min(-top + topPadding, maxTop));
+      }
+    }
+
+    for (final entry in _annotationHitRects.entries) {
+      if (entry.key == draggingId) continue;
+      consider(entry.value.top);
+    }
+    if (draggingBoxTop != null) {
+      consider(draggingBoxTop);
+    }
+    return extent;
+  }
+
+  /// コメントドラッグ開始時の状態を初期化
+  void _beginAnnotationDrag(
+    String annId,
+    Offset chartLocalPos,
+    Rect rect,
+  ) {
+    _draggingAnnotationId = annId;
+    _draggingInitialBoxTopLeft = rect.topLeft;
+    _draggingBoxSize = Size(rect.width, rect.height);
+    _selectedAnnotationId = annId;
+
+    final hScroll =
+        _hScrollController.hasClients ? _hScrollController.offset : 0.0;
+    _draggingStartFingerChartX =
+        chartLocalPos.dx - chartMarginLeft + hScroll;
+    _draggingStartFingerLocalY = chartLocalPos.dy;
+
+    _dragPreviewTopExtent = _topCommentAreaHeight;
+  }
+
+  /// ドラッグ中の指位置（CustomPaint ローカル）から placement / offset を更新する
+  void _applyAnnotationDragFromChartLocalPos(Offset chartLocalPos) {
+    if (_draggingAnnotationId == null ||
+        _draggingInitialBoxTopLeft == null ||
+        _draggingBoxSize == null ||
+        _draggingStartFingerLocalY == null ||
+        _draggingStartFingerChartX == null) {
+      return;
+    }
+
+    const double topPadding = 8.0;
+    const double maxTop = TimingChartState._maxTopCommentAreaHeight;
+    final double minAllowedTop = -(maxTop - topPadding);
+
+    final hScroll =
+        _hScrollController.hasClients ? _hScrollController.offset : 0.0;
+    final currentChartX = chartLocalPos.dx - chartMarginLeft + hScroll;
+    final fingerDeltaY = chartLocalPos.dy - _draggingStartFingerLocalY!;
+
+    var proposedTopLeft = Offset(
+      _draggingInitialBoxTopLeft!.dx +
+          (currentChartX - _draggingStartFingerChartX!),
+      _draggingInitialBoxTopLeft!.dy + fingerDeltaY,
+    );
+    final double boxHeight = _draggingBoxSize!.height;
+
+    if (proposedTopLeft.dy < minAllowedTop) {
+      proposedTopLeft = Offset(proposedTopLeft.dx, minAllowedTop);
+    }
+
+    var newPreview = _computeDragPreviewTopExtent(
+      draggingId: _draggingAnnotationId,
+      draggingBoxTop:
+          proposedTopLeft.dy < 0 ? proposedTopLeft.dy : null,
+    );
+
+    // 描画クリップ（-topCommentAreaHeight）内に必ず収まるよう余白を位置と同期
+    if (proposedTopLeft.dy < 0) {
+      final double neededExtent = math.min(
+        -proposedTopLeft.dy + topPadding,
+        maxTop,
+      );
+      newPreview = math.max(newPreview, neededExtent);
+    }
+
+    final String newPlacement =
+        (proposedTopLeft.dy + boxHeight / 2) < 0 ? 'top' : 'bottom';
+
+    final annIndex = annotations.indexWhere(
+      (a) => a.id == _draggingAnnotationId,
+    );
+    if (annIndex == -1) return;
+
+    final current = annotations[annIndex];
+    final baseTopLeft = _computeCommentBaseTopLeft(
+      current,
+      newPlacement,
+      _draggingBoxSize!,
+    );
+    final double newOffsetX = proposedTopLeft.dx - baseTopLeft.dx;
+    final double newOffsetY = proposedTopLeft.dy - baseTopLeft.dy;
+
+    _dragPreviewTopExtent = newPreview;
+    _setState(() {
+      annotations[annIndex] = current.copyWith(
+        placement: newPlacement,
+        offsetX: newOffsetX,
+        offsetY: newOffsetY,
+      );
+      _highlightTimeIndices = [..._highlightTimeIndices];
+      _forceRepaint();
+    });
+    _controller?.setAnnotations(annotations);
+  }
+
+  void _clearAnnotationDragState() {
+    final lastPreview = _dragPreviewTopExtent;
+    _draggingAnnotationId = null;
+    _draggingInitialBoxTopLeft = null;
+    _draggingBoxSize = null;
+    _draggingStartFingerLocalY = null;
+    _draggingStartFingerChartX = null;
+    _dragPreviewTopExtent = 0.0;
+    if (lastPreview > 0) {
+      _measuredTopCommentAreaHeight = lastPreview;
+    }
+  }
+
+  /// コメント配置の境界 index → チャートローカル X（chart_annotations と同等）
+  double _commentBoundaryX(int boundaryIndex, SettingsNotifier settings) {
+    if (!settings.timeUnitIsMs) {
+      return labelWidth + boundaryIndex * _cellWidth;
+    }
+    final durations = _durationsForLayout(settings);
+    final double msPerStep = settings.msPerStep;
+    double steps = 0.0;
+    for (int t = 0; t < boundaryIndex; t++) {
+      final durSteps =
+          (t < durations.length && msPerStep > 0)
+              ? durations[t] / msPerStep
+              : 1.0;
+      steps += durSteps;
+    }
+    return labelWidth + steps * _cellWidth;
+  }
+
+  /// 衝突回避なしの既定コメントボックス左上（placement 別）
+  Offset _computeCommentBaseTopLeft(
+    TimingChartAnnotation ann,
+    String placement,
+    Size boxSize,
+  ) {
+    final settings = Provider.of<SettingsNotifier>(context, listen: false);
+    final double chartBottomY = _visibleIndexes.length * _cellHeight;
+    const double bottomLabelAvoidOffset = 20.0;
+    final double labelExtraY =
+        settings.showBottomUnitLabels ? bottomLabelAvoidOffset : 0.0;
+    final double boxWidth = boxSize.width;
+    final double boxHeight = boxSize.height;
+    final double startX = _commentBoundaryX(ann.startTimeIndex, settings);
+
+    if (placement == 'top') {
+      const double topArrowGap = 12.0;
+      final double arrowBaseY = -topArrowGap;
+      if (ann.endTimeIndex != null) {
+        final double arrowStartX = startX;
+        final double arrowEndX =
+            _commentBoundaryX(ann.endTimeIndex! + 1, settings);
+        const double arrowThickness = 4;
+        final Rect arrowRect = Rect.fromLTWH(
+          arrowStartX,
+          arrowBaseY - arrowThickness / 2,
+          arrowEndX - arrowStartX,
+          arrowThickness,
+        );
+        double commentY;
+        if (boxWidth <= arrowRect.width) {
+          commentY = arrowRect.center.dy - boxHeight / 2;
+          if (commentY + boxHeight > 0) {
+            commentY = arrowRect.top - boxHeight - 5;
+          }
+        } else {
+          commentY = arrowRect.top - boxHeight - 5;
+        }
+        final double commentX = arrowRect.center.dx - boxWidth / 2;
+        return Offset(commentX, commentY);
+      }
+      final double commentY = -topArrowGap - 6 - boxHeight;
+      return Offset(startX, commentY);
+    }
+
+    if (ann.endTimeIndex != null) {
+      final double arrowBaseY = chartBottomY + 10 + labelExtraY;
+      final double arrowStartX = startX;
+      final double arrowEndX =
+          _commentBoundaryX(ann.endTimeIndex! + 1, settings);
+      const double arrowThickness = 4;
+      final Rect arrowRect = Rect.fromLTWH(
+        arrowStartX,
+        arrowBaseY - arrowThickness / 2,
+        arrowEndX - arrowStartX,
+        arrowThickness,
+      );
+      double commentX;
+      double commentY;
+      if (boxWidth <= arrowRect.width) {
+        commentY = arrowRect.center.dy - boxHeight / 2;
+        if (commentY < 0) {
+          commentY = arrowRect.bottom + 5;
+        }
+      } else {
+        commentY = arrowRect.bottom + 5;
+      }
+      commentX = arrowRect.center.dx - boxWidth / 2;
+      return Offset(commentX, commentY);
+    }
+
+    final double baseCommentY = chartBottomY + 20 + labelExtraY;
+    return Offset(startX, baseCommentY);
   }
 }

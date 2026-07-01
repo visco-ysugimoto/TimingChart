@@ -75,13 +75,20 @@ try {
 $required = @(
     (Join-Path $stageApp ($appName + '.exe')),
     (Join-Path $stageApp 'flutter_windows.dll'),
-    (Join-Path $stageApp 'data\icudtl.dat'),
-    (Join-Path $stageApp 'data\flutter_assets\AssetManifest.json')
+    (Join-Path $stageApp 'data\icudtl.dat')
 )
 foreach ($p in $required) {
     if (-not (Test-Path $p)) {
         throw "Missing required file in staged bundle: $p"
     }
+}
+
+$assetManifestPaths = @(
+    (Join-Path $stageApp 'data\flutter_assets\AssetManifest.bin'),
+    (Join-Path $stageApp 'data\flutter_assets\AssetManifest.json')
+)
+if (-not ($assetManifestPaths | Where-Object { Test-Path $_ })) {
+    throw "Missing required file in staged bundle: AssetManifest.bin or AssetManifest.json"
 }
 
 function Try-CompressArchive([string] $sourceGlob, [string] $destinationZip) {

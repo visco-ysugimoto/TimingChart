@@ -158,6 +158,11 @@ class AppConfig {
                     'dashedLineColorValue': a.dashedLineColorValue,
                   if (a.arrowColorValue != null)
                     'arrowColorValue': a.arrowColorValue,
+                  if (a.maxWidth != null) 'maxWidth': a.maxWidth,
+                  if (a.maxLines != null) 'maxLines': a.maxLines,
+                  if (a.ellipsisEnabled != null)
+                    'ellipsisEnabled': a.ellipsisEnabled,
+                  if (a.placement != null) 'placement': a.placement,
                 },
               )
               .toList(),
@@ -244,6 +249,10 @@ class AppConfig {
                   dashedLineColorValue:
                       (e['dashedLineColorValue'] as num?)?.toInt(),
                   arrowColorValue: (e['arrowColorValue'] as num?)?.toInt(),
+                  maxWidth: (e['maxWidth'] as num?)?.toDouble(),
+                  maxLines: (e['maxLines'] as num?)?.toInt(),
+                  ellipsisEnabled: e['ellipsisEnabled'] as bool?,
+                  placement: e['placement']?.toString(),
                 ),
               )
               .toList(),

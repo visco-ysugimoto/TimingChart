@@ -38,6 +38,9 @@ class ChartAnnotationsManager {
   // 選択中のアノテーションID
   final String? selectedAnnotationId;
 
+  // ドラッグ中のアノテーションID（衝突回避をスキップする）
+  final String? draggingAnnotationId;
+
   // アノテーションの当たり判定用マップ（IDとRect）
   final Map<String, Rect> annotationRects = {};
   final List<Rect> _placedArrowRects = [];
@@ -49,6 +52,7 @@ class ChartAnnotationsManager {
     required this.labelWidth,
     required this.highlightTimeIndices,
     this.selectedAnnotationId,
+    this.draggingAnnotationId,
     this.dashedColor = Colors.black,
     this.arrowColor = Colors.blue,
     this.showBottomUnitLabels = true,
@@ -90,6 +94,9 @@ class ChartAnnotationsManager {
     // コメントボックス再描画用に記録するリスト
     final List<_CommentBoxData> _commentBoxDrawData = [];
 
+    // 上部配置コメントの衝突回避用リスト（上方向へ積み上げる）
+    final List<Rect> placedTopCommentRects = [];
+
     // 境界線描画用のペイント
     final double dashWidth = 5;
     final double dashSpace = 3;
@@ -112,6 +119,15 @@ class ChartAnnotationsManager {
               : 14.0;
       final FontWeight fontWeight =
           ann.isBold == true ? FontWeight.bold : FontWeight.normal;
+      final double effMaxWidth =
+          (ann.maxWidth != null && ann.maxWidth!.isFinite)
+              ? ann.maxWidth!.clamp(40.0, 600.0)
+              : 120.0;
+      // maxLines が null または 0 以下の場合は無制限（行数制限なし）
+      final int? effMaxLines =
+          (ann.maxLines != null && ann.maxLines! > 0) ? ann.maxLines : null;
+      // 省略記号は行数制限があるときのみ意味を持つ
+      final bool useEllipsis = (ann.ellipsisEnabled ?? true);
       final textSpan = TextSpan(
         text: ann.text,
         style: TextStyle(
@@ -123,15 +139,237 @@ class ChartAnnotationsManager {
       final textPainter = TextPainter(
         text: textSpan,
         textDirection: TextDirection.ltr,
-        maxLines: 3,
-        ellipsis: '...',
+        maxLines: effMaxLines,
+        ellipsis: (useEllipsis && effMaxLines != null) ? '...' : null,
         textAlign: TextAlign.left,
       );
-      textPainter.layout(maxWidth: 120);
+      textPainter.layout(maxWidth: effMaxWidth);
       final textWidth = textPainter.width;
       final textHeight = textPainter.height;
       final boxWidth = textWidth + 10;
       final boxHeight = textHeight + 10;
+
+      // アノテーション個別の色（未指定なら全体デフォルト）
+      final Color perAnnDashedColor =
+          ann.dashedLineColorValue != null
+              ? Color(ann.dashedLineColorValue!)
+              : dashedColor;
+      final Color perAnnArrowColor =
+          ann.arrowColorValue != null
+              ? Color(ann.arrowColorValue!)
+              : arrowColor;
+      final Color borderColor =
+          ann.borderColorValue != null
+              ? Color(ann.borderColorValue!)
+              : Colors.grey.shade600;
+
+      // === 上部配置（placement == 'top'）— 下部配置の上下ミラー ===
+      if (ann.placement == 'top') {
+        const double topArrowGap = 12.0;
+        double arrowBaseY = -topArrowGap;
+
+        if (ann.endTimeIndex != null) {
+          final int _startIdx = ann.startTimeIndex;
+          final int _endIdx = ann.endTimeIndex!;
+          if (_boundaryArrowBaseY.containsKey(_startIdx)) {
+            arrowBaseY = _boundaryArrowBaseY[_startIdx]!;
+          }
+          final double arrowStartX = _boundaryX(ann.startTimeIndex);
+          final double arrowEndX = _boundaryX(ann.endTimeIndex! + 1);
+          const double arrowThickness = 4;
+          Rect currentArrowRect = Rect.fromLTWH(
+            arrowStartX,
+            arrowBaseY - arrowThickness / 2,
+            arrowEndX - arrowStartX,
+            arrowThickness,
+          );
+
+          int attempts = 0;
+          while ((_placedArrowRects.any((r) => r.overlaps(currentArrowRect)) ||
+                  isArrowOverlappingCommentBoxes(
+                    currentArrowRect,
+                    placedTopCommentRects,
+                  )) &&
+              attempts < 15) {
+            arrowBaseY -= 20;
+            currentArrowRect = Rect.fromLTWH(
+              arrowStartX,
+              arrowBaseY - arrowThickness / 2,
+              arrowEndX - arrowStartX,
+              arrowThickness,
+            );
+            attempts++;
+          }
+          arrowRect = currentArrowRect;
+          _placedArrowRects.add(arrowRect);
+          _boundaryArrowBaseY.putIfAbsent(_endIdx, () => arrowBaseY);
+
+          if (boxWidth <= arrowRect.width) {
+            commentY = arrowRect.center.dy - boxHeight / 2;
+            if (commentY + boxHeight > 0) {
+              commentY = arrowRect.top - boxHeight - 5;
+            }
+          } else {
+            commentY = arrowRect.top - boxHeight - 5;
+          }
+          commentX = arrowRect.center.dx - boxWidth / 2;
+          commentRect = Rect.fromLTWH(commentX, commentY, boxWidth, boxHeight);
+        } else {
+          commentY = -topArrowGap - 6 - boxHeight;
+          commentX = _boundaryX(ann.startTimeIndex);
+          commentRect = Rect.fromLTWH(commentX, commentY, boxWidth, boxHeight);
+        }
+
+        if (ann.offsetX != null || ann.offsetY != null) {
+          commentRect = commentRect.shift(
+            Offset(ann.offsetX ?? 0, ann.offsetY ?? 0),
+          );
+        }
+
+        const double maxTopCommentAreaHeight = 100.0;
+        const double topClipPadding = 8.0;
+        const double minTopLeftY =
+            -(maxTopCommentAreaHeight - topClipPadding);
+        if (draggingAnnotationId != ann.id) {
+          int topAttempts = 0;
+          while (placedTopCommentRects.any((r) => r.overlaps(commentRect)) &&
+              topAttempts < 15 &&
+              commentRect.top > minTopLeftY) {
+            commentRect = commentRect.translate(0, -20);
+            topAttempts++;
+          }
+        }
+        placedTopCommentRects.add(commentRect);
+        annotationRects[ann.id] = commentRect;
+
+        if (arrowRect != null) {
+          placedTopCommentRects.add(arrowRect);
+          if (commentRect.bottom < arrowRect.top) {
+            final double gapLeft = math.min(arrowRect.left, commentRect.left);
+            final double gapRight = math.max(arrowRect.right, commentRect.right);
+            placedTopCommentRects.add(
+              Rect.fromLTRB(
+                gapLeft,
+                commentRect.bottom,
+                gapRight,
+                arrowRect.top,
+              ),
+            );
+          } else if (commentRect.top > arrowRect.bottom) {
+            final double gapLeft = math.min(arrowRect.left, commentRect.left);
+            final double gapRight = math.max(arrowRect.right, commentRect.right);
+            placedTopCommentRects.add(
+              Rect.fromLTRB(
+                gapLeft,
+                arrowRect.bottom,
+                gapRight,
+                commentRect.top,
+              ),
+            );
+          } else {
+            placedTopCommentRects.add(
+              Rect.fromLTWH(
+                arrowRect.left,
+                arrowRect.top - boxHeight - 10,
+                arrowRect.width,
+                boxHeight + 10,
+              ),
+            );
+          }
+        }
+
+        final double startXTop = _boundaryX(ann.startTimeIndex);
+        final double? resolvedArrowTipY =
+            (ann.arrowTipRowIndex != null &&
+                    ann.arrowTipRowIndex! >= 0 &&
+                    ann.arrowTipRowIndex! < signalCount)
+                ? (ann.arrowTipRowIndex! + 0.5) * cellHeight
+                : ann.arrowTipY;
+        final bool useHorizontalForDashed = ann.arrowHorizontal != false;
+        final double upwardAnchor =
+            useHorizontalForDashed
+                ? commentRect.center.dy
+                : commentRect.top;
+        final double downwardAnchor =
+            useHorizontalForDashed
+                ? commentRect.center.dy
+                : (resolvedArrowTipY ?? commentRect.bottom);
+        // 破線は常にチャート枠（Y=0〜chartBottomY）を通す。コメント位置に応じて上下へ延長
+        final double boundaryTopY = math.min(0.0, upwardAnchor);
+        final double boundaryBottomY = math.max(chartBottomY, downwardAnchor);
+
+        final boundaryPaintTop =
+            Paint()
+              ..color = perAnnDashedColor.withAlpha((0.5 * 255).round())
+              ..strokeWidth = 2.0
+              ..style = PaintingStyle.stroke;
+
+        drawDashedLine(
+          canvas,
+          Offset(startXTop, boundaryTopY),
+          Offset(startXTop, boundaryBottomY),
+          boundaryPaintTop,
+          dashWidth: dashWidth,
+          dashSpace: dashSpace,
+        );
+        if (ann.endTimeIndex != null) {
+          final double endXTop = _boundaryX(ann.endTimeIndex! + 1);
+          drawDashedLine(
+            canvas,
+            Offset(endXTop, boundaryTopY),
+            Offset(endXTop, boundaryBottomY),
+            boundaryPaintTop,
+            dashWidth: dashWidth,
+            dashSpace: dashSpace,
+          );
+        }
+
+        _commentBoxDrawData.add(
+          _CommentBoxData(
+            rect: commentRect,
+            painter: textPainter,
+            annId: ann.id,
+            borderColor: borderColor,
+          ),
+        );
+
+        if (arrowRect != null) {
+          drawArrow(canvas, arrowRect, color: perAnnArrowColor);
+        }
+
+        final double originalCommentCenterX =
+            ann.endTimeIndex != null
+                ? (_boundaryX(ann.startTimeIndex) +
+                        _boundaryX(ann.endTimeIndex! + 1)) /
+                    2
+                : _boundaryX(ann.startTimeIndex);
+        final double movedCenterX = commentRect.center.dx;
+        final bool movedInX =
+            (movedCenterX - originalCommentCenterX).abs() > 1.0;
+        if (movedInX) {
+          final double dashedX = originalCommentCenterX;
+          final bool useHorizontal = ann.arrowHorizontal != false;
+          final double anchorY =
+              useHorizontal
+                  ? commentRect.center.dy
+                  : (resolvedArrowTipY ?? boundaryBottomY);
+          final Offset end = Offset(dashedX, anchorY);
+          final Offset start =
+              useHorizontal
+                  ? Offset(commentRect.right, anchorY)
+                  : commentRect.bottomCenter;
+
+          drawArrowLine(
+            canvas,
+            start,
+            end,
+            color: perAnnArrowColor,
+            strokeWidth: 2.0,
+          );
+        }
+
+        continue;
+      }
 
       if (ann.endTimeIndex != null) {
         // 範囲コメントの場合
@@ -206,11 +444,13 @@ class ChartAnnotationsManager {
       }
 
       int attempts = 0;
-      while (placedCommentRects.any((r) => r.overlaps(commentRect)) &&
-          attempts < 15) {
-        // ユーザーが動かした場合はY方向にのみ最小調整（衝突しない位置へ）
-        commentRect = commentRect.translate(0, 20);
-        attempts++;
+      if (draggingAnnotationId != ann.id) {
+        while (placedCommentRects.any((r) => r.overlaps(commentRect)) &&
+            attempts < 15) {
+          // ユーザーが動かした場合はY方向にのみ最小調整（衝突しない位置へ）
+          commentRect = commentRect.translate(0, 20);
+          attempts++;
+        }
       }
 
       debugPrint(
@@ -285,16 +525,6 @@ class ChartAnnotationsManager {
 
       debugPrint('左境界線: x=$startX, y1=0, y2=$boundaryEndY');
 
-      // アノテーション個別の色（未指定なら全体デフォルト）
-      final Color perAnnDashedColor =
-          ann.dashedLineColorValue != null
-              ? Color(ann.dashedLineColorValue!)
-              : dashedColor;
-      final Color perAnnArrowColor =
-          ann.arrowColorValue != null
-              ? Color(ann.arrowColorValue!)
-              : arrowColor;
-
       // 境界線の色を設定
       final boundaryPaint =
           Paint()
@@ -328,10 +558,6 @@ class ChartAnnotationsManager {
       }
 
       // コメントボックスは最後にまとめて描画するため記録のみ行う
-      final Color borderColor =
-          ann.borderColorValue != null
-              ? Color(ann.borderColorValue!)
-              : Colors.grey.shade600;
       _commentBoxDrawData.add(
         _CommentBoxData(
           rect: commentRect,

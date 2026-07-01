@@ -78,6 +78,9 @@ class _ChartLayoutData {
   /// 下部に予約されているアノテーションコメント領域の高さ
   final double commentAreaHeight;
 
+  /// 上部に予約されているアノテーションコメント領域の高さ
+  final double topCommentAreaHeight;
+
   /// すべての信号配列の最大長（最長の信号）
   final int maxLen;
 
@@ -95,6 +98,7 @@ class _ChartLayoutData {
     required this.totalWidth,
     required this.totalHeight,
     required this.commentAreaHeight,
+    required this.topCommentAreaHeight,
     required this.maxLen,
   });
 }

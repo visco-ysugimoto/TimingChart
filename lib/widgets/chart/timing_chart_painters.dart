@@ -23,6 +23,7 @@ class _StepTimingChartPainter extends CustomPainter {
     required this.cellHeight,
     required this.labelWidth,
     required this.commentAreaHeight,
+    required this.topCommentAreaHeight,
     required this.chartMarginLeft,
     required this.chartMarginTop,
     required this.startSignalIndex,
@@ -48,6 +49,8 @@ class _StepTimingChartPainter extends CustomPainter {
     required this.signalColors,
     required this.showBottomUnitLabels,
     required this.onCommentAreaMeasured,
+    required this.onTopCommentAreaMeasured,
+    this.draggingAnnotationId,
     this.draggingStartRow,
     this.draggingCurrentRow,
   }) {
@@ -58,6 +61,7 @@ class _StepTimingChartPainter extends CustomPainter {
       labelWidth: labelWidth,
       highlightTimeIndices: highlightTimeIndices,
       selectedAnnotationId: selectedAnnotationId,
+      draggingAnnotationId: draggingAnnotationId,
       dashedColor: dashedColor,
       arrowColor: arrowColor,
       showBottomUnitLabels: showBottomUnitLabels,
@@ -110,6 +114,7 @@ class _StepTimingChartPainter extends CustomPainter {
   final double cellHeight;
   final double labelWidth;
   final double commentAreaHeight;
+  final double topCommentAreaHeight;
   final double chartMarginLeft;
   final double chartMarginTop;
 
@@ -143,6 +148,11 @@ class _StepTimingChartPainter extends CustomPainter {
   /// 描画済みアノテーションからコメント領域の必要高さを親にフィードバックするコールバック
   final void Function(double) onCommentAreaMeasured;
 
+  /// 上部に配置したコメントの必要高さを親にフィードバックするコールバック
+  final void Function(double) onTopCommentAreaMeasured;
+
+  final String? draggingAnnotationId;
+
   late final ChartAnnotationsManager _annotationsManager;
   late final ChartGridManager _gridManager;
   late final ChartSignalsManager _signalsManager;
@@ -152,17 +162,22 @@ class _StepTimingChartPainter extends CustomPainter {
     final double drawAreaWidth = size.width - chartMarginLeft;
 
     canvas.save();
-    canvas.translate(chartMarginLeft, chartMarginTop);
+    // 上部コメント領域の分だけ原点を下げる（信号領域の原点は引き続き Y=0）
+    canvas.translate(chartMarginLeft, chartMarginTop + topCommentAreaHeight);
 
     final rowCount = signals.length;
 
-    final double maskHeight = rowCount * cellHeight + commentAreaHeight;
+    final double maskHeight =
+        rowCount * cellHeight + commentAreaHeight + topCommentAreaHeight;
     final Paint labelMaskPaint =
         Paint()
           ..color = omissionFillColor
           ..style = PaintingStyle.fill;
     final double maskWidth = (labelWidth - 1).clamp(0.0, double.infinity);
-    canvas.drawRect(Rect.fromLTWH(0, 0, maskWidth, maskHeight), labelMaskPaint);
+    canvas.drawRect(
+      Rect.fromLTWH(0, -topCommentAreaHeight, maskWidth, maskHeight),
+      labelMaskPaint,
+    );
 
     if (draggingStartRow != null) {
       final paintBg =
@@ -240,9 +255,9 @@ class _StepTimingChartPainter extends CustomPainter {
     canvas.clipRect(
       Rect.fromLTWH(
         labelWidth + 1,
-        0,
+        -topCommentAreaHeight,
         drawAreaWidth - (labelWidth + 1),
-        rowCount * cellHeight + commentAreaHeight,
+        rowCount * cellHeight + commentAreaHeight + topCommentAreaHeight,
       ),
     );
     _annotationsManager.drawAnnotations(canvas, size, rowCount);
@@ -252,15 +267,23 @@ class _StepTimingChartPainter extends CustomPainter {
     try {
       final double chartBottomY = rowCount * cellHeight;
       double maxBottom = chartBottomY;
+      double minTop = 0.0;
       for (final rect in _annotationsManager.annotationRects.values) {
         if (rect.bottom > maxBottom) {
           maxBottom = rect.bottom;
+        }
+        if (rect.top < minTop) {
+          minTop = rect.top;
         }
       }
       final double extra = math.max(0.0, maxBottom - chartBottomY);
       // コメントボックスの下に少し余白（20px）を付ける
       final double measuredHeight = math.max(40.0, extra + 20.0);
       onCommentAreaMeasured(measuredHeight);
+
+      // 上部に配置したコメントの必要高さ（信号領域の上端 Y=0 より上にはみ出した分）
+      final double topExtra = math.max(0.0, -minTop);
+      onTopCommentAreaMeasured(topExtra > 0 ? topExtra + 8.0 : 0.0);
     } catch (_) {
       // 計測に失敗しても描画自体には影響させない
     }
@@ -341,6 +364,7 @@ class _StepTimingChartPainter extends CustomPainter {
         arrowColor != oldDelegate.arrowColor ||
         !mapEquals(signalColors, oldDelegate.signalColors) ||
         selectedAnnotationId != oldDelegate.selectedAnnotationId ||
+        draggingAnnotationId != oldDelegate.draggingAnnotationId ||
         !listEquals(highlightTimeIndices, oldDelegate.highlightTimeIndices) ||
         !listEquals(omissionTimeIndices, oldDelegate.omissionTimeIndices) ||
         startSignalIndex != oldDelegate.startSignalIndex ||
@@ -352,7 +376,9 @@ class _StepTimingChartPainter extends CustomPainter {
         timeUnitIsMs != oldDelegate.timeUnitIsMs ||
         msPerStep != oldDelegate.msPerStep ||
         !listEquals(stepDurationsMs, oldDelegate.stepDurationsMs) ||
-        activeStepIndex != oldDelegate.activeStepIndex;
+        activeStepIndex != oldDelegate.activeStepIndex ||
+        topCommentAreaHeight != oldDelegate.topCommentAreaHeight ||
+        commentAreaHeight != oldDelegate.commentAreaHeight;
   }
 }
 

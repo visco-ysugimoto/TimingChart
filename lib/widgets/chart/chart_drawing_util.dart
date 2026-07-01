@@ -108,7 +108,7 @@ void drawCommentBox(
   final RRect shadowRRect = rrect.shift(const Offset(0, 2));
   final Paint shadowPaint =
       Paint()
-        ..color = Colors.black.withOpacity(0.18)
+        ..color = Colors.black.withValues(alpha: 0.18)
         ..style = PaintingStyle.fill;
   canvas.drawRRect(shadowRRect, shadowPaint);
 

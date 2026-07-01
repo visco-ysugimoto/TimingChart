@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:provider/provider.dart';
 
 import '../models/backup/app_config.dart';
+import '../providers/settings_notifier.dart';
+import '../utils/export_save_options.dart';
 import '../models/chart/signal_data.dart';
 import '../models/chart/timing_chart_annotation.dart';
 import '../models/form/form_state.dart';
@@ -14,6 +17,31 @@ import '../suggestion_loader.dart';
 
 /// エクスポートサービスクラス
 class ExportService {
+  static ExportSaveOptions saveOptionsFromContext(
+    BuildContext context, {
+    void Function(String savedPath)? onExported,
+  }) {
+    final settings = Provider.of<SettingsNotifier>(context, listen: false);
+    return ExportSaveOptions(
+      lastExportDirectory: settings.lastExportDirectory,
+      exportSubFolder: settings.exportFolder,
+      fileNamePrefix: settings.fileNamePrefix,
+      quickExportEnabled: settings.quickExportEnabled,
+      onSaved: (path, {required quickSave}) {
+        if (!quickSave) {
+          FileUtils.rememberExportDirectoryFromPath(
+            savedFilePath: path,
+            exportSubFolder: settings.exportFolder,
+            onBaseDirectoryResolved: (base) {
+              settings.lastExportDirectory = base;
+            },
+          );
+        }
+        onExported?.call(path);
+      },
+    );
+  }
+
   /// AppConfigを作成する
   static Future<AppConfig> createAppConfig({
     required TimingFormState formState,
@@ -164,6 +192,7 @@ class ExportService {
     required bool timeUnitIsMs,
     required double msPerStep,
     required List<double> stepDurationsMs,
+    void Function(String savedPath)? onExported,
   }) async {
     // チャートデータをフォームに同期
     if (timingChartState != null && formTabState != null) {
@@ -172,6 +201,7 @@ class ExportService {
     }
 
     await SchedulerBinding.instance.endOfFrame;
+    if (!context.mounted) return false;
 
     // エクスポート確認
     final shouldContinue = await confirmExport(
@@ -212,6 +242,7 @@ class ExportService {
       config,
       annotations: chartAnnotations,
       omissionIndices: timingChartState?.getOmissionTimeIndices(),
+      saveOptions: saveOptionsFromContext(context, onExported: onExported),
     );
 
     return success;
@@ -221,8 +252,10 @@ class ExportService {
   static Future<bool> exportChartImageJpeg({
     required BuildContext context,
     required TimingChartState? timingChartState,
+    void Function(String savedPath)? onExported,
   }) async {
     await SchedulerBinding.instance.endOfFrame;
+    if (!context.mounted) return false;
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark ? Colors.black : Colors.white;
@@ -234,13 +267,17 @@ class ExportService {
       return false;
     }
 
-    final ok = await FileUtils.exportJpegBytes(bytes);
+    final ok = await FileUtils.exportJpegBytes(
+      bytes,
+      saveOptions: saveOptionsFromContext(context, onExported: onExported),
+    );
     return ok;
   }
 
   /// XLSXエクスポートを実行する
   static Future<bool> exportXlsx({
     required BuildContext context,
+    void Function(String savedPath)? onExported,
     required List<SignalData> chartSignals,
     required List<int> chartPortNumbers,
     required TimingChartController chartController,
@@ -389,6 +426,7 @@ class ExportService {
             omissionIndices ??
             timingChartState?.getOmissionTimeIndices() ??
             const [],
+        saveOptions: saveOptionsFromContext(context, onExported: onExported),
       );
 
       return success;

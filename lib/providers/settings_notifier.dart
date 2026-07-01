@@ -25,6 +25,8 @@ class SettingsNotifier extends ChangeNotifier {
   static const _kOmissionLineColor = 'omissionLineColor';
   static const _kExportFolder = 'exportFolder';
   static const _kFileNamePrefix = 'fileNamePrefix';
+  static const _kLastExportDirectory = 'lastExportDirectory';
+  static const _kQuickExportEnabled = 'quickExportEnabled';
   static const _kDarkMode = 'darkMode';
   static const _kAccentColor = 'accentColor';
 
@@ -48,20 +50,10 @@ class SettingsNotifier extends ChangeNotifier {
     _timeUnitIsMs = p.getBool(_kTimeUnitIsMs) ?? _timeUnitIsMs;
     _msPerStep = p.getDouble(_kMsPerStep) ?? _msPerStep;
 
-    final stepJson = p.getString(_kStepDurationsMs);
-    if (stepJson != null && stepJson.isNotEmpty) {
-      try {
-        final decoded = jsonDecode(stepJson);
-        if (decoded is List) {
-          _stepDurationsMs = decoded
-              .map((e) => (e as num).toDouble())
-              .where((v) => v.isFinite && v > 0)
-              .toList();
-        }
-      } catch (_) {
-        // 破損時は無視してデフォルトを使う
-      }
-    }
+    // stepDurationsMs はアプリ起動時に初期化する（前回の値を読み込まない）
+    // SharedPreferences からも削除して、常に空のリストから開始する
+    _stepDurationsMs = [];
+    _prefs?.remove(_kStepDurationsMs);
 
     _showGridLines = p.getBool(_kShowGridLines) ?? _showGridLines;
     _showBottomUnitLabels =
@@ -85,6 +77,8 @@ class SettingsNotifier extends ChangeNotifier {
     // 入出力
     _exportFolder = p.getString(_kExportFolder) ?? _exportFolder;
     _fileNamePrefix = p.getString(_kFileNamePrefix) ?? _fileNamePrefix;
+    _lastExportDirectory = p.getString(_kLastExportDirectory);
+    _quickExportEnabled = p.getBool(_kQuickExportEnabled) ?? _quickExportEnabled;
 
     // 外観
     _darkMode = p.getBool(_kDarkMode) ?? _darkMode;
@@ -197,11 +191,11 @@ class SettingsNotifier extends ChangeNotifier {
   void setSignalColor(SignalType type, Color color) {
     _signalColors[type] = color;
     if (type == SignalType.input) {
-      _prefs?.setInt(_kColorInput, color.value);
+      _prefs?.setInt(_kColorInput, color.toARGB32());
     } else if (type == SignalType.output) {
-      _prefs?.setInt(_kColorOutput, color.value);
+      _prefs?.setInt(_kColorOutput, color.toARGB32());
     } else if (type == SignalType.hwTrigger) {
-      _prefs?.setInt(_kColorHwTrigger, color.value);
+      _prefs?.setInt(_kColorHwTrigger, color.toARGB32());
     }
     notifyListeners();
   }
@@ -210,9 +204,9 @@ class SettingsNotifier extends ChangeNotifier {
     _signalColors[SignalType.input] = Colors.blue;
     _signalColors[SignalType.output] = Colors.red;
     _signalColors[SignalType.hwTrigger] = Colors.green;
-    _prefs?.setInt(_kColorInput, Colors.blue.value);
-    _prefs?.setInt(_kColorOutput, Colors.red.value);
-    _prefs?.setInt(_kColorHwTrigger, Colors.green.value);
+    _prefs?.setInt(_kColorInput, Colors.blue.toARGB32());
+    _prefs?.setInt(_kColorOutput, Colors.red.toARGB32());
+    _prefs?.setInt(_kColorHwTrigger, Colors.green.toARGB32());
     notifyListeners();
   }
 
@@ -221,9 +215,9 @@ class SettingsNotifier extends ChangeNotifier {
     _commentDashedColor = Colors.black;
     _commentArrowColor = Colors.black;
     _omissionLineColor = Colors.black;
-    _prefs?.setInt(_kCommentDashedColor, _commentDashedColor.value);
-    _prefs?.setInt(_kCommentArrowColor, _commentArrowColor.value);
-    _prefs?.setInt(_kOmissionLineColor, _omissionLineColor.value);
+    _prefs?.setInt(_kCommentDashedColor, _commentDashedColor.toARGB32());
+    _prefs?.setInt(_kCommentArrowColor, _commentArrowColor.toARGB32());
+    _prefs?.setInt(_kOmissionLineColor, _omissionLineColor.toARGB32());
     notifyListeners();
   }
 
@@ -231,7 +225,7 @@ class SettingsNotifier extends ChangeNotifier {
   Color get commentDashedColor => _commentDashedColor;
   set commentDashedColor(Color c) {
     _commentDashedColor = c;
-    _prefs?.setInt(_kCommentDashedColor, c.value);
+    _prefs?.setInt(_kCommentDashedColor, c.toARGB32());
     notifyListeners();
   }
 
@@ -239,7 +233,7 @@ class SettingsNotifier extends ChangeNotifier {
   Color get commentArrowColor => _commentArrowColor;
   set commentArrowColor(Color c) {
     _commentArrowColor = c;
-    _prefs?.setInt(_kCommentArrowColor, c.value);
+    _prefs?.setInt(_kCommentArrowColor, c.toARGB32());
     notifyListeners();
   }
 
@@ -249,7 +243,7 @@ class SettingsNotifier extends ChangeNotifier {
   set omissionLineColor(Color c) {
     if (c != _omissionLineColor) {
       _omissionLineColor = c;
-      _prefs?.setInt(_kOmissionLineColor, c.value);
+      _prefs?.setInt(_kOmissionLineColor, c.toARGB32());
       notifyListeners();
     }
   }
@@ -273,6 +267,30 @@ class SettingsNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
+  String? _lastExportDirectory;
+  String? get lastExportDirectory => _lastExportDirectory;
+  set lastExportDirectory(String? path) {
+    final normalized = path?.trim();
+    if (normalized == _lastExportDirectory) return;
+    _lastExportDirectory =
+        (normalized == null || normalized.isEmpty) ? null : normalized;
+    if (_lastExportDirectory == null) {
+      _prefs?.remove(_kLastExportDirectory);
+    } else {
+      _prefs?.setString(_kLastExportDirectory, _lastExportDirectory!);
+    }
+    notifyListeners();
+  }
+
+  bool _quickExportEnabled = true;
+  bool get quickExportEnabled => _quickExportEnabled;
+  set quickExportEnabled(bool v) {
+    if (v == _quickExportEnabled) return;
+    _quickExportEnabled = v;
+    _prefs?.setBool(_kQuickExportEnabled, v);
+    notifyListeners();
+  }
+
   // ───────── 外観 ─────────
   bool _darkMode = false;
   bool get darkMode => _darkMode;
@@ -289,7 +307,7 @@ class SettingsNotifier extends ChangeNotifier {
   set accentColor(Color c) {
     if (c != _accentColor) {
       _accentColor = c;
-      _prefs?.setInt(_kAccentColor, c.value);
+      _prefs?.setInt(_kAccentColor, c.toARGB32());
       notifyListeners();
     }
   }

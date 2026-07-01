@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:provider/provider.dart';
 
 import '../../generated/l10n.dart';
@@ -153,7 +153,10 @@ class _HelpMarkdownTabState extends State<_HelpMarkdownTab> {
         final raw = snapshot.data ?? '';
         final blocks = _parseHelpBlocks(raw);
 
+        final markdownStyle = _helpMarkdownStyle(context);
+
         return ListView.builder(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           itemCount: blocks.length,
           itemBuilder: (context, i) {
             final b = blocks[i];
@@ -162,6 +165,7 @@ class _HelpMarkdownTabState extends State<_HelpMarkdownTab> {
                 return MarkdownBody(
                   data: b.markdown,
                   selectable: true,
+                  styleSheet: markdownStyle,
                   imageBuilder: (uri, title, alt) {
                     final s = uri.toString();
                     if (s.startsWith('assets/')) {
@@ -191,6 +195,28 @@ class _HelpMarkdownTabState extends State<_HelpMarkdownTab> {
       },
     );
   }
+}
+
+MarkdownStyleSheet _helpMarkdownStyle(BuildContext context) {
+  final theme = Theme.of(context);
+  final base = MarkdownStyleSheet.fromTheme(theme);
+  final borderColor = theme.dividerColor;
+  return base.copyWith(
+    tablePadding: const EdgeInsets.only(bottom: 16),
+    tableBorder: TableBorder.all(color: borderColor),
+    tableHeadAlign: TextAlign.left,
+    tableHeadCellsPadding: const EdgeInsets.symmetric(
+      horizontal: 12,
+      vertical: 8,
+    ),
+    tableHeadCellsDecoration: BoxDecoration(
+      color: theme.colorScheme.surfaceContainerHighest,
+    ),
+    tableCellsPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+    tableCellsDecoration: BoxDecoration(
+      border: Border(bottom: BorderSide(color: borderColor.withValues(alpha: 0.5))),
+    ),
+  );
 }
 
 sealed class _HelpBlock {}

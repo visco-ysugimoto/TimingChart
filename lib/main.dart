@@ -1,4 +1,5 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
@@ -13,6 +14,7 @@ import 'generated/l10n.dart';
 import 'models/form/form_state.dart';
 import 'models/chart/signal_data.dart';
 import 'models/chart/timing_chart_annotation.dart';
+import 'utils/desktop_file_reveal.dart';
 import 'utils/file_utils.dart';
 import 'widgets/form/form_tab.dart';
 import 'widgets/chart/timing_chart.dart';
@@ -878,6 +880,29 @@ class _TimingChartGeneratorHomePageState
     return IoChannelSource.unknown;
   }
 
+  void _showExportResultSnackBar({
+    required bool success,
+    required String successMessage,
+    required String failureMessage,
+    String? savedPath,
+  }) {
+    if (!mounted) return;
+    final s = S.of(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(success ? successMessage : failureMessage),
+        duration: const Duration(seconds: 3),
+        action:
+            success && savedPath != null && !kIsWeb
+                ? SnackBarAction(
+                  label: s.export_open_folder,
+                  onPressed: () => revealFileInFileManager(savedPath),
+                )
+                : null,
+      ),
+    );
+  }
+
   /// アプリケーション設定をJSONファイルとしてエクスポートします
   ///
   /// フォーム状態、チャートデータ、アノテーションなどの設定を
@@ -886,6 +911,7 @@ class _TimingChartGeneratorHomePageState
     // チャートアノテーションを更新
     _chartAnnotations = List.from(_chartController.annotations);
 
+    String? savedPath;
     final success = await ExportService.exportConfig(
       context: context,
       tabIndex: _tabController.index,
@@ -904,14 +930,16 @@ class _TimingChartGeneratorHomePageState
           Provider.of<SettingsNotifier>(context, listen: false).msPerStep,
       stepDurationsMs:
           Provider.of<SettingsNotifier>(context, listen: false).stepDurationsMs,
+      onExported: (path) => savedPath = path,
     );
 
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(success ? 'JSONが正常にエクスポートされました' : 'JSONのエクスポートに失敗しました'),
-        duration: const Duration(seconds: 2),
-      ),
+    final s = S.of(context);
+    _showExportResultSnackBar(
+      success: success,
+      successMessage: s.export_success_json,
+      failureMessage: s.export_failed_json,
+      savedPath: savedPath,
     );
   }
 
@@ -925,6 +953,7 @@ class _TimingChartGeneratorHomePageState
     if (config == null) {
       return;
     }
+    if (!mounted) return;
 
     final formState = _formTabKey.currentState;
     formState?.clearAllForImport();
@@ -985,10 +1014,11 @@ class _TimingChartGeneratorHomePageState
       return;
     }
 
+    final s = S.of(context);
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('JPEGが正常にエクスポートされました'),
-        duration: Duration(seconds: 2),
+      SnackBar(
+        content: Text(s.import_success_config),
+        duration: const Duration(seconds: 2),
       ),
     );
   }
@@ -997,17 +1027,20 @@ class _TimingChartGeneratorHomePageState
   ///
   /// 現在表示されているタイミングチャートを画像ファイルとして保存します。
   Future<void> _exportChartImageJpeg() async {
+    String? savedPath;
     final success = await ExportService.exportChartImageJpeg(
       context: context,
       timingChartState: _timingChartKey.currentState,
+      onExported: (path) => savedPath = path,
     );
 
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(success ? 'JPEGが正常にエクスポートされました' : 'JPEGのエクスポートに失敗しました'),
-        duration: const Duration(seconds: 2),
-      ),
+    final s = S.of(context);
+    _showExportResultSnackBar(
+      success: success,
+      successMessage: s.export_success_jpeg,
+      failureMessage: s.export_failed_jpeg,
+      savedPath: savedPath,
     );
   }
 
@@ -1015,6 +1048,7 @@ class _TimingChartGeneratorHomePageState
   ///
   /// 信号データ、アノテーション、省略情報などをExcel形式で保存します。
   Future<void> _exportXlsx() async {
+    String? savedPath;
     final success = await ExportService.exportXlsx(
       context: context,
       chartSignals: _chartSignals,
@@ -1028,14 +1062,16 @@ class _TimingChartGeneratorHomePageState
       chartAnnotations: _chartAnnotations,
       omissionIndices:
           _timingChartKey.currentState?.getOmissionTimeIndices() ?? [],
+      onExported: (path) => savedPath = path,
     );
 
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(success ? 'XLSXが正常にエクスポートされました' : 'XLSXのエクスポートに失敗しました'),
-        duration: const Duration(seconds: 2),
-      ),
+    final s = S.of(context);
+    _showExportResultSnackBar(
+      success: success,
+      successMessage: s.export_success_xlsx,
+      failureMessage: s.export_failed_xlsx,
+      savedPath: savedPath,
     );
   }
 
@@ -1077,7 +1113,7 @@ class _TimingChartGeneratorHomePageState
   Future<void> _showVersionInfoDialog(BuildContext context) async {
     final versionInfo = await _loadVersionInfo();
     final changelog = await _loadChangelog();
-    if (!mounted) return;
+    if (!context.mounted) return;
 
     showDialog(
       context: context,
@@ -1236,7 +1272,7 @@ class _TimingChartGeneratorHomePageState
               onTap: () async {
                 Navigator.pop(context);
                 final files = await FileUtils.pickZiqAndReadRequiredFiles();
-                if (!mounted) return;
+                if (!context.mounted) return;
                 if (files == null) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
@@ -1261,7 +1297,7 @@ class _TimingChartGeneratorHomePageState
                     formTabState: _formTabKey.currentState,
                   );
 
-                  if (!mounted) return;
+                  if (!context.mounted) return;
 
                   // フォーム状態の更新
                   if (result.inputPorts != null &&
@@ -1300,6 +1336,7 @@ class _TimingChartGeneratorHomePageState
 
                   // ステップ継続時間の設定
                   if (result.stepDurationsMs.isNotEmpty) {
+                    if (!context.mounted) return;
                     final settings = Provider.of<SettingsNotifier>(
                       context,
                       listen: false,
@@ -1342,6 +1379,7 @@ class _TimingChartGeneratorHomePageState
                   }
 
                   // 時間単位の設定
+                  if (!context.mounted) return;
                   Provider.of<SettingsNotifier>(context, listen: false)
                       .timeUnitIsMs = true;
 
@@ -1420,7 +1458,7 @@ class _TimingChartGeneratorHomePageState
 
                   // スナックバーの表示
 
-                  if (!mounted) return;
+                  if (!context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(

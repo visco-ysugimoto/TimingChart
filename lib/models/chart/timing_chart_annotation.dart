@@ -24,6 +24,14 @@ class TimingChartAnnotation {
   final int? dashedLineColorValue;
   // 矢印の色（ARGB int）。nullの場合は描画側のデフォルト値を使う。
   final int? arrowColorValue;
+  // テキストの折り返し幅（px）。nullの場合は描画側のデフォルト値（120）を使う。
+  final double? maxWidth;
+  // テキストの最大行数。nullまたは0以下の場合は無制限扱い。
+  final int? maxLines;
+  // 行数制限時に省略記号（...）を表示するか。nullの場合はtrue扱い。
+  final bool? ellipsisEnabled;
+  // コメントボックスの配置位置。'top'=チャート上部、null/'bottom'=チャート下部（既定）。
+  final String? placement;
 
   const TimingChartAnnotation({
     required this.id,
@@ -40,6 +48,10 @@ class TimingChartAnnotation {
     this.borderColorValue,
     this.dashedLineColorValue,
     this.arrowColorValue,
+    this.maxWidth,
+    this.maxLines,
+    this.ellipsisEnabled,
+    this.placement,
   });
 
   TimingChartAnnotation copyWith({
@@ -57,6 +69,10 @@ class TimingChartAnnotation {
     int? borderColorValue,
     int? dashedLineColorValue,
     int? arrowColorValue,
+    double? maxWidth,
+    int? maxLines,
+    bool? ellipsisEnabled,
+    String? placement,
   }) {
     return TimingChartAnnotation(
       id: id ?? this.id,
@@ -73,6 +89,10 @@ class TimingChartAnnotation {
       borderColorValue: borderColorValue ?? this.borderColorValue,
       dashedLineColorValue: dashedLineColorValue ?? this.dashedLineColorValue,
       arrowColorValue: arrowColorValue ?? this.arrowColorValue,
+      maxWidth: maxWidth ?? this.maxWidth,
+      maxLines: maxLines ?? this.maxLines,
+      ellipsisEnabled: ellipsisEnabled ?? this.ellipsisEnabled,
+      placement: placement ?? this.placement,
     );
   }
 }

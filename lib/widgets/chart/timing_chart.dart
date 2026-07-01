@@ -208,6 +208,9 @@ class TimingChartState extends State<TimingChart>
   /// 下部のコメント領域の最小高さ
   static const double _minCommentAreaHeight = 100.0;
 
+  /// 上部のコメント領域の最大高さ（下部と同程度）
+  static const double _maxTopCommentAreaHeight = 100.0;
+
   /// コメントがない場合の下部マージン
   static const double _noCommentBottomMargin = 40.0;
 
@@ -216,6 +219,23 @@ class TimingChartState extends State<TimingChart>
 
   /// 描画結果から計測したコメント領域の高さ（null の場合は未計測）
   double? _measuredCommentAreaHeight;
+
+  /// 描画結果から計測した上部コメント領域の高さ（null の場合は未計測）
+  double? _measuredTopCommentAreaHeight;
+
+  /// 現在のレイアウトで使用している上部コメント領域の高さ（座標補正に使用）
+  double _topCommentAreaHeight = 0.0;
+
+  /// ドラッグ中に上部へはみ出した分を先取り確保する高さ
+  double _dragPreviewTopExtent = 0.0;
+
+  /// ヒットテスト等で使用する、上部コメント領域を含むチャート上端マージン
+  double get _effectiveChartTopMargin =>
+      chartMarginTop +
+      math.max(
+        _topCommentAreaHeight,
+        math.min(_dragPreviewTopExtent, _maxTopCommentAreaHeight),
+      );
 
   /// 高度なタイミング制御を表示するかどうか（現在は常にfalse）
   bool get _showAdvancedTimingControls => true;
@@ -272,6 +292,51 @@ class TimingChartState extends State<TimingChart>
     });
   }
 
+  /// チャート上部のコメント領域に必要な高さを計算します
+  double _calculateTopCommentAreaHeight() {
+    // 上部に配置されたコメントが無ければ 0
+    final bool hasTop = annotations.any((a) => a.placement == 'top');
+    if (!hasTop) {
+      _measuredTopCommentAreaHeight = null;
+      return 0.0;
+    }
+    // 実測値があれば優先
+    if (_measuredTopCommentAreaHeight != null &&
+        _measuredTopCommentAreaHeight!.isFinite &&
+        _measuredTopCommentAreaHeight! > 0) {
+      return math.min(
+        _measuredTopCommentAreaHeight!,
+        _maxTopCommentAreaHeight,
+      );
+    }
+    // 初回など実測前は件数ベースで概算
+    final int topCount = annotations.where((a) => a.placement == 'top').length;
+    return math.min(
+      math.max(60.0, 40.0 + 20.0 * (topCount - 1)),
+      _maxTopCommentAreaHeight,
+    );
+  }
+
+  /// ペインター側で計測した上部コメント領域の高さを受け取る
+  void _onTopCommentAreaMeasured(double height) {
+    if (!mounted) return;
+    if (!height.isFinite || height < 0) return;
+
+    // ほぼ同じなら再ビルド不要
+    final double prev = _measuredTopCommentAreaHeight ?? 0.0;
+    if ((prev - height).abs() < 0.5) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        _measuredTopCommentAreaHeight =
+            height <= 0
+                ? null
+                : math.min(height, _maxTopCommentAreaHeight);
+      });
+    });
+  }
+
   /// チャートを現在選択されている時間範囲にフィットするようにズームします
   ///
   /// 選択された時間範囲がビューポートを埋めるように適切なズーム係数を計算し、
@@ -309,11 +374,17 @@ class TimingChartState extends State<TimingChart>
   /// 現在ドラッグされているアノテーションのID
   String? _draggingAnnotationId;
 
-  /// アノテーションドラッグが開始されたローカル位置
-  Offset? _draggingStartLocal;
-
   /// ドラッグ開始時のアノテーションボックスの初期左上位置
   Offset? _draggingInitialBoxTopLeft;
+
+  /// ドラッグ開始時のアノテーションボックスのサイズ
+  Size? _draggingBoxSize;
+
+  /// ドラッグ開始時の指位置（CustomPaint ローカル Y）
+  double? _draggingStartFingerLocalY;
+
+  /// ドラッグ開始時の指位置（チャートローカル X、水平スクロール込み）
+  double? _draggingStartFingerChartX;
 
   /// パン/ドラッグジェスチャーが開始されたグローバル位置
   Offset? _dragStartGlobal;
@@ -689,7 +760,11 @@ class TimingChartState extends State<TimingChart>
           a[i].isBold != b[i].isBold ||
           a[i].borderColorValue != b[i].borderColorValue ||
           a[i].dashedLineColorValue != b[i].dashedLineColorValue ||
-          a[i].arrowColorValue != b[i].arrowColorValue) {
+          a[i].arrowColorValue != b[i].arrowColorValue ||
+          a[i].maxWidth != b[i].maxWidth ||
+          a[i].maxLines != b[i].maxLines ||
+          a[i].ellipsisEnabled != b[i].ellipsisEnabled ||
+          a[i].placement != b[i].placement) {
         return false;
       }
     }
@@ -770,7 +845,7 @@ class TimingChartState extends State<TimingChart>
   int _getSignalIndexFromDy(double dy) {
     final adjustedY =
         dy -
-        chartMarginTop +
+        _effectiveChartTopMargin +
         (_vScrollController.hasClients ? _vScrollController.offset : 0);
     if (_cellHeight <= 0) return -1;
     final index = (adjustedY / _cellHeight).floor();
@@ -1069,6 +1144,11 @@ class TimingChartState extends State<TimingChart>
     int dashedLineColorValue =
         ann.dashedLineColorValue ?? Colors.black.toARGB32();
     int arrowColorValue = ann.arrowColorValue ?? Colors.blue.toARGB32();
+    double maxWidth =
+        (ann.maxWidth != null && ann.maxWidth!.isFinite) ? ann.maxWidth! : 120.0;
+    // 0 = 無制限として扱う（スライダーの最小値を0に割り当て）
+    int maxLines = (ann.maxLines != null && ann.maxLines! > 0) ? ann.maxLines! : 0;
+    bool ellipsisEnabled = ann.ellipsisEnabled ?? true;
 
     final bool prevCanRequest = _focusNode.canRequestFocus;
     _focusNode.canRequestFocus = false;
@@ -1085,6 +1165,9 @@ class TimingChartState extends State<TimingChart>
             borderColorValue = Colors.grey.shade600.toARGB32();
             dashedLineColorValue = Colors.black.toARGB32();
             arrowColorValue = Colors.blue.toARGB32();
+            maxWidth = 120.0;
+            maxLines = 0;
+            ellipsisEnabled = true;
           });
         }
 
@@ -1156,6 +1239,75 @@ class TimingChartState extends State<TimingChart>
                   value: isBold,
                   onChanged: (v) => setLocalState(() => isBold = v ?? false),
                   title: Text(s.comment_properties_bold),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                ),
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 92,
+                      child: Text(s.comment_properties_wrap_width),
+                    ),
+                    Expanded(
+                      child: Slider(
+                        value: maxWidth.clamp(40.0, 600.0),
+                        min: 40.0,
+                        max: 600.0,
+                        divisions: 56,
+                        label: maxWidth.round().toString(),
+                        onChanged: (v) => setLocalState(() => maxWidth = v),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 34,
+                      child: Text(
+                        maxWidth.round().toString(),
+                        textAlign: TextAlign.right,
+                      ),
+                    ),
+                  ],
+                ),
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 92,
+                      child: Text(s.comment_properties_max_lines),
+                    ),
+                    Expanded(
+                      child: Slider(
+                        value: maxLines.clamp(0, 10).toDouble(),
+                        min: 0,
+                        max: 10,
+                        divisions: 10,
+                        label:
+                            maxLines <= 0
+                                ? s.comment_properties_max_lines_unlimited
+                                : maxLines.toString(),
+                        onChanged:
+                            (v) => setLocalState(() => maxLines = v.round()),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 34,
+                      child: Text(
+                        maxLines <= 0
+                            ? '∞'
+                            : maxLines.toString(),
+                        textAlign: TextAlign.right,
+                      ),
+                    ),
+                  ],
+                ),
+                CheckboxListTile(
+                  value: ellipsisEnabled,
+                  onChanged:
+                      maxLines <= 0
+                          ? null
+                          : (v) => setLocalState(
+                            () => ellipsisEnabled = v ?? true,
+                          ),
+                  title: Text(s.comment_properties_ellipsis),
                   controlAffinity: ListTileControlAffinity.leading,
                   contentPadding: EdgeInsets.zero,
                   dense: true,
@@ -1270,6 +1422,9 @@ class TimingChartState extends State<TimingChart>
           borderColorValue: borderColorValue,
           dashedLineColorValue: dashedLineColorValue,
           arrowColorValue: arrowColorValue,
+          maxWidth: maxWidth,
+          maxLines: maxLines,
+          ellipsisEnabled: ellipsisEnabled,
         );
         _forceRepaint();
       });
@@ -1712,6 +1867,15 @@ class TimingChartState extends State<TimingChart>
             .toDouble();
 
     final commentAreaHeight = _calculateCommentAreaHeight();
+    final topCommentAreaHeight =
+        _draggingAnnotationId != null
+            ? math.min(_dragPreviewTopExtent, _maxTopCommentAreaHeight)
+            : math.max(
+              _calculateTopCommentAreaHeight(),
+              math.min(_dragPreviewTopExtent, _maxTopCommentAreaHeight),
+            );
+    // ジェスチャー/ヒットテストの座標補正に使用するため保持
+    _topCommentAreaHeight = topCommentAreaHeight;
 
     // Calculate cell height
     double constraintHeight =
@@ -1722,7 +1886,10 @@ class TimingChartState extends State<TimingChart>
     double cellHeight;
     if (widget.fitToScreen) {
       final availableHeight =
-          constraintHeight - chartMarginTop - commentAreaHeight;
+          constraintHeight -
+          chartMarginTop -
+          topCommentAreaHeight -
+          commentAreaHeight;
       final visibleRowCount = visibleIndexes.length;
       if (visibleRowCount > 0) {
         cellHeight = math.max(availableHeight / visibleRowCount, 5.0);
@@ -1738,6 +1905,7 @@ class TimingChartState extends State<TimingChart>
               : MediaQuery.of(context).size.height) -
           topControlsHeight -
           chartMarginTop -
+          topCommentAreaHeight -
           commentAreaHeight;
       if (visibleRowCount > 0) {
         cellHeight = math.max(adjustedAvailableHeight / visibleRowCount, 5.0);
@@ -1748,7 +1916,10 @@ class TimingChartState extends State<TimingChart>
 
     final totalWidth = chartMarginLeft + labelWidth + totalSteps * cellWidth;
     final totalHeight =
-        chartMarginTop + visibleIndexes.length * cellHeight + commentAreaHeight;
+        chartMarginTop +
+        topCommentAreaHeight +
+        visibleIndexes.length * cellHeight +
+        commentAreaHeight;
 
     return _ChartLayoutData(
       visibleIndexes: visibleIndexes,
@@ -1764,6 +1935,7 @@ class TimingChartState extends State<TimingChart>
       totalWidth: totalWidth,
       totalHeight: totalHeight,
       commentAreaHeight: commentAreaHeight,
+      topCommentAreaHeight: topCommentAreaHeight,
       maxLen: maxLen,
     );
   }
@@ -1900,6 +2072,8 @@ class TimingChartState extends State<TimingChart>
                             cellHeight: layoutData.cellHeight,
                             labelWidth: labelWidth,
                             commentAreaHeight: layoutData.commentAreaHeight,
+                            topCommentAreaHeight:
+                                layoutData.topCommentAreaHeight,
                             chartMarginLeft: chartMarginLeft,
                             chartMarginTop: chartMarginTop,
                             startSignalIndex:
@@ -1975,6 +2149,10 @@ class TimingChartState extends State<TimingChart>
                                   context,
                                 ).signalColors,
                             onCommentAreaMeasured: _onCommentAreaMeasured,
+                            onTopCommentAreaMeasured:
+                                _onTopCommentAreaMeasured,
+                            draggingAnnotationId:
+                                isEditingMode ? null : _draggingAnnotationId,
                             draggingStartRow:
                                 isEditingMode ? null : _labelDragStartRow,
                             draggingCurrentRow:
@@ -1994,7 +2172,8 @@ class TimingChartState extends State<TimingChart>
                       child: Transform.translate(
                         offset: Offset(
                           0,
-                          chartMarginTop -
+                          chartMarginTop +
+                              layoutData.topCommentAreaHeight -
                               (_vScrollController.hasClients
                                   ? _vScrollController.offset
                                   : 0.0),

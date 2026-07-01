@@ -17,7 +17,8 @@ class CustomDropdown<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DropdownButtonFormField<T>(
-      value: value,
+      key: ValueKey<T>(value),
+      initialValue: value,
       items:
           items.map((T item) {
             return DropdownMenuItem<T>(

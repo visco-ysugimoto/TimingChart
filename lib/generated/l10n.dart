@@ -487,42 +487,12 @@ class S {
     );
   }
 
-  /// `Selected:`
-  String get color_picker_selected {
-    return Intl.message(
-      'Selected:',
-      name: 'color_picker_selected',
-      desc: 'Label for currently selected color',
-      args: [],
-    );
-  }
-
   /// `Cancel`
   String get common_cancel {
     return Intl.message(
       'Cancel',
       name: 'common_cancel',
       desc: 'Common button: Cancel',
-      args: [],
-    );
-  }
-
-  /// `Change`
-  String get common_change {
-    return Intl.message(
-      'Change',
-      name: 'common_change',
-      desc: 'Common button: Change',
-      args: [],
-    );
-  }
-
-  /// `Default`
-  String get common_default {
-    return Intl.message(
-      'Default',
-      name: 'common_default',
-      desc: 'Common button: Default',
       args: [],
     );
   }
@@ -777,72 +747,22 @@ class S {
     );
   }
 
-  /// `Properties`
-  String get ctx_comment_properties {
+  /// `Move to top of chart`
+  String get ctx_placement_bottom_to_top {
     return Intl.message(
-      'Properties',
-      name: 'ctx_comment_properties',
-      desc: 'Context menu: Comment properties',
+      'Move to top of chart',
+      name: 'ctx_placement_bottom_to_top',
+      desc: 'Context menu: place comment above the chart',
       args: [],
     );
   }
 
-  /// `Comment properties`
-  String get comment_properties_title {
+  /// `Move to bottom of chart`
+  String get ctx_placement_top_to_bottom {
     return Intl.message(
-      'Comment properties',
-      name: 'comment_properties_title',
-      desc: 'Dialog title: Comment properties',
-      args: [],
-    );
-  }
-
-  /// `Font size`
-  String get comment_properties_font_size {
-    return Intl.message(
-      'Font size',
-      name: 'comment_properties_font_size',
-      desc: 'Label: Comment font size',
-      args: [],
-    );
-  }
-
-  /// `Bold`
-  String get comment_properties_bold {
-    return Intl.message(
-      'Bold',
-      name: 'comment_properties_bold',
-      desc: 'Label: Bold text',
-      args: [],
-    );
-  }
-
-  /// `Border color`
-  String get comment_properties_border_color {
-    return Intl.message(
-      'Border color',
-      name: 'comment_properties_border_color',
-      desc: 'Label: Comment border color',
-      args: [],
-    );
-  }
-
-  /// `Dashed line color`
-  String get comment_properties_dashed_color {
-    return Intl.message(
-      'Dashed line color',
-      name: 'comment_properties_dashed_color',
-      desc: 'Label: Comment dashed line color',
-      args: [],
-    );
-  }
-
-  /// `Arrow color`
-  String get comment_properties_arrow_color {
-    return Intl.message(
-      'Arrow color',
-      name: 'comment_properties_arrow_color',
-      desc: 'Label: Comment arrow color',
+      'Move to bottom of chart',
+      name: 'ctx_placement_top_to_bottom',
+      desc: 'Context menu: place comment below the chart',
       args: [],
     );
   }
@@ -947,12 +867,262 @@ class S {
     );
   }
 
-  /// `Zoom to selection`
-  String get ctx_zoom_selection {
+  /// `Selected:`
+  String get color_picker_selected {
     return Intl.message(
-      'Zoom to selection',
-      name: 'ctx_zoom_selection',
-      desc: 'Context menu: Zoom to selection',
+      'Selected:',
+      name: 'color_picker_selected',
+      desc: 'Label in color picker showing current selection',
+      args: [],
+    );
+  }
+
+  /// `Change`
+  String get common_change {
+    return Intl.message(
+      'Change',
+      name: 'common_change',
+      desc: 'Button to change a value',
+      args: [],
+    );
+  }
+
+  /// `Default`
+  String get common_default {
+    return Intl.message(
+      'Default',
+      name: 'common_default',
+      desc: 'Button to reset to default value',
+      args: [],
+    );
+  }
+
+  /// `Comment properties`
+  String get comment_properties_title {
+    return Intl.message(
+      'Comment properties',
+      name: 'comment_properties_title',
+      desc: 'Dialog title: comment properties',
+      args: [],
+    );
+  }
+
+  /// `Font size`
+  String get comment_properties_font_size {
+    return Intl.message(
+      'Font size',
+      name: 'comment_properties_font_size',
+      desc: 'Label for font size slider',
+      args: [],
+    );
+  }
+
+  /// `Bold`
+  String get comment_properties_bold {
+    return Intl.message(
+      'Bold',
+      name: 'comment_properties_bold',
+      desc: 'Checkbox label for bold text',
+      args: [],
+    );
+  }
+
+  /// `Border color`
+  String get comment_properties_border_color {
+    return Intl.message(
+      'Border color',
+      name: 'comment_properties_border_color',
+      desc: 'Label for comment border color',
+      args: [],
+    );
+  }
+
+  /// `Dashed line color`
+  String get comment_properties_dashed_color {
+    return Intl.message(
+      'Dashed line color',
+      name: 'comment_properties_dashed_color',
+      desc: 'Label for dashed line color',
+      args: [],
+    );
+  }
+
+  /// `Arrow color`
+  String get comment_properties_arrow_color {
+    return Intl.message(
+      'Arrow color',
+      name: 'comment_properties_arrow_color',
+      desc: 'Label for arrow color',
+      args: [],
+    );
+  }
+
+  /// `Wrap width`
+  String get comment_properties_wrap_width {
+    return Intl.message(
+      'Wrap width',
+      name: 'comment_properties_wrap_width',
+      desc: 'Label for text wrap width slider',
+      args: [],
+    );
+  }
+
+  /// `Max lines`
+  String get comment_properties_max_lines {
+    return Intl.message(
+      'Max lines',
+      name: 'comment_properties_max_lines',
+      desc: 'Label for max lines slider',
+      args: [],
+    );
+  }
+
+  /// `Unlimited`
+  String get comment_properties_max_lines_unlimited {
+    return Intl.message(
+      'Unlimited',
+      name: 'comment_properties_max_lines_unlimited',
+      desc: 'Label shown when max lines is unlimited',
+      args: [],
+    );
+  }
+
+  /// `Ellipsis (...)`
+  String get comment_properties_ellipsis {
+    return Intl.message(
+      'Ellipsis (...)',
+      name: 'comment_properties_ellipsis',
+      desc: 'Checkbox label for ellipsis on overflow',
+      args: [],
+    );
+  }
+
+  /// `Properties`
+  String get ctx_comment_properties {
+    return Intl.message(
+      'Properties',
+      name: 'ctx_comment_properties',
+      desc: 'Context menu: comment properties',
+      args: [],
+    );
+  }
+
+  /// `Export base folder (full path)`
+  String get settings_export_base_directory {
+    return Intl.message(
+      'Export base folder (full path)',
+      name: 'settings_export_base_directory',
+      desc: 'Settings: base directory for quick export',
+      args: [],
+    );
+  }
+
+  /// `Not set (show save dialog)`
+  String get settings_export_base_directory_not_set {
+    return Intl.message(
+      'Not set (show save dialog)',
+      name: 'settings_export_base_directory_not_set',
+      desc: 'Placeholder when export base folder is empty',
+      args: [],
+    );
+  }
+
+  /// `Choose folder`
+  String get settings_pick_export_directory {
+    return Intl.message(
+      'Choose folder',
+      name: 'settings_pick_export_directory',
+      desc: 'Button to pick export directory',
+      args: [],
+    );
+  }
+
+  /// `Quick save (skip dialog)`
+  String get settings_quick_export {
+    return Intl.message(
+      'Quick save (skip dialog)',
+      name: 'settings_quick_export',
+      desc: 'Toggle quick export without file dialog',
+      args: [],
+    );
+  }
+
+  /// `Open folder`
+  String get export_open_folder {
+    return Intl.message(
+      'Open folder',
+      name: 'export_open_folder',
+      desc: 'SnackBar action to open export folder',
+      args: [],
+    );
+  }
+
+  /// `Exported JSON successfully`
+  String get export_success_json {
+    return Intl.message(
+      'Exported JSON successfully',
+      name: 'export_success_json',
+      desc: 'SnackBar after JSON export success',
+      args: [],
+    );
+  }
+
+  /// `JSON export failed`
+  String get export_failed_json {
+    return Intl.message(
+      'JSON export failed',
+      name: 'export_failed_json',
+      desc: 'SnackBar after JSON export failure',
+      args: [],
+    );
+  }
+
+  /// `Exported JPEG successfully`
+  String get export_success_jpeg {
+    return Intl.message(
+      'Exported JPEG successfully',
+      name: 'export_success_jpeg',
+      desc: 'SnackBar after JPEG export success',
+      args: [],
+    );
+  }
+
+  /// `JPEG export failed`
+  String get export_failed_jpeg {
+    return Intl.message(
+      'JPEG export failed',
+      name: 'export_failed_jpeg',
+      desc: 'SnackBar after JPEG export failure',
+      args: [],
+    );
+  }
+
+  /// `Exported XLSX successfully`
+  String get export_success_xlsx {
+    return Intl.message(
+      'Exported XLSX successfully',
+      name: 'export_success_xlsx',
+      desc: 'SnackBar after XLSX export success',
+      args: [],
+    );
+  }
+
+  /// `XLSX export failed`
+  String get export_failed_xlsx {
+    return Intl.message(
+      'XLSX export failed',
+      name: 'export_failed_xlsx',
+      desc: 'SnackBar after XLSX export failure',
+      args: [],
+    );
+  }
+
+  /// `Configuration imported`
+  String get import_success_config {
+    return Intl.message(
+      'Configuration imported',
+      name: 'import_success_config',
+      desc: 'SnackBar after config import success',
       args: [],
     );
   }

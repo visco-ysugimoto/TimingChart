@@ -1,4 +1,4 @@
-﻿// DO NOT EDIT. This is code generated via package:intl/generate_localized.dart
+// DO NOT EDIT. This is code generated via package:intl/generate_localized.dart
 // This is a library that provides messages for a en locale. All the
 // messages from the main program should be duplicated here with the same
 // function name.
@@ -27,8 +27,8 @@ class MessageLookup extends MessageLookupByLibrary {
     "cameraLabel": MessageLookupByLibrary.simpleMessage("Total Camera"),
     "chartNameLabel": MessageLookupByLibrary.simpleMessage("Chart Name"),
     "chartTabTitle": MessageLookupByLibrary.simpleMessage("Timing Chart"),
-    "color_picker_title": MessageLookupByLibrary.simpleMessage("Select Color"),
     "color_picker_selected": MessageLookupByLibrary.simpleMessage("Selected:"),
+    "color_picker_title": MessageLookupByLibrary.simpleMessage("Select Color"),
     "comment_add_range_title": MessageLookupByLibrary.simpleMessage(
       "Add range comment",
     ),
@@ -40,11 +40,9 @@ class MessageLookup extends MessageLookupByLibrary {
       "Comment dashed color",
     ),
     "comment_edit_title": MessageLookupByLibrary.simpleMessage("Edit comment"),
-    "comment_properties_title": MessageLookupByLibrary.simpleMessage(
-      "Comment properties",
-    ),
-    "comment_properties_font_size": MessageLookupByLibrary.simpleMessage(
-      "Font size",
+    "comment_input_hint": MessageLookupByLibrary.simpleMessage("Enter comment"),
+    "comment_properties_arrow_color": MessageLookupByLibrary.simpleMessage(
+      "Arrow color",
     ),
     "comment_properties_bold": MessageLookupByLibrary.simpleMessage("Bold"),
     "comment_properties_border_color": MessageLookupByLibrary.simpleMessage(
@@ -53,10 +51,23 @@ class MessageLookup extends MessageLookupByLibrary {
     "comment_properties_dashed_color": MessageLookupByLibrary.simpleMessage(
       "Dashed line color",
     ),
-    "comment_properties_arrow_color": MessageLookupByLibrary.simpleMessage(
-      "Arrow color",
+    "comment_properties_ellipsis": MessageLookupByLibrary.simpleMessage(
+      "Ellipsis (...)",
     ),
-    "comment_input_hint": MessageLookupByLibrary.simpleMessage("Enter comment"),
+    "comment_properties_font_size": MessageLookupByLibrary.simpleMessage(
+      "Font size",
+    ),
+    "comment_properties_max_lines": MessageLookupByLibrary.simpleMessage(
+      "Max lines",
+    ),
+    "comment_properties_max_lines_unlimited":
+        MessageLookupByLibrary.simpleMessage("Unlimited"),
+    "comment_properties_title": MessageLookupByLibrary.simpleMessage(
+      "Comment properties",
+    ),
+    "comment_properties_wrap_width": MessageLookupByLibrary.simpleMessage(
+      "Wrap width",
+    ),
     "common_cancel": MessageLookupByLibrary.simpleMessage("Cancel"),
     "common_change": MessageLookupByLibrary.simpleMessage("Change"),
     "common_default": MessageLookupByLibrary.simpleMessage("Default"),
@@ -71,14 +82,14 @@ class MessageLookup extends MessageLookupByLibrary {
     "ctx_arrow_horizontal_on_to_off": MessageLookupByLibrary.simpleMessage(
       "Turn horizontal arrow OFF",
     ),
+    "ctx_comment_properties": MessageLookupByLibrary.simpleMessage(
+      "Properties",
+    ),
     "ctx_delete_columns": MessageLookupByLibrary.simpleMessage(
       "Delete selected columns",
     ),
     "ctx_delete_comment": MessageLookupByLibrary.simpleMessage(
       "Delete comment",
-    ),
-    "ctx_comment_properties": MessageLookupByLibrary.simpleMessage(
-      "Properties",
     ),
     "ctx_delete_selection": MessageLookupByLibrary.simpleMessage(
       "Delete selection",
@@ -91,6 +102,12 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "ctx_edit_comment": MessageLookupByLibrary.simpleMessage("Edit comment"),
     "ctx_insert_zeros": MessageLookupByLibrary.simpleMessage("Insert zeros"),
+    "ctx_placement_bottom_to_top": MessageLookupByLibrary.simpleMessage(
+      "Move to top of chart",
+    ),
+    "ctx_placement_top_to_bottom": MessageLookupByLibrary.simpleMessage(
+      "Move to bottom of chart",
+    ),
     "ctx_select_all_signals": MessageLookupByLibrary.simpleMessage(
       "Select all signals",
     ),
@@ -120,6 +137,25 @@ class MessageLookup extends MessageLookupByLibrary {
       ".ziq selection was cancelled",
     ),
     "drawer_preferences": MessageLookupByLibrary.simpleMessage("Preferences"),
+    "export_failed_jpeg": MessageLookupByLibrary.simpleMessage(
+      "JPEG export failed",
+    ),
+    "export_failed_json": MessageLookupByLibrary.simpleMessage(
+      "JSON export failed",
+    ),
+    "export_failed_xlsx": MessageLookupByLibrary.simpleMessage(
+      "XLSX export failed",
+    ),
+    "export_open_folder": MessageLookupByLibrary.simpleMessage("Open folder"),
+    "export_success_jpeg": MessageLookupByLibrary.simpleMessage(
+      "Exported JPEG successfully",
+    ),
+    "export_success_json": MessageLookupByLibrary.simpleMessage(
+      "Exported JSON successfully",
+    ),
+    "export_success_xlsx": MessageLookupByLibrary.simpleMessage(
+      "Exported XLSX successfully",
+    ),
     "file_name_prefix": MessageLookupByLibrary.simpleMessage(
       "File name prefix",
     ),
@@ -133,6 +169,9 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "hw_trigger_signal_color": MessageLookupByLibrary.simpleMessage(
       "HW Trigger signal color",
+    ),
+    "import_success_config": MessageLookupByLibrary.simpleMessage(
+      "Configuration imported",
     ),
     "importing_wait": MessageLookupByLibrary.simpleMessage(
       "Importing... Please wait",
@@ -171,6 +210,11 @@ class MessageLookup extends MessageLookupByLibrary {
     "reset_default_colors": MessageLookupByLibrary.simpleMessage(
       "Reset to default colors",
     ),
+    "settings_export_base_directory": MessageLookupByLibrary.simpleMessage(
+      "Export base folder (full path)",
+    ),
+    "settings_export_base_directory_not_set":
+        MessageLookupByLibrary.simpleMessage("Not set (show save dialog)"),
     "settings_nav_appearance": MessageLookupByLibrary.simpleMessage(
       "Appearance",
     ),
@@ -178,6 +222,12 @@ class MessageLookup extends MessageLookupByLibrary {
     "settings_nav_general": MessageLookupByLibrary.simpleMessage("General"),
     "settings_nav_io": MessageLookupByLibrary.simpleMessage("I/O"),
     "settings_nav_language": MessageLookupByLibrary.simpleMessage("Language"),
+    "settings_pick_export_directory": MessageLookupByLibrary.simpleMessage(
+      "Choose folder",
+    ),
+    "settings_quick_export": MessageLookupByLibrary.simpleMessage(
+      "Quick save (skip dialog)",
+    ),
     "settings_title": MessageLookupByLibrary.simpleMessage("Preferences"),
     "show_grid_lines": MessageLookupByLibrary.simpleMessage("Show grid lines"),
     "show_io_numbers": MessageLookupByLibrary.simpleMessage("Show IO numbers"),

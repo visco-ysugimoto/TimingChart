@@ -19,7 +19,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.7.2
+  sdk: ^3.12.0
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -46,17 +46,17 @@ dependencies:
   shared_preferences: ^2.2.2
   # ファイル操作関連のパッケージ
   path_provider: ^2.1.2
-  file_picker: ^6.1.1
+  file_picker: ^11.0.0
   share_plus: ^7.2.1
   cross_file: ^0.3.3+7
   # モダンなフォント用
-  google_fonts: ^6.1.0
+  google_fonts: 8.1.0
   # XLSXファイル作成用
   excel: ^4.0.6
   image: ^4.1.7
   archive: ^3.6.1
-  # マークダウン表示用
-  flutter_markdown: ^0.6.18
+  # マークダウン表示用（flutter_markdown の後継）
+  flutter_markdown_plus: ^1.0.7
 
 dev_dependencies:
   flutter_test:
@@ -67,7 +67,7 @@ dev_dependencies:
   # activated in the `analysis_options.yaml` file located at the root of your
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
-  flutter_lints: ^5.0.0
+  flutter_lints: ^6.0.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

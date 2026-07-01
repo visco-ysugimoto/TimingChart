@@ -64,5 +64,17 @@
   "dark_mode": "ダークモード",
   "accent_color": "アクセントカラー",
   "importing_wait": "インポート中... しばらくお待ちください",
-  "ctx_delete_columns": "選択範囲の削除(列)"
+  "ctx_delete_columns": "選択範囲の削除(列)",
+  "settings_export_base_directory": "エクスポート先フォルダ（フルパス）",
+  "settings_export_base_directory_not_set": "未設定（保存時にダイアログ表示）",
+  "settings_pick_export_directory": "フォルダを選択",
+  "settings_quick_export": "クイック保存（ダイアログを省略）",
+  "export_open_folder": "フォルダを開く",
+  "export_success_json": "JSONをエクスポートしました",
+  "export_failed_json": "JSONのエクスポートに失敗しました",
+  "export_success_jpeg": "JPEGをエクスポートしました",
+  "export_failed_jpeg": "JPEGのエクスポートに失敗しました",
+  "export_success_xlsx": "XLSXをエクスポートしました",
+  "export_failed_xlsx": "XLSXのエクスポートに失敗しました",
+  "import_success_config": "設定をインポートしました"
 }

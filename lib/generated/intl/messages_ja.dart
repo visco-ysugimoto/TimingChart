@@ -1,4 +1,4 @@
-﻿// DO NOT EDIT. This is code generated via package:intl/generate_localized.dart
+// DO NOT EDIT. This is code generated via package:intl/generate_localized.dart
 // This is a library that provides messages for a ja locale. All the
 // messages from the main program should be duplicated here with the same
 // function name.
@@ -23,12 +23,12 @@ class MessageLookup extends MessageLookupByLibrary {
   final messages = _notInlinedMessages(_notInlinedMessages);
   static Map<String, Function> _notInlinedMessages(_) => <String, Function>{
     "accent_color": MessageLookupByLibrary.simpleMessage("アクセントカラー"),
-    "appTitle": MessageLookupByLibrary.simpleMessage("タイミングチャートジェネレーター"),
+    "appTitle": MessageLookupByLibrary.simpleMessage("タイミングチャートジェネレータ"),
     "cameraLabel": MessageLookupByLibrary.simpleMessage("カメラ総数"),
     "chartNameLabel": MessageLookupByLibrary.simpleMessage("チャート名"),
     "chartTabTitle": MessageLookupByLibrary.simpleMessage("タイミングチャート"),
-    "color_picker_title": MessageLookupByLibrary.simpleMessage("色を選択"),
     "color_picker_selected": MessageLookupByLibrary.simpleMessage("選択中:"),
+    "color_picker_title": MessageLookupByLibrary.simpleMessage("色を選択"),
     "comment_add_range_title": MessageLookupByLibrary.simpleMessage(
       "範囲コメントを追加",
     ),
@@ -36,11 +36,9 @@ class MessageLookup extends MessageLookupByLibrary {
     "comment_arrow_color": MessageLookupByLibrary.simpleMessage("コメント矢印の色"),
     "comment_dashed_color": MessageLookupByLibrary.simpleMessage("コメント破線の色"),
     "comment_edit_title": MessageLookupByLibrary.simpleMessage("コメントを編集"),
-    "comment_properties_title": MessageLookupByLibrary.simpleMessage(
-      "コメントのプロパティ",
-    ),
-    "comment_properties_font_size": MessageLookupByLibrary.simpleMessage(
-      "フォントサイズ",
+    "comment_input_hint": MessageLookupByLibrary.simpleMessage("コメントを入力"),
+    "comment_properties_arrow_color": MessageLookupByLibrary.simpleMessage(
+      "矢印の色",
     ),
     "comment_properties_bold": MessageLookupByLibrary.simpleMessage("太字"),
     "comment_properties_border_color": MessageLookupByLibrary.simpleMessage(
@@ -49,10 +47,23 @@ class MessageLookup extends MessageLookupByLibrary {
     "comment_properties_dashed_color": MessageLookupByLibrary.simpleMessage(
       "破線の色",
     ),
-    "comment_properties_arrow_color": MessageLookupByLibrary.simpleMessage(
-      "矢印の色",
+    "comment_properties_ellipsis": MessageLookupByLibrary.simpleMessage(
+      "省略記号 (...)",
     ),
-    "comment_input_hint": MessageLookupByLibrary.simpleMessage("コメントを入力"),
+    "comment_properties_font_size": MessageLookupByLibrary.simpleMessage(
+      "フォントサイズ",
+    ),
+    "comment_properties_max_lines": MessageLookupByLibrary.simpleMessage(
+      "最大行数",
+    ),
+    "comment_properties_max_lines_unlimited":
+        MessageLookupByLibrary.simpleMessage("無制限"),
+    "comment_properties_title": MessageLookupByLibrary.simpleMessage(
+      "コメントのプロパティ",
+    ),
+    "comment_properties_wrap_width": MessageLookupByLibrary.simpleMessage(
+      "折り返し幅",
+    ),
     "common_cancel": MessageLookupByLibrary.simpleMessage("キャンセル"),
     "common_change": MessageLookupByLibrary.simpleMessage("変更"),
     "common_default": MessageLookupByLibrary.simpleMessage("デフォルト"),
@@ -65,14 +76,20 @@ class MessageLookup extends MessageLookupByLibrary {
     "ctx_arrow_horizontal_on_to_off": MessageLookupByLibrary.simpleMessage(
       "水平矢印をオフにする",
     ),
+    "ctx_comment_properties": MessageLookupByLibrary.simpleMessage("プロパティ"),
     "ctx_delete_columns": MessageLookupByLibrary.simpleMessage("選択列を削除"),
     "ctx_delete_comment": MessageLookupByLibrary.simpleMessage("コメントを削除"),
-    "ctx_comment_properties": MessageLookupByLibrary.simpleMessage("プロパティ"),
     "ctx_delete_selection": MessageLookupByLibrary.simpleMessage("選択範囲を削除"),
     "ctx_draw_omission": MessageLookupByLibrary.simpleMessage("省略記号"),
     "ctx_duplicate_to_tail": MessageLookupByLibrary.simpleMessage("末尾に複製"),
     "ctx_edit_comment": MessageLookupByLibrary.simpleMessage("コメント編集"),
     "ctx_insert_zeros": MessageLookupByLibrary.simpleMessage("0 を挿入"),
+    "ctx_placement_bottom_to_top": MessageLookupByLibrary.simpleMessage(
+      "チャート上部に配置",
+    ),
+    "ctx_placement_top_to_bottom": MessageLookupByLibrary.simpleMessage(
+      "チャート下部に配置",
+    ),
     "ctx_select_all_signals": MessageLookupByLibrary.simpleMessage("すべての信号を選択"),
     "ctx_set_arrow_tip_to_row": MessageLookupByLibrary.simpleMessage(
       "矢印の先端をこの行に設定",
@@ -96,6 +113,25 @@ class MessageLookup extends MessageLookupByLibrary {
       ".ziq の選択はキャンセルされました",
     ),
     "drawer_preferences": MessageLookupByLibrary.simpleMessage("設定"),
+    "export_failed_jpeg": MessageLookupByLibrary.simpleMessage(
+      "JPEGのエクスポートに失敗しました",
+    ),
+    "export_failed_json": MessageLookupByLibrary.simpleMessage(
+      "JSONのエクスポートに失敗しました",
+    ),
+    "export_failed_xlsx": MessageLookupByLibrary.simpleMessage(
+      "XLSXのエクスポートに失敗しました",
+    ),
+    "export_open_folder": MessageLookupByLibrary.simpleMessage("フォルダを開く"),
+    "export_success_jpeg": MessageLookupByLibrary.simpleMessage(
+      "JPEGをエクスポートしました",
+    ),
+    "export_success_json": MessageLookupByLibrary.simpleMessage(
+      "JSONをエクスポートしました",
+    ),
+    "export_success_xlsx": MessageLookupByLibrary.simpleMessage(
+      "XLSXをエクスポートしました",
+    ),
     "file_name_prefix": MessageLookupByLibrary.simpleMessage("ファイル名の接頭辞"),
     "formTabTitle": MessageLookupByLibrary.simpleMessage("入力フォーム"),
     "hint_export_folder": MessageLookupByLibrary.simpleMessage("Export Chart"),
@@ -105,6 +141,9 @@ class MessageLookup extends MessageLookupByLibrary {
     "hwTriggerSectionTitle": MessageLookupByLibrary.simpleMessage("HW トリガー信号"),
     "hw_trigger_signal_color": MessageLookupByLibrary.simpleMessage(
       "HW トリガー信号の色",
+    ),
+    "import_success_config": MessageLookupByLibrary.simpleMessage(
+      "設定をインポートしました",
     ),
     "importing_wait": MessageLookupByLibrary.simpleMessage(
       "インポート中... しばらくお待ちください",
@@ -133,11 +172,22 @@ class MessageLookup extends MessageLookupByLibrary {
     "reset_default_colors": MessageLookupByLibrary.simpleMessage(
       "デフォルトの色にリセット",
     ),
+    "settings_export_base_directory": MessageLookupByLibrary.simpleMessage(
+      "エクスポート先フォルダ（フルパス）",
+    ),
+    "settings_export_base_directory_not_set":
+        MessageLookupByLibrary.simpleMessage("未設定（保存時にダイアログ表示）"),
     "settings_nav_appearance": MessageLookupByLibrary.simpleMessage("表示"),
     "settings_nav_chart": MessageLookupByLibrary.simpleMessage("チャート"),
     "settings_nav_general": MessageLookupByLibrary.simpleMessage("全般"),
     "settings_nav_io": MessageLookupByLibrary.simpleMessage("I/O"),
     "settings_nav_language": MessageLookupByLibrary.simpleMessage("言語"),
+    "settings_pick_export_directory": MessageLookupByLibrary.simpleMessage(
+      "フォルダを選択",
+    ),
+    "settings_quick_export": MessageLookupByLibrary.simpleMessage(
+      "クイック保存（ダイアログを省略）",
+    ),
     "settings_title": MessageLookupByLibrary.simpleMessage("設定"),
     "show_grid_lines": MessageLookupByLibrary.simpleMessage("グリッド線を表示"),
     "show_io_numbers": MessageLookupByLibrary.simpleMessage("IO 番号を表示"),

@@ -46,6 +46,9 @@ class CsvTimeline {
 }
 
 class CsvIoLogParser {
+  /// タイムラインとして読み込む最大ステップ数（末尾からこの件数のみ採用）
+  static const int maxTimelineSteps = 1000;
+
   /// IN/OUT を同時に保持する結果
   static ParsedIoLogBoth parseBoth(String csvText) {
     final lines = csvText.split(RegExp(r'\r?\n'));
@@ -129,8 +132,9 @@ class CsvIoLogParser {
     int inPortCount = 0;
     int outPortCount = 0;
 
-    // 末尾200行のみを対象（200行未満なら全行）
-    final int startIndex = lines.length > 200 ? lines.length - 200 : 0;
+    // 末尾 maxTimelineSteps 行のみを対象（それ未満なら全行）
+    final int startIndex =
+        lines.length > maxTimelineSteps ? lines.length - maxTimelineSteps : 0;
     for (final raw in lines.sublist(startIndex)) {
       final line = raw.trim();
       if (line.isEmpty) continue;
@@ -175,7 +179,7 @@ class CsvIoLogParser {
     );
   }
 
-  /// 複数CSV（例: DIO, PLC, EIP）を時刻で統合し、末尾200行のみを対象にしたタイムラインを返す
+  /// 複数CSV（例: DIO, PLC, EIP）を時刻で統合し、末尾 maxTimelineSteps 行のみを対象にしたタイムラインを返す
   /// - csvs: エントリの key はソース識別子（'DIO'|'PLC'|'EIP' など）、value はCSVテキスト
   /// - 同一時刻の並びは入力順を維持（安定ソート）
   static CsvTimeline parseTimelineMulti(List<MapEntry<String, String>> csvs) {
@@ -251,8 +255,11 @@ class CsvIoLogParser {
       return ta.compareTo(tb);
     });
 
-    // 末尾200行のみ
-    final int startIndex = entries.length > 200 ? entries.length - 200 : 0;
+    // 末尾 maxTimelineSteps 行のみ
+    final int startIndex =
+        entries.length > maxTimelineSteps
+            ? entries.length - maxTimelineSteps
+            : 0;
     final trimmed = entries.sublist(startIndex);
 
     return CsvTimeline(

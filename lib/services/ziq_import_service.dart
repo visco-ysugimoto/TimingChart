@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 
@@ -10,6 +11,7 @@ import '../models/form/form_state.dart';
 import '../utils/vxvismgr_parser.dart';
 import '../utils/vxvismgr_mapping_loader.dart';
 import '../utils/csv_io_log_parser.dart';
+import '../utils/compute_workers.dart';
 import '../providers/form_controllers_notifier.dart';
 import '../providers/timing_chart_controller.dart';
 import '../widgets/form/form_tab.dart' show FormTabState;
@@ -210,12 +212,14 @@ class ZiqImportService {
       );
     }
 
-    // タイムラインの解析
-    final timeline = CsvIoLogParser.parseTimelineMulti(csvPairs);
-
-    // ステップ継続時間の計算
-    final stepDurationsMs =
-        CsvIoLogParserTimestamps.inferStepDurationsMsFromTimeline(timeline);
+    // タイムラインの解析（重い CSV 処理は Isolate で実行）
+    final parsePayload = CsvTimelineParsePayload(
+      sources: csvPairs.map((e) => e.key).toList(),
+      contents: csvPairs.map((e) => e.value).toList(),
+    );
+    final parsed = await compute(parseCsvTimelineIsolate, parsePayload);
+    final timeline = parsed.timeline;
+    final stepDurationsMs = parsed.stepDurationsMs;
 
     // チャートデータの構築（この部分は非常に大きいので、別メソッドに分割）
     final chartData = _buildChartData(

@@ -1,28 +1,128 @@
 import 'dart:io';
+import 'dart:typed_data' show BytesBuilder;
+import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:flutter/foundation.dart';
-import 'package:cross_file/cross_file.dart';
 import 'package:excel/excel.dart' as excel;
+import 'compute_workers.dart';
+import 'export_save_options.dart';
 // Remove unused imports and dependencies on Flutter Material for this utility file
 import '../models/backup/app_config.dart';
 import '../models/chart/timing_chart_annotation.dart';
 import '../models/chart/signal_data.dart';
 import '../models/chart/signal_type.dart';
 import 'wavedrom_converter.dart';
-import 'dart:typed_data';
-import 'package:archive/archive_io.dart';
 import 'dart:convert';
 
 import 'web_download.dart' as web;
 
 /// ファイル操作ユーティリティクラス
 class FileUtils {
+  /// 拡張子が無ければ付与する（`ext` は `.json` のようにドット付き）
+  static String _ensureExtension(String name, String ext) {
+    final normalized =
+        ext.startsWith('.') ? ext.toLowerCase() : '.${ext.toLowerCase()}';
+    if (name.toLowerCase().endsWith(normalized)) return name;
+    return '$name$normalized';
+  }
+
+  /// 選択ファイルのバイト列を取得（path / bytes / readStream のいずれか）
+  static Future<Uint8List?> _readPlatformFileBytes(PlatformFile file) async {
+    final cached = file.bytes;
+    if (cached != null) return cached;
+
+    final path = file.path;
+    if (path != null && !kIsWeb) {
+      final f = File(path);
+      if (await f.exists()) {
+        return f.readAsBytes();
+      }
+    }
+
+    final stream = file.readStream;
+    if (stream != null) {
+      final builder = BytesBuilder();
+      await for (final chunk in stream) {
+        builder.add(chunk);
+      }
+      return builder.takeBytes();
+    }
+
+    return null;
+  }
+
+  static String _prefixedFileName(String fileName, String? prefix) {
+    if (prefix == null || prefix.isEmpty) return fileName;
+    return '${prefix}_$fileName';
+  }
+
+  /// ダイアログ保存のパスからクイック保存用ベースディレクトリを更新
+  static void rememberExportDirectoryFromPath({
+    required String savedFilePath,
+    required String exportSubFolder,
+    required void Function(String baseDirectory) onBaseDirectoryResolved,
+  }) {
+    final parent = File(savedFilePath).parent.path;
+    final sub = exportSubFolder.replaceAll('/', Platform.pathSeparator);
+    if (parent.endsWith(sub)) {
+      onBaseDirectoryResolved(Directory(parent).parent.path);
+    } else {
+      onBaseDirectoryResolved(parent);
+    }
+  }
+
+  /// デスクトップ: クイック保存または保存ダイアログ
+  static Future<String?> _saveBytesOnDesktop({
+    required Uint8List bytes,
+    required String fileName,
+    required String extensionWithDot,
+    required List<String> allowedExtensions,
+    required String dialogTitle,
+    ExportSaveOptions? options,
+  }) async {
+    final opts = options ?? const ExportSaveOptions();
+    final effectiveName = _prefixedFileName(fileName, opts.fileNamePrefix);
+    final nameWithExt = _ensureExtension(effectiveName, extensionWithDot);
+
+    if (opts.quickExportEnabled &&
+        opts.lastExportDirectory != null &&
+        opts.lastExportDirectory!.isNotEmpty) {
+      try {
+        final dir = Directory(
+          p.join(opts.lastExportDirectory!, opts.exportSubFolder),
+        );
+        if (!await dir.exists()) {
+          await dir.create(recursive: true);
+        }
+        final path = p.join(dir.path, nameWithExt);
+        await File(path).writeAsBytes(bytes);
+        opts.onSaved?.call(path, quickSave: true);
+        return path;
+      } catch (e) {
+        debugPrint('Quick export failed, falling back to dialog: $e');
+      }
+    }
+
+    final savedPath = await FilePicker.saveFile(
+      dialogTitle: dialogTitle,
+      fileName: nameWithExt,
+      allowedExtensions: allowedExtensions,
+      type: FileType.custom,
+      bytes: bytes,
+    );
+    if (savedPath != null) {
+      opts.onSaved?.call(savedPath, quickSave: false);
+    }
+    return savedPath;
+  }
+
   /// アプリケーション設定をJSONファイルとしてエクスポート
   static Future<bool> exportAppConfig(
     AppConfig config, {
     String? customFileName,
+    ExportSaveOptions? saveOptions,
   }) async {
     try {
       // ファイル名の生成（現在の日時を使用）
@@ -42,28 +142,17 @@ class FileUtils {
         return true;
       }
 
-      // ファイル保存ダイアログを表示して保存先を選択
-      String? outputFile = await FilePicker.platform.saveFile(
-        dialogTitle: 'JSONファイルの保存先を選択',
+      final bytes = Uint8List.fromList(utf8.encode(jsonString));
+      final savedPath = await _saveBytesOnDesktop(
+        bytes: bytes,
         fileName: fileName,
+        extensionWithDot: '.json',
         allowedExtensions: ['json'],
-        type: FileType.custom,
+        dialogTitle: 'JSONファイルの保存先を選択',
+        options: saveOptions,
       );
 
-      if (outputFile == null) {
-        return false; // ユーザーがキャンセルした場合
-      }
-
-      // 拡張子の確認と追加
-      if (!outputFile.toLowerCase().endsWith('.json')) {
-        outputFile += '.json';
-      }
-
-      // ファイルへの書き込み
-      final file = File(outputFile);
-      await file.writeAsString(jsonString);
-
-      return true;
+      return savedPath != null;
     } catch (e) {
       debugPrint('Error exporting app config: $e');
       return false;
@@ -115,8 +204,7 @@ class FileUtils {
   /// JSONファイルからアプリケーション設定をインポート
   static Future<AppConfig?> importAppConfig() async {
     try {
-      // ファイル選択ダイアログを表示
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['json'],
         allowMultiple: false,
@@ -127,18 +215,10 @@ class FileUtils {
         return null; // ユーザーがキャンセルした場合
       }
 
-      // 選択されたファイルパスを取得
-      String jsonString;
       final picked = result.files.first;
-      final bytes = picked.bytes;
-      if (bytes != null) {
-        jsonString = utf8.decode(bytes);
-      } else {
-        final filePath = picked.path;
-        if (filePath == null) return null;
-        final file = File(filePath);
-        jsonString = await file.readAsString();
-      }
+      final bytes = await _readPlatformFileBytes(picked);
+      if (bytes == null) return null;
+      final jsonString = utf8.decode(bytes);
 
       // JSONからAppConfigを生成
       try {
@@ -164,6 +244,7 @@ class FileUtils {
     List<TimingChartAnnotation>? annotations,
     List<int>? omissionIndices,
     String? customFileName,
+    ExportSaveOptions? saveOptions,
   }) async {
     // 以前は UI 言語に応じてラベルへ変換していたが、
     // デスクトップ運用では ID をそのまま保持した方が
@@ -192,28 +273,16 @@ class FileUtils {
         return true;
       }
 
-      // 保存先選択
-      String? outputFile = await FilePicker.platform.saveFile(
-        dialogTitle: 'WaveDrom JSON の保存先を選択',
+      final savedPath = await _saveBytesOnDesktop(
+        bytes: Uint8List.fromList(utf8.encode(wavedromJson)),
         fileName: fileName,
+        extensionWithDot: '.json',
         allowedExtensions: ['json'],
-        type: FileType.custom,
+        dialogTitle: 'WaveDrom JSON の保存先を選択',
+        options: saveOptions,
       );
 
-      if (outputFile == null) {
-        return false; // キャンセル
-      }
-
-      // 拡張子強制
-      if (!outputFile.toLowerCase().endsWith('.json')) {
-        outputFile += '.json';
-      }
-
-      // 書き込み
-      final file = File(outputFile);
-      await file.writeAsString(wavedromJson);
-
-      return true;
+      return savedPath != null;
     } catch (e) {
       debugPrint('Error exporting WaveDrom: $e');
       return false;
@@ -224,6 +293,7 @@ class FileUtils {
   static Future<bool> exportPngBytes(
     Uint8List bytes, {
     String? customFileName,
+    ExportSaveOptions? saveOptions,
   }) async {
     try {
       final now = DateTime.now();
@@ -237,21 +307,16 @@ class FileUtils {
         return true;
       }
 
-      String? outputFile = await FilePicker.platform.saveFile(
-        dialogTitle: 'チャート画像 (PNG) の保存先を選択',
+      final savedPath = await _saveBytesOnDesktop(
+        bytes: bytes,
         fileName: fileName,
+        extensionWithDot: '.png',
         allowedExtensions: ['png'],
-        type: FileType.custom,
+        dialogTitle: 'チャート画像 (PNG) の保存先を選択',
+        options: saveOptions,
       );
 
-      if (outputFile == null) return false;
-      if (!outputFile.toLowerCase().endsWith('.png')) {
-        outputFile += '.png';
-      }
-
-      final file = File(outputFile);
-      await file.writeAsBytes(bytes);
-      return true;
+      return savedPath != null;
     } catch (e) {
       debugPrint('Error exporting PNG: $e');
       return false;
@@ -262,6 +327,7 @@ class FileUtils {
   static Future<bool> exportJpegBytes(
     Uint8List bytes, {
     String? customFileName,
+    ExportSaveOptions? saveOptions,
   }) async {
     try {
       final now = DateTime.now();
@@ -275,22 +341,16 @@ class FileUtils {
         return true;
       }
 
-      String? outputFile = await FilePicker.platform.saveFile(
-        dialogTitle: 'チャート画像 (JPEG) の保存先を選択',
+      final savedPath = await _saveBytesOnDesktop(
+        bytes: bytes,
         fileName: fileName,
+        extensionWithDot: '.jpg',
         allowedExtensions: ['jpg', 'jpeg'],
-        type: FileType.custom,
+        dialogTitle: 'チャート画像 (JPEG) の保存先を選択',
+        options: saveOptions,
       );
 
-      if (outputFile == null) return false;
-      final lower = outputFile.toLowerCase();
-      if (!lower.endsWith('.jpg') && !lower.endsWith('.jpeg')) {
-        outputFile += '.jpg';
-      }
-
-      final file = File(outputFile);
-      await file.writeAsBytes(bytes);
-      return true;
+      return savedPath != null;
     } catch (e) {
       debugPrint('Error exporting JPEG: $e');
       return false;
@@ -307,6 +367,7 @@ class FileUtils {
     List<TimingChartAnnotation> chartAnnotations = const [],
     List<int> omissionIndices = const [],
     String? customFileName,
+    ExportSaveOptions? saveOptions,
   }) async {
     try {
       final now = DateTime.now();
@@ -693,26 +754,16 @@ class FileUtils {
           return true;
         }
 
-        // 非Web: ファイル保存ダイアログを表示
-        String? outputFile = await FilePicker.platform.saveFile(
-          dialogTitle: 'XLSXファイルの保存先を選択',
+        final savedPath = await _saveBytesOnDesktop(
+          bytes: Uint8List.fromList(fileBytes),
           fileName: fileName,
+          extensionWithDot: '.xlsx',
           allowedExtensions: ['xlsx'],
-          type: FileType.custom,
+          dialogTitle: 'XLSXファイルの保存先を選択',
+          options: saveOptions,
         );
 
-        if (outputFile == null) {
-          return false; // ユーザーがキャンセルした場合
-        }
-
-        // 拡張子の確認と追加
-        if (!outputFile.toLowerCase().endsWith('.xlsx')) {
-          outputFile += '.xlsx';
-        }
-
-        final file = File(outputFile);
-        await file.writeAsBytes(fileBytes);
-        return true;
+        return savedPath != null;
       } else {
         return false;
       }
@@ -726,7 +777,7 @@ class FileUtils {
   /// Web/デスクトップ共通で動くように bytes ベースで処理する。
   static Future<Map<String, String>?> pickZiqAndReadRequiredFiles() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['ziq'],
         allowMultiple: false,
@@ -734,21 +785,11 @@ class FileUtils {
       );
 
       if (result == null || result.files.isEmpty) return null;
-      final picked = result.files.first;
 
-      Uint8List zipBytes;
-      final bytes = picked.bytes;
-      if (bytes != null) {
-        zipBytes = bytes;
-      } else {
-        final sourcePath = picked.path;
-        if (sourcePath == null) return null;
-        final sourceFile = File(sourcePath);
-        if (!await sourceFile.exists()) return null;
-        zipBytes = await sourceFile.readAsBytes();
-      }
+      final zipBytes = await _readPlatformFileBytes(result.files.first);
+      if (zipBytes == null) return null;
 
-      return readRequiredFilesFromZipBytes(zipBytes);
+      return readRequiredFilesFromZipBytesAsync(zipBytes);
     } catch (e) {
       debugPrint('Error picking ziq and reading required files: $e');
       return null;
@@ -770,100 +811,17 @@ class FileUtils {
       if (!await file.exists()) return result;
 
       final bytes = await file.readAsBytes();
-      return readRequiredFilesFromZipBytes(bytes);
+      return readRequiredFilesFromZipBytesAsync(bytes);
     } catch (e) {
       debugPrint('Error reading required files from zip: $e');
       return result;
     }
   }
 
-  /// ZIPバイト列から、目的のファイルを読み込んで返す
-  static Map<String, String> readRequiredFilesFromZipBytes(Uint8List bytes) {
-    final result = <String, String>{};
-    try {
-      final archive = ZipDecoder().decodeBytes(bytes, verify: true);
-
-      String? readTextFromArchive(String targetPath) {
-        // ZIP 内はパス区切りが '/' 固定のため、normalize
-        final normalizedTarget = targetPath.replaceAll('\\', '/');
-        for (final entry in archive) {
-          if (entry.isFile) {
-            final name = entry.name.replaceAll('\\', '/');
-            if (name.toLowerCase() == normalizedTarget.toLowerCase()) {
-              final data = entry.content as List<int>;
-              return String.fromCharCodes(data);
-            }
-          }
-        }
-        return null;
-      }
-
-      // サブフォルダ構成の差異に強いフォールバック: ベースファイル名での検索
-      String? readByFileNameFallback(String fileName) {
-        final lower = fileName.toLowerCase();
-        final lowerStem =
-            lower.endsWith('.csv') || lower.endsWith('.ini')
-                ? lower.substring(0, lower.lastIndexOf('.'))
-                : lower;
-        for (final entry in archive) {
-          if (!entry.isFile) continue;
-          final normalized = entry.name.replaceAll('\\', '/');
-          final lastSlash = normalized.lastIndexOf('/');
-          final base =
-              lastSlash >= 0 ? normalized.substring(lastSlash + 1) : normalized;
-          final baseLower = base.toLowerCase();
-          // 完全一致 or ベース名の前方一致（例: DioMonitorLog_20250101.csv）
-          if (baseLower == lower || baseLower.startsWith(lowerStem)) {
-            try {
-              final data = entry.content as List<int>;
-              return String.fromCharCodes(data);
-            } catch (_) {
-              // ignore and continue
-            }
-          }
-        }
-        return null;
-      }
-
-      // 優先ターゲット群→見つからなければベース名でフォールバック
-      String? readWithFallback(List<String> targets, String baseName) {
-        for (final t in targets) {
-          final text = readTextFromArchive(t);
-          if (text != null) return text;
-        }
-        return readByFileNameFallback(baseName);
-      }
-
-      final ini = readWithFallback([
-        'viscotech/bin/vxVisMgr.ini',
-        'bin/vxVisMgr.ini',
-        'vxVisMgr.ini',
-      ], 'vxVisMgr.ini');
-      final dio = readWithFallback([
-        'viscotech/Support/DioMonitorLog.csv',
-        'Support/DioMonitorLog.csv',
-        'DioMonitorLog.csv',
-      ], 'DioMonitorLog.csv');
-      final plc = readWithFallback([
-        'viscotech/Support/Plc_DioMonitorLog.csv',
-        'Support/Plc_DioMonitorLog.csv',
-        'Plc_DioMonitorLog.csv',
-      ], 'Plc_DioMonitorLog.csv');
-      final fnl = readWithFallback([
-        'viscotech/Support/FNL_DioMonitorLog.csv',
-        'Support/FNL_DioMonitorLog.csv',
-        'FNL_DioMonitorLog.csv',
-      ], 'FNL_DioMonitorLog.csv');
-
-      if (ini != null) result['vxVisMgr.ini'] = ini;
-      if (dio != null) result['DioMonitorLog.csv'] = dio;
-      if (plc != null) result['Plc_DioMonitorLog.csv'] = plc;
-      if (fnl != null) result['FNL_DioMonitorLog.csv'] = fnl;
-
-      return result;
-    } catch (e) {
-      debugPrint('Error reading required files from zip: $e');
-      return result;
-    }
+  /// ZIPバイト列から、目的のファイルを読み込んで返す（Isolate で実行）
+  static Future<Map<String, String>> readRequiredFilesFromZipBytesAsync(
+    Uint8List bytes,
+  ) {
+    return compute(readRequiredFilesFromZipBytesIsolate, bytes);
   }
 }

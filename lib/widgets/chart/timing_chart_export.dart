@@ -100,7 +100,7 @@ extension TimingChartExportExt on TimingChartState {
         final jpeg = await web_jpeg.pngToJpegBytes(
           pngData.buffer.asUint8List(),
           quality: quality,
-          backgroundColorValue: bg.value,
+          backgroundColorValue: bg.toARGB32(),
         );
         return jpeg;
       }
