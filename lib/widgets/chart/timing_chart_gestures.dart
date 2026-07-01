@@ -193,7 +193,10 @@ extension _TimingChartGesturesExt on TimingChartState {
         chartLocalPos.dx <= chartMarginLeft + labelWidth;
 
     final sigIndex = _getSignalIndexFromDy(chartLocalPos.dy);
-    if (inLabelArea && sigIndex >= 0 && sigIndex < _visibleIndexes.length) {
+    if (inLabelArea &&
+        !_isChartEditLocked &&
+        sigIndex >= 0 &&
+        sigIndex < _visibleIndexes.length) {
       _setState(() {
         _isLabelDrag = true;
         _labelDragStartRow = sigIndex;
@@ -458,16 +461,17 @@ extension _TimingChartGesturesExt on TimingChartState {
       });
 
       menuItems = [
-        if (_hasValidSelection)
+        if (_canEditChartSignals && _hasValidSelection)
           PopupMenuItem(value: 'insert', child: Text(s.ctx_insert_zeros)),
-        PopupMenuItem(value: 'duplicate', child: Text(s.ctx_duplicate_to_tail)),
+        if (_canEditChartSignals)
+          PopupMenuItem(value: 'duplicate', child: Text(s.ctx_duplicate_to_tail)),
         PopupMenuItem(
           value: 'selectAll',
           child: Text(s.ctx_select_all_signals),
         ),
-        if (_hasValidSelection)
+        if (_canEditChartSignals && _hasValidSelection)
           PopupMenuItem(value: 'delete', child: Text(s.ctx_delete_selection)),
-        if (_hasValidSelection)
+        if (_canEditChartSignals && _hasValidSelection)
           PopupMenuItem(
             value: 'deleteColumns',
             child: Text(s.ctx_delete_columns),

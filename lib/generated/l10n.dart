@@ -767,6 +767,26 @@ class S {
     );
   }
 
+  /// `Lock chart editing`
+  String get chart_edit_lock_tooltip {
+    return Intl.message(
+      'Lock chart editing',
+      name: 'chart_edit_lock_tooltip',
+      desc: 'Tooltip for lock button when chart editing is unlocked',
+      args: [],
+    );
+  }
+
+  /// `Unlock chart editing`
+  String get chart_edit_unlock_tooltip {
+    return Intl.message(
+      'Unlock chart editing',
+      name: 'chart_edit_unlock_tooltip',
+      desc: 'Tooltip for lock button when chart editing is locked',
+      args: [],
+    );
+  }
+
   /// `Insert zeros`
   String get ctx_insert_zeros {
     return Intl.message(

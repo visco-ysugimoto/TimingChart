@@ -74,6 +74,8 @@
   "ctx_set_arrow_tip_to_row": "矢印の先端をこの行に設定",
   "ctx_placement_bottom_to_top": "チャート上部に配置",
   "ctx_placement_top_to_bottom": "チャート下部に配置",
+  "chart_edit_lock_tooltip": "チャート編集をロック",
+  "chart_edit_unlock_tooltip": "チャート編集のロックを解除",
   "ctx_insert_zeros": "0 を挿入",
   "ctx_duplicate_to_tail": "末尾に複製",
   "ctx_select_all_signals": "すべての信号を選択",

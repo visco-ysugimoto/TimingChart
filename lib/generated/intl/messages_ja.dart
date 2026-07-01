@@ -27,6 +27,12 @@ class MessageLookup extends MessageLookupByLibrary {
     "cameraLabel": MessageLookupByLibrary.simpleMessage("カメラ総数"),
     "chartNameLabel": MessageLookupByLibrary.simpleMessage("チャート名"),
     "chartTabTitle": MessageLookupByLibrary.simpleMessage("タイミングチャート"),
+    "chart_edit_lock_tooltip": MessageLookupByLibrary.simpleMessage(
+      "チャート編集をロック",
+    ),
+    "chart_edit_unlock_tooltip": MessageLookupByLibrary.simpleMessage(
+      "チャート編集のロックを解除",
+    ),
     "color_picker_selected": MessageLookupByLibrary.simpleMessage("選択中:"),
     "color_picker_title": MessageLookupByLibrary.simpleMessage("色を選択"),
     "comment_add_range_title": MessageLookupByLibrary.simpleMessage(

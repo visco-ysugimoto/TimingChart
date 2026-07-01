@@ -163,6 +163,9 @@ class TimingChartState extends State<TimingChart>
   /// ラベルドラッグ操作中の現在の行インデックス
   int? _labelDragCurrentRow;
 
+  /// チャート上の信号編集（反転・挿入・複製・行入替・削除）をロックするかどうか
+  bool _isChartEditLocked = false;
+
   /// 各時間ステップセルの幅（ピクセル）
   double _cellWidth = 40;
 
@@ -804,6 +807,9 @@ class TimingChartState extends State<TimingChart>
         stTime >= 0 &&
         edTime <= maxTime;
   }
+
+  /// チャート上の信号編集が許可されているかどうか
+  bool get _canEditChartSignals => !_isChartEditLocked;
 
   /// ウィジェット座標のX座標（dx）から時間ステップインデックスを取得します
   ///
@@ -2446,6 +2452,7 @@ class TimingChartState extends State<TimingChart>
   /// 単位切り替えウィジェットを返します
   Widget _buildUnitToggle(BuildContext context) {
     final settings = Provider.of<SettingsNotifier>(context);
+    final s = S.of(context);
     final bool isMs = settings.timeUnitIsMs;
     final String label = isMs ? 'ms' : 'step';
 
@@ -2475,6 +2482,25 @@ class TimingChartState extends State<TimingChart>
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          IconButton(
+            icon: Icon(
+              _isChartEditLocked ? Icons.lock : Icons.lock_open,
+              size: 20,
+            ),
+            tooltip:
+                _isChartEditLocked
+                    ? s.chart_edit_unlock_tooltip
+                    : s.chart_edit_lock_tooltip,
+            visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            onPressed: () {
+              setState(() {
+                _isChartEditLocked = !_isChartEditLocked;
+              });
+            },
+          ),
+          const SizedBox(width: 4),
           Text('Unit:'),
           const SizedBox(width: 6),
           Switch(value: isMs, onChanged: onTimeUnitChanged),

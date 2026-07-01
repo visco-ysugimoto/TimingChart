@@ -27,6 +27,12 @@ class MessageLookup extends MessageLookupByLibrary {
     "cameraLabel": MessageLookupByLibrary.simpleMessage("Total Camera"),
     "chartNameLabel": MessageLookupByLibrary.simpleMessage("Chart Name"),
     "chartTabTitle": MessageLookupByLibrary.simpleMessage("Timing Chart"),
+    "chart_edit_lock_tooltip": MessageLookupByLibrary.simpleMessage(
+      "Lock chart editing",
+    ),
+    "chart_edit_unlock_tooltip": MessageLookupByLibrary.simpleMessage(
+      "Unlock chart editing",
+    ),
     "color_picker_selected": MessageLookupByLibrary.simpleMessage("Selected:"),
     "color_picker_title": MessageLookupByLibrary.simpleMessage("Select Color"),
     "comment_add_range_title": MessageLookupByLibrary.simpleMessage(

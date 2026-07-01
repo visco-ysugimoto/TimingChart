@@ -14,6 +14,7 @@ extension _TimingChartSelectionOpsExt on TimingChartState {
   /// [visibleRow] - 表示信号行インデックス
   /// [time] - 時間ステップインデックス
   void _toggleSingleSignal(int visibleRow, int time) {
+    if (!_canEditChartSignals) return;
     if (visibleRow >= 0 && visibleRow < _visibleIndexes.length) {
       final originalRow = _visibleIndexes[visibleRow];
       if (time >= 0 && time < signals[originalRow].length) {
@@ -33,6 +34,7 @@ extension _TimingChartSelectionOpsExt on TimingChartState {
   /// 選択されたすべての信号行について、選択範囲内のすべての信号値を反転します（0から1、または1から0）。
   /// 変更をコントローラーにコミットします。
   void _toggleSignalsInSelection() {
+    if (!_canEditChartSignals) return;
     if (!_hasValidSelection) return;
     final stSig = math.min(_startSignalIndex!, _endSignalIndex!);
     final edSig = math.max(_startSignalIndex!, _endSignalIndex!);
@@ -61,6 +63,7 @@ extension _TimingChartSelectionOpsExt on TimingChartState {
   /// 選択されたすべての信号行について、選択範囲の開始位置に選択幅に等しい数のゼロ値を挿入します。
   /// これにより、既存の値が右にシフトされます。
   void _insertZerosToSelection() {
+    if (!_canEditChartSignals) return;
     if (!_hasValidSelection) return;
     final stSig = math.min(_startSignalIndex!, _endSignalIndex!);
     final edSig = math.max(_startSignalIndex!, _endSignalIndex!);
@@ -202,6 +205,7 @@ extension _TimingChartSelectionOpsExt on TimingChartState {
   /// すべての表示信号が選択されている場合、列削除に委譲します。
   /// それ以外の場合は、選択された行からのみ削除します。
   void _deleteRange() {
+    if (!_canEditChartSignals) return;
     // More tolerant: verify index existence, then safely clamp and process
     if (_startSignalIndex == null ||
         _endSignalIndex == null ||
@@ -247,6 +251,7 @@ extension _TimingChartSelectionOpsExt on TimingChartState {
   /// 選択された時間範囲について、時間列全体（すべての信号にわたる）を削除します。
   /// より寛容：時間インデックスの存在のみを確認し、その後安全に範囲をクランプして処理します。
   void _deleteColumns() {
+    if (!_canEditChartSignals) return;
     // More tolerant: only verify time index existence, then safely clamp and process range
     if (_startTimeIndex == null || _endTimeIndex == null) {
       debugPrint('deleteColumns: _startTimeIndex=$_startTimeIndex');
@@ -275,6 +280,7 @@ extension _TimingChartSelectionOpsExt on TimingChartState {
   /// 選択範囲内にあるアノテーションと省略マークも複製します。
   /// ミリ秒単位を使用している場合は、ステップ継続時間を更新します。
   void _duplicateRange() {
+    if (!_canEditChartSignals) return;
     if (!_hasValidSelection) return;
 
     // Calculate start and end signal indices and time indices
@@ -455,6 +461,7 @@ extension _TimingChartSelectionOpsExt on TimingChartState {
   ///
   /// [value] - 設定する値（0または1）
   void _setSignalsInSelection(int value) {
+    if (!_canEditChartSignals) return;
     if (!_hasValidSelection) return;
     final stSig = math.min(_startSignalIndex!, _endSignalIndex!);
     final edSig = math.max(_startSignalIndex!, _endSignalIndex!);

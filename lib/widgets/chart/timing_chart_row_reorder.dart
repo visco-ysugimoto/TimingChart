@@ -50,6 +50,7 @@ extension _TimingChartRowReorderExt on TimingChartState {
 
   /// 1つの行を新しい位置に移動して信号行を並べ替えます。
   void _reorderSignalRowsImpl(int fromVisible, int toVisible) {
+    if (!_canEditChartSignals) return;
     if (fromVisible == toVisible) return;
 
     if (fromVisible < toVisible) {
