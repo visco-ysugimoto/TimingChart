@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:yaml/yaml.dart';
 
@@ -270,28 +271,55 @@ class ChartTemplateEngine {
     // 内容がゼロのみでも Output31 へ固定配置するため常に登録する
     waves['ACQ_TRIGGER_WAITING'] = acqWait;
 
-    // BATCH_EXPOSURE 生成: 最初のEXPOSURE立上りから最後のEXPOSURE立上りまで High
-    int firstExp = -1;
-    int lastExp = -1;
+    // BATCH_EXPOSURE 生成:
+    // - 基本は最初のEXPOSURE立上り〜最後のEXPOSURE立上りまで High
+    // - ただし ACQ_TRIGGER_WAITING を伴う取込があり、かつその前に取込がある場合は
+    //   直前取込の ACQUISITION が落ちるタイミング(prevExp + x + 1)で一度 Low にし、
+    //   待ち解除後の EXPOSURE 立上りで再び High にする
+    final exposureRiseTimes = <int>{};
     waves.forEach((name, values) {
       if (name.contains('_IMAGE_EXPOSURE')) {
-        // 最初の High
-        int firstIdx = values.indexWhere((v) => v == 1);
-        if (firstIdx != -1 && (firstExp == -1 || firstIdx < firstExp)) {
-          firstExp = firstIdx;
-        }
-        // 最後の High
-        int lastIdx = values.lastIndexWhere((v) => v == 1);
-        if (lastIdx != -1 && lastIdx > lastExp) {
-          lastExp = lastIdx;
+        for (int i = 0; i < values.length; i++) {
+          if (values[i] == 1) exposureRiseTimes.add(i);
         }
       }
     });
+    final sortedExposureTimes = exposureRiseTimes.toList()..sort();
 
-    if (firstExp != -1 && lastExp != -1 && lastExp >= firstExp) {
+    final segments = <Map<String, int>>[];
+    if (sortedExposureTimes.isNotEmpty) {
+      int segStart = sortedExposureTimes.first;
+      int prevExp = sortedExposureTimes.first;
+      for (int i = 1; i < sortedExposureTimes.length; i++) {
+        final t = sortedExposureTimes[i];
+        final hasPreviousCapture = i > 0;
+        final isAcqWaitPoint =
+            t < acqWait.length && acqWait[t] == 1;
+
+        if (hasPreviousCapture && isAcqWaitPoint) {
+          final int segEnd = math.min(sampleLength - 1, prevExp);
+          if (segEnd >= segStart) {
+            segments.add({'start': segStart, 'end': segEnd});
+          }
+          segStart = t;
+        }
+        prevExp = t;
+      }
+      final int lastExp = sortedExposureTimes.last;
+      if (lastExp >= segStart) {
+        segments.add({'start': segStart, 'end': lastExp});
+      }
+    }
+
+    if (segments.isNotEmpty) {
+      final int lastExp = sortedExposureTimes.last;
       List<int> batchExp = List.filled(sampleLength, 0);
-      for (int i = firstExp; i <= lastExp && i < sampleLength; i++) {
-        batchExp[i] = 1;
+      for (final seg in segments) {
+        final int segStart = seg['start'] ?? 0;
+        final int segEnd = seg['end'] ?? -1;
+        for (int i = segStart; i <= segEnd && i < sampleLength; i++) {
+          batchExp[i] = 1;
+        }
       }
       waves['BATCH_EXPOSURE'] = batchExp;
       waves['BATCH_EXPOSURE_COMPLETE'] = List<int>.from(batchExp);
@@ -347,8 +375,10 @@ class ChartTemplateEngine {
 
     if (firstAcq != -1 && lastAcqHigh != -1 && lastAcqHigh >= firstAcq) {
       List<int> batchComp = List.filled(sampleLength, 0);
+      final batchExp = waves['BATCH_EXPOSURE'] ?? List<int>.filled(sampleLength, 0);
       for (int i = firstAcq; i <= lastAcqHigh && i < sampleLength; i++) {
-        batchComp[i] = 1;
+        final int batchExpVal = i < batchExp.length ? batchExp[i] : 0;
+        batchComp[i] = batchExpVal == 0 ? 1 : 0;
       }
       waves['BATCH_EXPOSURE_COMPLETE'] = batchComp;
     }
