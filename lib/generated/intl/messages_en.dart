@@ -35,6 +35,9 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "color_picker_selected": MessageLookupByLibrary.simpleMessage("Selected:"),
     "color_picker_title": MessageLookupByLibrary.simpleMessage("Select Color"),
+    "color_picker_transparent": MessageLookupByLibrary.simpleMessage(
+      "Transparent",
+    ),
     "comment_add_range_title": MessageLookupByLibrary.simpleMessage(
       "Add range comment",
     ),
@@ -49,6 +52,9 @@ class MessageLookup extends MessageLookupByLibrary {
     "comment_input_hint": MessageLookupByLibrary.simpleMessage("Enter comment"),
     "comment_properties_arrow_color": MessageLookupByLibrary.simpleMessage(
       "Arrow color",
+    ),
+    "comment_properties_background_color": MessageLookupByLibrary.simpleMessage(
+      "Background color",
     ),
     "comment_properties_bold": MessageLookupByLibrary.simpleMessage("Bold"),
     "comment_properties_border_color": MessageLookupByLibrary.simpleMessage(
@@ -68,6 +74,9 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "comment_properties_max_lines_unlimited":
         MessageLookupByLibrary.simpleMessage("Unlimited"),
+    "comment_properties_text_color": MessageLookupByLibrary.simpleMessage(
+      "Text color",
+    ),
     "comment_properties_title": MessageLookupByLibrary.simpleMessage(
       "Comment properties",
     ),
@@ -120,6 +129,7 @@ class MessageLookup extends MessageLookupByLibrary {
     "ctx_set_arrow_tip_to_row": MessageLookupByLibrary.simpleMessage(
       "Set arrow tip to this row",
     ),
+    "ctx_signal_properties": MessageLookupByLibrary.simpleMessage("Properties"),
     "dark_mode": MessageLookupByLibrary.simpleMessage("Dark mode"),
     "default_camera_count": MessageLookupByLibrary.simpleMessage(
       "Default camera count",
@@ -237,6 +247,15 @@ class MessageLookup extends MessageLookupByLibrary {
     "settings_title": MessageLookupByLibrary.simpleMessage("Preferences"),
     "show_grid_lines": MessageLookupByLibrary.simpleMessage("Show grid lines"),
     "show_io_numbers": MessageLookupByLibrary.simpleMessage("Show IO numbers"),
+    "signal_label_properties_global_io_off":
+        MessageLookupByLibrary.simpleMessage(
+          "Disabled while global IO number display is off",
+        ),
+    "signal_label_properties_show_io_number":
+        MessageLookupByLibrary.simpleMessage("Show IO number"),
+    "signal_label_properties_title": MessageLookupByLibrary.simpleMessage(
+      "Signal label properties",
+    ),
     "triggerOptionLabel": MessageLookupByLibrary.simpleMessage(
       "Trigger Option",
     ),

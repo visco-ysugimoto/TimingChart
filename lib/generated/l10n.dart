@@ -957,6 +957,36 @@ class S {
     );
   }
 
+  /// `Background color`
+  String get comment_properties_background_color {
+    return Intl.message(
+      'Background color',
+      name: 'comment_properties_background_color',
+      desc: 'Label for comment background color',
+      args: [],
+    );
+  }
+
+  /// `Text color`
+  String get comment_properties_text_color {
+    return Intl.message(
+      'Text color',
+      name: 'comment_properties_text_color',
+      desc: 'Label for comment text color',
+      args: [],
+    );
+  }
+
+  /// `Transparent`
+  String get color_picker_transparent {
+    return Intl.message(
+      'Transparent',
+      name: 'color_picker_transparent',
+      desc: 'Label shown when transparent color is selected',
+      args: [],
+    );
+  }
+
   /// `Dashed line color`
   String get comment_properties_dashed_color {
     return Intl.message(
@@ -1023,6 +1053,46 @@ class S {
       'Properties',
       name: 'ctx_comment_properties',
       desc: 'Context menu: comment properties',
+      args: [],
+    );
+  }
+
+  /// `Properties`
+  String get ctx_signal_properties {
+    return Intl.message(
+      'Properties',
+      name: 'ctx_signal_properties',
+      desc: 'Context menu: signal label properties',
+      args: [],
+    );
+  }
+
+  /// `Signal label properties`
+  String get signal_label_properties_title {
+    return Intl.message(
+      'Signal label properties',
+      name: 'signal_label_properties_title',
+      desc: 'Dialog title for signal label properties',
+      args: [],
+    );
+  }
+
+  /// `Show IO number`
+  String get signal_label_properties_show_io_number {
+    return Intl.message(
+      'Show IO number',
+      name: 'signal_label_properties_show_io_number',
+      desc: 'Switch label for per-signal IO number display',
+      args: [],
+    );
+  }
+
+  /// `Disabled while global IO number display is off`
+  String get signal_label_properties_global_io_off {
+    return Intl.message(
+      'Disabled while global IO number display is off',
+      name: 'signal_label_properties_global_io_off',
+      desc: 'Hint when global IO number display preference is off',
       args: [],
     );
   }

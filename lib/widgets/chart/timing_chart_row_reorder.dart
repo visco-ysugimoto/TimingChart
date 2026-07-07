@@ -34,6 +34,14 @@ extension _TimingChartRowReorderExt on TimingChartState {
         widget.portNumbers[dstIdx] = tmpPort;
       }
 
+      if (widget.showIoNumbersPerSignal.length > srcIdx &&
+          widget.showIoNumbersPerSignal.length > dstIdx) {
+        final tmpShowIo = widget.showIoNumbersPerSignal[srcIdx];
+        widget.showIoNumbersPerSignal[srcIdx] =
+            widget.showIoNumbersPerSignal[dstIdx];
+        widget.showIoNumbersPerSignal[dstIdx] = tmpShowIo;
+      }
+
       if (widget.ioSources.length > srcIdx && widget.ioSources.length > dstIdx) {
         final tmpSource = widget.ioSources[srcIdx];
         widget.ioSources[srcIdx] = widget.ioSources[dstIdx];

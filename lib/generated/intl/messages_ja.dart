@@ -35,6 +35,7 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "color_picker_selected": MessageLookupByLibrary.simpleMessage("選択中:"),
     "color_picker_title": MessageLookupByLibrary.simpleMessage("色を選択"),
+    "color_picker_transparent": MessageLookupByLibrary.simpleMessage("透明"),
     "comment_add_range_title": MessageLookupByLibrary.simpleMessage(
       "範囲コメントを追加",
     ),
@@ -45,6 +46,9 @@ class MessageLookup extends MessageLookupByLibrary {
     "comment_input_hint": MessageLookupByLibrary.simpleMessage("コメントを入力"),
     "comment_properties_arrow_color": MessageLookupByLibrary.simpleMessage(
       "矢印の色",
+    ),
+    "comment_properties_background_color": MessageLookupByLibrary.simpleMessage(
+      "背景色",
     ),
     "comment_properties_bold": MessageLookupByLibrary.simpleMessage("太字"),
     "comment_properties_border_color": MessageLookupByLibrary.simpleMessage(
@@ -64,6 +68,9 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "comment_properties_max_lines_unlimited":
         MessageLookupByLibrary.simpleMessage("無制限"),
+    "comment_properties_text_color": MessageLookupByLibrary.simpleMessage(
+      "文字色",
+    ),
     "comment_properties_title": MessageLookupByLibrary.simpleMessage(
       "コメントのプロパティ",
     ),
@@ -100,6 +107,7 @@ class MessageLookup extends MessageLookupByLibrary {
     "ctx_set_arrow_tip_to_row": MessageLookupByLibrary.simpleMessage(
       "矢印の先端をこの行に設定",
     ),
+    "ctx_signal_properties": MessageLookupByLibrary.simpleMessage("プロパティ"),
     "dark_mode": MessageLookupByLibrary.simpleMessage("ダークモード"),
     "default_camera_count": MessageLookupByLibrary.simpleMessage("デフォルトのカメラ数"),
     "default_chart_length": MessageLookupByLibrary.simpleMessage("デフォルトのチャート長"),
@@ -197,6 +205,13 @@ class MessageLookup extends MessageLookupByLibrary {
     "settings_title": MessageLookupByLibrary.simpleMessage("設定"),
     "show_grid_lines": MessageLookupByLibrary.simpleMessage("グリッド線を表示"),
     "show_io_numbers": MessageLookupByLibrary.simpleMessage("IO 番号を表示"),
+    "signal_label_properties_global_io_off":
+        MessageLookupByLibrary.simpleMessage("設定の「IO番号を表示」がオフのため変更できません"),
+    "signal_label_properties_show_io_number":
+        MessageLookupByLibrary.simpleMessage("IO番号を表示"),
+    "signal_label_properties_title": MessageLookupByLibrary.simpleMessage(
+      "信号ラベルのプロパティ",
+    ),
     "triggerOptionLabel": MessageLookupByLibrary.simpleMessage("トリガーオプション"),
     "updateChartButton": MessageLookupByLibrary.simpleMessage("チャート更新"),
   };

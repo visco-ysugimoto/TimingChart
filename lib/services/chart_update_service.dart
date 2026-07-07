@@ -102,6 +102,7 @@ class ChartUpdateService {
           signalType: signalTypes[i],
           values: signalValues,
           isVisible: true,
+          showIoNumber: _existingShowIoByName(existingSignals, signalNames[i]),
         ),
       );
       // IOソースの検出
@@ -233,6 +234,16 @@ class ChartUpdateService {
       }
     }
     return updatedSignals;
+  }
+
+  static bool _existingShowIoByName(
+    List<SignalData> existingSignals,
+    String name,
+  ) {
+    for (final signal in existingSignals) {
+      if (signal.name == name) return signal.showIoNumber;
+    }
+    return true;
   }
 }
 

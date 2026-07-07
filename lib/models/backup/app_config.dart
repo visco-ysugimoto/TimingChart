@@ -120,6 +120,7 @@ class AppConfig {
                   'signalType': signal.signalType.index,
                   'values': signal.values,
                   'isVisible': signal.isVisible,
+                  'showIoNumber': signal.showIoNumber,
                 },
               )
               .toList(),
@@ -154,6 +155,10 @@ class AppConfig {
                   if (a.isBold != null) 'isBold': a.isBold,
                   if (a.borderColorValue != null)
                     'borderColorValue': a.borderColorValue,
+                  if (a.backgroundColorValue != null)
+                    'backgroundColorValue': a.backgroundColorValue,
+                  if (a.textColorValue != null)
+                    'textColorValue': a.textColorValue,
                   if (a.dashedLineColorValue != null)
                     'dashedLineColorValue': a.dashedLineColorValue,
                   if (a.arrowColorValue != null)
@@ -194,7 +199,8 @@ class AppConfig {
                 name: signalJson['name'],
                 signalType: SignalType.values[signalJson['signalType']],
                 values: (signalJson['values'] as List).cast<int>(),
-                isVisible: signalJson['isVisible'],
+                isVisible: signalJson['isVisible'] ?? true,
+                showIoNumber: signalJson['showIoNumber'] ?? true,
               ),
             )
             .toList();
@@ -246,6 +252,9 @@ class AppConfig {
                   fontSize: (e['fontSize'] as num?)?.toDouble(),
                   isBold: e['isBold'] as bool?,
                   borderColorValue: (e['borderColorValue'] as num?)?.toInt(),
+                  backgroundColorValue:
+                      (e['backgroundColorValue'] as num?)?.toInt(),
+                  textColorValue: (e['textColorValue'] as num?)?.toInt(),
                   dashedLineColorValue:
                       (e['dashedLineColorValue'] as num?)?.toInt(),
                   arrowColorValue: (e['arrowColorValue'] as num?)?.toInt(),

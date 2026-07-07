@@ -688,35 +688,60 @@ class FileUtils {
           final int startCol = waveStartCol + start;
           final int endCol = waveStartCol + end;
 
-          final excel.ExcelColor borderColor = toExcelColorFromInt(ann.borderColorValue);
+          final bool borderVisible =
+              ann.borderColorValue == null ||
+              ((ann.borderColorValue! >> 24) & 0xFF) > 0;
+          final excel.ExcelColor borderColor = toExcelColorFromInt(
+            ann.borderColorValue,
+          );
           final excel.ExcelColor dashedColor = toExcelColorFromInt(
             ann.dashedLineColorValue,
           );
+          final bool backgroundVisible =
+              ann.backgroundColorValue != null &&
+              ((ann.backgroundColorValue! >> 24) & 0xFF) > 0;
           final bool isBold = ann.isBold ?? false;
           final int? fontSize = ann.fontSize?.round();
 
           final style = excel.CellStyle(
             bold: isBold,
             fontSize: fontSize,
+            fontColorHex: toExcelColorFromInt(ann.textColorValue),
             horizontalAlign: excel.HorizontalAlign.Left,
             verticalAlign: excel.VerticalAlign.Top,
             textWrapping: excel.TextWrapping.WrapText,
-            leftBorder: excel.Border(
-              borderStyle: excel.BorderStyle.Medium,
-              borderColorHex: borderColor,
-            ),
-            rightBorder: excel.Border(
-              borderStyle: excel.BorderStyle.Medium,
-              borderColorHex: borderColor,
-            ),
-            topBorder: excel.Border(
-              borderStyle: excel.BorderStyle.Medium,
-              borderColorHex: borderColor,
-            ),
-            bottomBorder: excel.Border(
-              borderStyle: excel.BorderStyle.Medium,
-              borderColorHex: borderColor,
-            ),
+            backgroundColorHex:
+                backgroundVisible
+                    ? toExcelColorFromInt(ann.backgroundColorValue)
+                    : excel.ExcelColor.white,
+            leftBorder:
+                borderVisible
+                    ? excel.Border(
+                      borderStyle: excel.BorderStyle.Medium,
+                      borderColorHex: borderColor,
+                    )
+                    : null,
+            rightBorder:
+                borderVisible
+                    ? excel.Border(
+                      borderStyle: excel.BorderStyle.Medium,
+                      borderColorHex: borderColor,
+                    )
+                    : null,
+            topBorder:
+                borderVisible
+                    ? excel.Border(
+                      borderStyle: excel.BorderStyle.Medium,
+                      borderColorHex: borderColor,
+                    )
+                    : null,
+            bottomBorder:
+                borderVisible
+                    ? excel.Border(
+                      borderStyle: excel.BorderStyle.Medium,
+                      borderColorHex: borderColor,
+                    )
+                    : null,
           );
 
           final textCell = sheet.cell(
@@ -843,6 +868,12 @@ class FileUtils {
         annotationsSheet
             .cell(excel.CellIndex.indexByColumnRow(columnIndex: 17, rowIndex: 0))
             .value = excel.TextCellValue('Placement');
+        annotationsSheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 18, rowIndex: 0))
+            .value = excel.TextCellValue('Background Color');
+        annotationsSheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 19, rowIndex: 0))
+            .value = excel.TextCellValue('Text Color');
 
         for (int i = 0; i < chartAnnotations.length; i++) {
           final ann = chartAnnotations[i];
@@ -974,6 +1005,30 @@ class FileUtils {
                   ),
                 )
                 .value = excel.TextCellValue(ann.borderColorValue!.toString());
+          }
+
+          if (ann.backgroundColorValue != null) {
+            annotationsSheet
+                .cell(
+                  excel.CellIndex.indexByColumnRow(
+                    columnIndex: 18,
+                    rowIndex: rowIndex,
+                  ),
+                )
+                .value = excel.TextCellValue(
+              ann.backgroundColorValue!.toString(),
+            );
+          }
+
+          if (ann.textColorValue != null) {
+            annotationsSheet
+                .cell(
+                  excel.CellIndex.indexByColumnRow(
+                    columnIndex: 19,
+                    rowIndex: rowIndex,
+                  ),
+                )
+                .value = excel.TextCellValue(ann.textColorValue!.toString());
           }
 
           if (ann.dashedLineColorValue != null) {

@@ -98,40 +98,48 @@ void drawCommentBox(
   String annId,
   String? selectedAnnotationId, // Added to handle selection state
   Color? borderColor, // コメントごとの枠線色（非選択時）
+  Color? backgroundColor, // コメントごとの背景色（null=デフォルト）
 ) {
   final bool isSelected = selectedAnnotationId == annId;
 
   // カード風に見せるために角丸＋影付きで描画
   final RRect rrect = RRect.fromRectAndRadius(rect, const Radius.circular(8));
 
-  // 1. さりげないドロップシャドウ
-  final RRect shadowRRect = rrect.shift(const Offset(0, 2));
-  final Paint shadowPaint =
-      Paint()
-        ..color = Colors.black.withValues(alpha: 0.18)
-        ..style = PaintingStyle.fill;
-  canvas.drawRRect(shadowRRect, shadowPaint);
+  final Color defaultBackground = const Color(0xFFFDFDFD);
+  final Color effectiveBackground = backgroundColor ?? defaultBackground;
+  final Color fillColor =
+      isSelected ? const Color(0xFFFFF3CD) : effectiveBackground;
+  final bool drawBackground = isSelected || fillColor.a > 0;
 
-  // 2. ベース色（選択時と通常時で変える）
-  final Color baseColor =
-      isSelected
-          ? const Color(0xFFFFF3CD) // 選択時: 少し強めのアクセント（淡いイエロー）
-          : const Color(0xFFFDFDFD); // 通常時: ほぼ白のカード色
+  if (drawBackground) {
+    // 1. さりげないドロップシャドウ
+    final RRect shadowRRect = rrect.shift(const Offset(0, 2));
+    final Paint shadowPaint =
+        Paint()
+          ..color = Colors.black.withValues(alpha: 0.18)
+          ..style = PaintingStyle.fill;
+    canvas.drawRRect(shadowRRect, shadowPaint);
 
-  final Paint paintBase =
-      Paint()
-        ..color = baseColor
-        ..style = PaintingStyle.fill;
-  canvas.drawRRect(rrect, paintBase);
+    // 2. ベース色（選択時と通常時で変える）
+    final Paint paintBase =
+        Paint()
+          ..color = fillColor
+          ..style = PaintingStyle.fill;
+    canvas.drawRRect(rrect, paintBase);
+  }
 
   // 3. 枠線（選択時はアクセントカラー＋太め）
   final Color effectiveBorderColor = borderColor ?? Colors.grey.shade600;
-  final Paint paintBorder =
-      Paint()
-        ..color = isSelected ? const Color(0xFFF0AD4E) : effectiveBorderColor
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = isSelected ? 2.0 : 1.0;
-  canvas.drawRRect(rrect, paintBorder);
+  final bool drawBorder = isSelected || effectiveBorderColor.a > 0;
+  if (drawBorder) {
+    final Paint paintBorder =
+        Paint()
+          ..color =
+              isSelected ? const Color(0xFFF0AD4E) : effectiveBorderColor
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = isSelected ? 2.0 : 1.0;
+    canvas.drawRRect(rrect, paintBorder);
+  }
 
   // 4. テキストをボックス内で縦横中央揃えで配置
   final double textX = rect.left + (rect.width - textPainter.width) / 2;

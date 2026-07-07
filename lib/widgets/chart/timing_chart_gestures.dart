@@ -417,6 +417,7 @@ extension _TimingChartGesturesExt on TimingChartState {
 
     List<PopupMenuEntry<String>> menuItems = [];
     final s = S.of(context);
+    int? menuLabelRow;
 
     if (hitAnnId != null) {
       final ann = annotations.firstWhereOrNull((a) => a.id == hitAnnId);
@@ -446,39 +447,63 @@ extension _TimingChartGesturesExt on TimingChartState {
         ),
       ];
     } else {
-      _setState(() {
-        _highlightTimeIndices.clear();
-        if (_hasValidSelection) {
-          final stTime = math.min(_startTimeIndex!, _endTimeIndex!);
-          final edTime = math.max(_startTimeIndex!, _endTimeIndex!);
-          _highlightTimeIndices.add(stTime);
-          _highlightTimeIndices.add(edTime + 1);
-        } else {
-          if (clickedTimeIndex >= 0) {
-            _highlightTimeIndices.add(clickedTimeIndex);
-          }
-        }
-      });
+      final bool inLabelArea =
+          chartLocalPos.dx >= chartMarginLeft &&
+          chartLocalPos.dx <= chartMarginLeft + labelWidth;
+      final int labelRow = _getSignalIndexFromDy(chartLocalPos.dy);
 
-      menuItems = [
-        if (_canEditChartSignals && _hasValidSelection)
-          PopupMenuItem(value: 'insert', child: Text(s.ctx_insert_zeros)),
-        if (_canEditChartSignals)
-          PopupMenuItem(value: 'duplicate', child: Text(s.ctx_duplicate_to_tail)),
-        PopupMenuItem(
-          value: 'selectAll',
-          child: Text(s.ctx_select_all_signals),
-        ),
-        if (_canEditChartSignals && _hasValidSelection)
-          PopupMenuItem(value: 'delete', child: Text(s.ctx_delete_selection)),
-        if (_canEditChartSignals && _hasValidSelection)
+      if (inLabelArea) {
+        if (labelRow >= 0 &&
+            labelRow < _visibleIndexes.length &&
+            _canConfigureIoNumberForVisibleRow(labelRow)) {
+          menuLabelRow = labelRow;
+          menuItems = [
+            PopupMenuItem(
+              value: 'signalProperties',
+              child: Text(s.ctx_signal_properties),
+            ),
+          ];
+        } else {
+          return;
+        }
+      } else {
+        _setState(() {
+          _highlightTimeIndices.clear();
+          if (_hasValidSelection) {
+            final stTime = math.min(_startTimeIndex!, _endTimeIndex!);
+            final edTime = math.max(_startTimeIndex!, _endTimeIndex!);
+            _highlightTimeIndices.add(stTime);
+            _highlightTimeIndices.add(edTime + 1);
+          } else {
+            if (clickedTimeIndex >= 0) {
+              _highlightTimeIndices.add(clickedTimeIndex);
+            }
+          }
+        });
+
+        menuItems = [
+          if (_canEditChartSignals && _hasValidSelection)
+            PopupMenuItem(value: 'insert', child: Text(s.ctx_insert_zeros)),
+          if (_canEditChartSignals)
+            PopupMenuItem(
+              value: 'duplicate',
+              child: Text(s.ctx_duplicate_to_tail),
+            ),
           PopupMenuItem(
-            value: 'deleteColumns',
-            child: Text(s.ctx_delete_columns),
+            value: 'selectAll',
+            child: Text(s.ctx_select_all_signals),
           ),
-        PopupMenuItem(value: 'addComment', child: Text(s.ctx_add_comment)),
-        PopupMenuItem(value: 'omit', child: Text(s.ctx_draw_omission)),
-      ];
+          if (_canEditChartSignals && _hasValidSelection)
+            PopupMenuItem(value: 'delete', child: Text(s.ctx_delete_selection)),
+          if (_canEditChartSignals && _hasValidSelection)
+            PopupMenuItem(
+              value: 'deleteColumns',
+              child: Text(s.ctx_delete_columns),
+            ),
+          PopupMenuItem(value: 'addComment', child: Text(s.ctx_add_comment)),
+          PopupMenuItem(value: 'omit', child: Text(s.ctx_draw_omission)),
+        ];
+      }
     }
 
     final selectedValue = await showMenu<String>(
@@ -501,6 +526,11 @@ extension _TimingChartGesturesExt on TimingChartState {
           break;
         case 'commentProperties':
           if (hitAnnId != null) _editCommentProperties(hitAnnId);
+          break;
+        case 'signalProperties':
+          if (menuLabelRow != null) {
+            _editSignalLabelProperties(menuLabelRow);
+          }
           break;
         case 'deleteComment':
           if (hitAnnId != null) _deleteComment(hitAnnId);

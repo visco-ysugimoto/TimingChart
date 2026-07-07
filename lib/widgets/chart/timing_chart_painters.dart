@@ -391,7 +391,7 @@ class _LabelsOverlayPainter extends CustomPainter {
     required this.signalNames,
     required this.signalTypes,
     required this.showAllSignalTypes,
-    required this.showIoNumbers,
+    required this.showIoPerRow,
     required this.portNumbers,
     required this.ioSources,
     required this.plcEipMode,
@@ -407,7 +407,7 @@ class _LabelsOverlayPainter extends CustomPainter {
   final List<String> signalNames;
   final List<SignalType> signalTypes;
   final bool showAllSignalTypes;
-  final bool showIoNumbers;
+  final List<bool> showIoPerRow;
   final List<int> portNumbers;
   final List<IoChannelSource> ioSources;
   final String plcEipMode;
@@ -494,7 +494,9 @@ class _LabelsOverlayPainter extends CustomPainter {
       final IoChannelSource source = _effectiveSource(rawSource);
 
       String prefix = '';
-      if (showIoNumbers && portNum > 0) {
+      final bool showIo =
+          row < showIoPerRow.length && showIoPerRow[row] && portNum > 0;
+      if (showIo) {
         switch (currentSignalType) {
           case SignalType.input:
             prefix = '${_inputPrefixFor(source)}$portNum: ';
@@ -510,8 +512,7 @@ class _LabelsOverlayPainter extends CustomPainter {
         }
       }
 
-      final displayName =
-          showIoNumbers ? '$prefix${signalNames[row]}' : signalNames[row];
+      final displayName = showIo ? '$prefix${signalNames[row]}' : signalNames[row];
       textPainter.text = TextSpan(
         text: displayName,
         style: TextStyle(
@@ -562,7 +563,7 @@ class _LabelsOverlayPainter extends CustomPainter {
     return signalNames != oldDelegate.signalNames ||
         signalTypes != oldDelegate.signalTypes ||
         showAllSignalTypes != oldDelegate.showAllSignalTypes ||
-        showIoNumbers != oldDelegate.showIoNumbers ||
+        showIoPerRow != oldDelegate.showIoPerRow ||
         portNumbers != oldDelegate.portNumbers ||
         !listEquals(ioSources, oldDelegate.ioSources) ||
         plcEipMode != oldDelegate.plcEipMode ||

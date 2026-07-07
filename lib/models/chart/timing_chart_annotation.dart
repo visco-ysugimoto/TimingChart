@@ -19,7 +19,13 @@ class TimingChartAnnotation {
   // 太字にするかどうか。nullの場合はfalse扱い（通常）。
   final bool? isBold;
   // 罫線（枠線）の色（ARGB int）。nullの場合は描画側のデフォルト値を使う。
+  // alpha が 0 の場合は枠線を描画しない。
   final int? borderColorValue;
+  // コメントボックスの背景色（ARGB int）。nullの場合は描画側のデフォルト値を使う。
+  // alpha が 0 の場合は背景を描画しない。
+  final int? backgroundColorValue;
+  // コメントテキストの色（ARGB int）。nullの場合は描画側のデフォルト値を使う。
+  final int? textColorValue;
   // 時刻を指す破線（境界線）の色（ARGB int）。nullの場合は描画側のデフォルト値を使う。
   final int? dashedLineColorValue;
   // 矢印の色（ARGB int）。nullの場合は描画側のデフォルト値を使う。
@@ -46,6 +52,8 @@ class TimingChartAnnotation {
     this.fontSize,
     this.isBold,
     this.borderColorValue,
+    this.backgroundColorValue,
+    this.textColorValue,
     this.dashedLineColorValue,
     this.arrowColorValue,
     this.maxWidth,
@@ -67,6 +75,8 @@ class TimingChartAnnotation {
     double? fontSize,
     bool? isBold,
     int? borderColorValue,
+    int? backgroundColorValue,
+    int? textColorValue,
     int? dashedLineColorValue,
     int? arrowColorValue,
     double? maxWidth,
@@ -87,6 +97,9 @@ class TimingChartAnnotation {
       fontSize: fontSize ?? this.fontSize,
       isBold: isBold ?? this.isBold,
       borderColorValue: borderColorValue ?? this.borderColorValue,
+      backgroundColorValue:
+          backgroundColorValue ?? this.backgroundColorValue,
+      textColorValue: textColorValue ?? this.textColorValue,
       dashedLineColorValue: dashedLineColorValue ?? this.dashedLineColorValue,
       arrowColorValue: arrowColorValue ?? this.arrowColorValue,
       maxWidth: maxWidth ?? this.maxWidth,

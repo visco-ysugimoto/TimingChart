@@ -10,11 +10,13 @@ class _CommentBoxData {
   final TextPainter painter;
   final String annId;
   final Color borderColor;
+  final Color? backgroundColor;
   const _CommentBoxData({
     required this.rect,
     required this.painter,
     required this.annId,
     required this.borderColor,
+    this.backgroundColor,
   });
 }
 
@@ -128,10 +130,14 @@ class ChartAnnotationsManager {
           (ann.maxLines != null && ann.maxLines! > 0) ? ann.maxLines : null;
       // 省略記号は行数制限があるときのみ意味を持つ
       final bool useEllipsis = (ann.ellipsisEnabled ?? true);
+      final Color textColor =
+          ann.textColorValue != null
+              ? Color(ann.textColorValue!)
+              : Colors.black;
       final textSpan = TextSpan(
         text: ann.text,
         style: TextStyle(
-          color: Colors.black,
+          color: textColor,
           fontSize: fontSize,
           fontWeight: fontWeight,
         ),
@@ -162,6 +168,10 @@ class ChartAnnotationsManager {
           ann.borderColorValue != null
               ? Color(ann.borderColorValue!)
               : Colors.grey.shade600;
+      final Color? backgroundColor =
+          ann.backgroundColorValue != null
+              ? Color(ann.backgroundColorValue!)
+              : null;
 
       // === 上部配置（placement == 'top'）— 下部配置の上下ミラー ===
       if (ann.placement == 'top') {
@@ -330,6 +340,7 @@ class ChartAnnotationsManager {
             painter: textPainter,
             annId: ann.id,
             borderColor: borderColor,
+            backgroundColor: backgroundColor,
           ),
         );
 
@@ -564,6 +575,7 @@ class ChartAnnotationsManager {
           painter: textPainter,
           annId: ann.id,
           borderColor: borderColor,
+          backgroundColor: backgroundColor,
         ),
       );
 
@@ -616,6 +628,7 @@ class ChartAnnotationsManager {
         data.annId,
         selectedAnnotationId,
         data.borderColor,
+        data.backgroundColor,
       );
     }
   }

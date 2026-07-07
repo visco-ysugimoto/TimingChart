@@ -81,6 +81,9 @@ class TimingChart extends StatefulWidget {
   /// 各信号のポート番号（showIoNumbersがtrueの場合に使用）
   final List<int> portNumbers;
 
+  /// 信号ごとに IO 番号プレフィックスを表示するか（グローバル設定 ON 時に反映）
+  final List<bool> showIoNumbersPerSignal;
+
   /// 各信号のIOチャネルソース（PLC、EIPなど）
   final List<IoChannelSource> ioSources;
 
@@ -95,6 +98,10 @@ class TimingChart extends StatefulWidget {
   )?
   onSignalsChanged;
 
+  /// 信号ラベルの IO 番号表示が変更されたときに呼び出されるコールバック
+  final void Function(int originalIndex, bool showIoNumber)?
+  onSignalShowIoNumberChanged;
+
   const TimingChart({
     super.key,
     required this.initialSignalNames,
@@ -106,9 +113,11 @@ class TimingChart extends StatefulWidget {
     this.showAllSignalTypes = false,
     this.showIoNumbers = true,
     required this.portNumbers,
+    this.showIoNumbersPerSignal = const [],
     this.ioSources = const [],
     this.plcEipMode = 'None',
     this.onSignalsChanged,
+    this.onSignalShowIoNumberChanged,
   });
 
   @override
@@ -762,6 +771,8 @@ class TimingChartState extends State<TimingChart>
           a[i].fontSize != b[i].fontSize ||
           a[i].isBold != b[i].isBold ||
           a[i].borderColorValue != b[i].borderColorValue ||
+          a[i].backgroundColorValue != b[i].backgroundColorValue ||
+          a[i].textColorValue != b[i].textColorValue ||
           a[i].dashedLineColorValue != b[i].dashedLineColorValue ||
           a[i].arrowColorValue != b[i].arrowColorValue ||
           a[i].maxWidth != b[i].maxWidth ||
@@ -810,6 +821,41 @@ class TimingChartState extends State<TimingChart>
 
   /// チャート上の信号編集が許可されているかどうか
   bool get _canEditChartSignals => !_isChartEditLocked;
+
+  /// 指定表示行で IO 番号の個別表示設定が可能かどうか
+  bool _canConfigureIoNumberForVisibleRow(int visibleRow) {
+    if (visibleRow < 0 || visibleRow >= _visibleIndexes.length) return false;
+    final int originalRow = _visibleIndexes[visibleRow];
+    if (originalRow >= widget.portNumbers.length ||
+        widget.portNumbers[originalRow] <= 0) {
+      return false;
+    }
+    if (originalRow >= widget.signalTypes.length) return false;
+    final type = widget.signalTypes[originalRow];
+    return type == SignalType.input ||
+        type == SignalType.output ||
+        type == SignalType.hwTrigger;
+  }
+
+  /// 指定表示行で IO 番号プレフィックスを描画するかどうか
+  bool _effectiveShowIoForOriginalRow(int originalRow) {
+    if (!widget.showIoNumbers) return false;
+    if (originalRow < 0 || originalRow >= widget.portNumbers.length) {
+      return false;
+    }
+    if (widget.portNumbers[originalRow] <= 0) return false;
+    if (originalRow >= widget.signalTypes.length) return false;
+    final type = widget.signalTypes[originalRow];
+    final bool typeSupportsIo =
+        type == SignalType.input ||
+        type == SignalType.output ||
+        type == SignalType.hwTrigger;
+    if (!typeSupportsIo) return false;
+    if (originalRow < widget.showIoNumbersPerSignal.length) {
+      return widget.showIoNumbersPerSignal[originalRow];
+    }
+    return true;
+  }
 
   /// ウィジェット座標のX座標（dx）から時間ステップインデックスを取得します
   ///
@@ -1051,15 +1097,46 @@ class TimingChartState extends State<TimingChart>
     _showContextMenuImpl(context, position);
   }
 
+  Widget _buildCommentColorPreview(Color color) {
+    if (color.a == 0) {
+      return Container(
+        width: 18,
+        height: 18,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: Colors.grey.shade200,
+          border: Border.all(color: Colors.black26),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: const Text(
+          '∅',
+          style: TextStyle(fontSize: 10, color: Colors.black54),
+        ),
+      );
+    }
+    return Container(
+      width: 18,
+      height: 18,
+      decoration: BoxDecoration(
+        color: color,
+        border: Border.all(color: Colors.black26),
+        borderRadius: BorderRadius.circular(4),
+      ),
+    );
+  }
+
   Future<Color?> _showBorderColorPickerDialog(
     BuildContext context, {
     required String title,
     required Color initial,
+    bool allowTransparent = false,
+    bool includeWhite = false,
   }) async {
     Color selected = initial;
-    const List<Color> presets = [
+    final List<Color> presets = [
       Colors.black,
-      Color(0xFF616161), // grey 700
+      if (includeWhite) Colors.white,
+      const Color(0xFF616161), // grey 700
       Colors.red,
       Colors.orange,
       Colors.green,
@@ -1068,48 +1145,96 @@ class TimingChartState extends State<TimingChart>
       Colors.brown,
     ];
 
+    Widget buildColorPreview(Color color, {double size = 18}) {
+      if (color.a == 0) {
+        return Container(
+          width: size,
+          height: size,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: Colors.grey.shade200,
+            border: Border.all(color: Colors.black26),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(
+            '∅',
+            style: TextStyle(fontSize: size * 0.55, color: Colors.black54),
+          ),
+        );
+      }
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: color,
+          border: Border.all(color: Colors.black26),
+          borderRadius: BorderRadius.circular(4),
+        ),
+      );
+    }
+
     Widget contentBuilder(BuildContext ctx, StateSetter setLocalState) {
+      final s = S.of(context);
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children:
-                presets.map((c) {
-                  final bool isSelected = c.toARGB32() == selected.toARGB32();
-                  return InkWell(
-                    onTap: () => setLocalState(() => selected = c),
-                    child: Container(
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        color: c,
-                        border: Border.all(
-                          color: isSelected ? Colors.black : Colors.black26,
-                          width: isSelected ? 2 : 1,
-                        ),
-                        borderRadius: BorderRadius.circular(6),
+            children: [
+              if (allowTransparent)
+                InkWell(
+                  onTap:
+                      () => setLocalState(() => selected = Colors.transparent),
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade200,
+                      border: Border.all(
+                        color:
+                            selected.a == 0 ? Colors.black : Colors.black26,
+                        width: selected.a == 0 ? 2 : 1,
                       ),
+                      borderRadius: BorderRadius.circular(6),
                     ),
-                  );
-                }).toList(),
+                    child: const Text(
+                      '∅',
+                      style: TextStyle(fontSize: 14, color: Colors.black54),
+                    ),
+                  ),
+                ),
+              ...presets.map((c) {
+                final bool isSelected = c.toARGB32() == selected.toARGB32();
+                return InkWell(
+                  onTap: () => setLocalState(() => selected = c),
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: c,
+                      border: Border.all(
+                        color: isSelected ? Colors.black : Colors.black26,
+                        width: isSelected ? 2 : 1,
+                      ),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                );
+              }),
+            ],
           ),
           const SizedBox(height: 12),
           Row(
             children: [
-              Text('${S.of(context).color_picker_selected} '),
-              Container(
-                width: 18,
-                height: 18,
-                decoration: BoxDecoration(
-                  color: selected,
-                  border: Border.all(color: Colors.black26),
-                ),
-              ),
+              Text('${s.color_picker_selected} '),
+              buildColorPreview(selected),
               const SizedBox(width: 8),
               Text(
-                '#${selected.toARGB32().toRadixString(16).padLeft(8, '0').toUpperCase()}',
+                selected.a == 0
+                    ? s.color_picker_transparent
+                    : '#${selected.toARGB32().toRadixString(16).padLeft(8, '0').toUpperCase()}',
               ),
             ],
           ),
@@ -1137,6 +1262,76 @@ class TimingChartState extends State<TimingChart>
     return showDialog<Color>(context: context, builder: dialogBuilder);
   }
 
+  /// 信号ラベルの IO 番号表示を編集します
+  void _editSignalLabelProperties(int visibleRow) async {
+    if (visibleRow < 0 || visibleRow >= _visibleIndexes.length) return;
+    if (!_canConfigureIoNumberForVisibleRow(visibleRow)) return;
+
+    final int originalRow = _visibleIndexes[visibleRow];
+    bool showIoNumber =
+        originalRow < widget.showIoNumbersPerSignal.length
+            ? widget.showIoNumbersPerSignal[originalRow]
+            : true;
+
+    final bool prevCanRequest = _focusNode.canRequestFocus;
+    _focusNode.canRequestFocus = false;
+    FocusScope.of(context).unfocus();
+
+    final s = S.of(context);
+    final String labelName =
+        originalRow < signalNames.length ? signalNames[originalRow] : '';
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder:
+          (ctx) => StatefulBuilder(
+            builder: (ctx, setLocalState) {
+              return AlertDialog(
+                title: Text(s.signal_label_properties_title),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(labelName, style: Theme.of(context).textTheme.titleSmall),
+                    const SizedBox(height: 12),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(s.signal_label_properties_show_io_number),
+                      subtitle:
+                          widget.showIoNumbers
+                              ? null
+                              : Text(s.signal_label_properties_global_io_off),
+                      value: showIoNumber,
+                      onChanged:
+                          widget.showIoNumbers
+                              ? (v) => setLocalState(() => showIoNumber = v)
+                              : null,
+                    ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: Text(s.common_cancel),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: Text(s.common_ok),
+                  ),
+                ],
+              );
+            },
+          ),
+    );
+
+    _focusNode.canRequestFocus = prevCanRequest;
+    if (mounted) _focusNode.requestFocus();
+
+    if (result == true) {
+      widget.onSignalShowIoNumberChanged?.call(originalRow, showIoNumber);
+    }
+  }
+
   /// コメントボックスの見た目（フォント/太字/罫線色）を編集します
   void _editCommentProperties(String annId) async {
     final int index = annotations.indexWhere((a) => a.id == annId);
@@ -1148,6 +1343,9 @@ class TimingChartState extends State<TimingChart>
     bool isBold = ann.isBold == true;
     int borderColorValue =
         ann.borderColorValue ?? Colors.grey.shade600.toARGB32();
+    int backgroundColorValue =
+        ann.backgroundColorValue ?? const Color(0xFFFDFDFD).toARGB32();
+    int textColorValue = ann.textColorValue ?? Colors.black.toARGB32();
     int dashedLineColorValue =
         ann.dashedLineColorValue ?? Colors.black.toARGB32();
     int arrowColorValue = ann.arrowColorValue ?? Colors.blue.toARGB32();
@@ -1170,6 +1368,8 @@ class TimingChartState extends State<TimingChart>
             fontSize = 14.0;
             isBold = false;
             borderColorValue = Colors.grey.shade600.toARGB32();
+            backgroundColorValue = const Color(0xFFFDFDFD).toARGB32();
+            textColorValue = Colors.black.toARGB32();
             dashedLineColorValue = Colors.black.toARGB32();
             arrowColorValue = Colors.blue.toARGB32();
             maxWidth = 120.0;
@@ -1183,9 +1383,34 @@ class TimingChartState extends State<TimingChart>
             ctx,
             title: s.comment_properties_border_color,
             initial: Color(borderColorValue),
+            allowTransparent: true,
           );
           if (picked != null) {
             setLocalState(() => borderColorValue = picked.toARGB32());
+          }
+        }
+
+        Future<void> pickTextColor() async {
+          final picked = await _showBorderColorPickerDialog(
+            ctx,
+            title: s.comment_properties_text_color,
+            initial: Color(textColorValue),
+            includeWhite: true,
+          );
+          if (picked != null) {
+            setLocalState(() => textColorValue = picked.toARGB32());
+          }
+        }
+
+        Future<void> pickBackgroundColor() async {
+          final picked = await _showBorderColorPickerDialog(
+            ctx,
+            title: s.comment_properties_background_color,
+            initial: Color(backgroundColorValue),
+            allowTransparent: true,
+          );
+          if (picked != null) {
+            setLocalState(() => backgroundColorValue = picked.toARGB32());
           }
         }
 
@@ -1249,6 +1474,21 @@ class TimingChartState extends State<TimingChart>
                   controlAffinity: ListTileControlAffinity.leading,
                   contentPadding: EdgeInsets.zero,
                   dense: true,
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 92,
+                      child: Text(s.comment_properties_text_color),
+                    ),
+                    _buildCommentColorPreview(Color(textColorValue)),
+                    const SizedBox(width: 10),
+                    TextButton(
+                      onPressed: pickTextColor,
+                      child: Text(s.common_change),
+                    ),
+                  ],
                 ),
                 Row(
                   children: [
@@ -1326,15 +1566,7 @@ class TimingChartState extends State<TimingChart>
                       width: 92,
                       child: Text(s.comment_properties_border_color),
                     ),
-                    Container(
-                      width: 18,
-                      height: 18,
-                      decoration: BoxDecoration(
-                        color: Color(borderColorValue),
-                        border: Border.all(color: Colors.black26),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
+                    _buildCommentColorPreview(Color(borderColorValue)),
                     const SizedBox(width: 10),
                     TextButton(
                       onPressed: pickBorderColor,
@@ -1352,17 +1584,24 @@ class TimingChartState extends State<TimingChart>
                   children: [
                     SizedBox(
                       width: 92,
+                      child: Text(s.comment_properties_background_color),
+                    ),
+                    _buildCommentColorPreview(Color(backgroundColorValue)),
+                    const SizedBox(width: 10),
+                    TextButton(
+                      onPressed: pickBackgroundColor,
+                      child: Text(s.common_change),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 92,
                       child: Text(s.comment_properties_dashed_color),
                     ),
-                    Container(
-                      width: 18,
-                      height: 18,
-                      decoration: BoxDecoration(
-                        color: Color(dashedLineColorValue),
-                        border: Border.all(color: Colors.black26),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
+                    _buildCommentColorPreview(Color(dashedLineColorValue)),
                     const SizedBox(width: 10),
                     TextButton(
                       onPressed: pickDashedLineColor,
@@ -1377,15 +1616,7 @@ class TimingChartState extends State<TimingChart>
                       width: 92,
                       child: Text(s.comment_properties_arrow_color),
                     ),
-                    Container(
-                      width: 18,
-                      height: 18,
-                      decoration: BoxDecoration(
-                        color: Color(arrowColorValue),
-                        border: Border.all(color: Colors.black26),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
+                    _buildCommentColorPreview(Color(arrowColorValue)),
                     const SizedBox(width: 10),
                     TextButton(
                       onPressed: pickArrowColor,
@@ -1427,6 +1658,8 @@ class TimingChartState extends State<TimingChart>
           fontSize: fontSize,
           isBold: isBold,
           borderColorValue: borderColorValue,
+          backgroundColorValue: backgroundColorValue,
+          textColorValue: textColorValue,
           dashedLineColorValue: dashedLineColorValue,
           arrowColorValue: arrowColorValue,
           maxWidth: maxWidth,
@@ -2015,6 +2248,10 @@ class TimingChartState extends State<TimingChart>
             ? widget.ioSources[i]
             : IoChannelSource.unknown,
     ];
+    final visibleShowIoNumbers = [
+      for (final i in layoutData.visibleIndexes)
+        _effectiveShowIoForOriginalRow(i),
+    ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2199,7 +2436,7 @@ class TimingChartState extends State<TimingChart>
                               signalNames: visibleSignalNames,
                               signalTypes: visibleSignalTypes,
                               showAllSignalTypes: widget.showAllSignalTypes,
-                              showIoNumbers: widget.showIoNumbers,
+                              showIoPerRow: visibleShowIoNumbers,
                               portNumbers: visiblePortNumbers,
                               ioSources: visibleIoSources,
                               plcEipMode: widget.plcEipMode,

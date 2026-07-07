@@ -316,6 +316,9 @@ class WaveDromConverter {
                 fontSize: (e['fontSize'] as num?)?.toDouble(),
                 isBold: e['isBold'] as bool?,
                 borderColorValue: (e['borderColorValue'] as num?)?.toInt(),
+                backgroundColorValue:
+                    (e['backgroundColorValue'] as num?)?.toInt(),
+                textColorValue: (e['textColorValue'] as num?)?.toInt(),
                 dashedLineColorValue: (e['dashedLineColorValue'] as num?)?.toInt(),
                 arrowColorValue: (e['arrowColorValue'] as num?)?.toInt(),
               ),

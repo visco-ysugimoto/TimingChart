@@ -376,6 +376,7 @@ class _TimingChartGeneratorHomePageState
 
   List<SignalData> _chartSignals = [];
   List<int> _chartPortNumbers = [];
+  List<bool> _chartShowIoNumbers = [];
   List<IoChannelSource> _chartIoSources = [];
   List<TimingChartAnnotation> _chartAnnotations = [];
   late final TimingChartController _chartController;
@@ -579,6 +580,18 @@ class _TimingChartGeneratorHomePageState
 
     setState(() {
       _chartSignals = updatedSignals;
+      _chartShowIoNumbers = updatedSignals.map((s) => s.showIoNumber).toList();
+    });
+  }
+
+  void _handleSignalShowIoNumberChanged(int originalIndex, bool showIoNumber) {
+    if (originalIndex < 0 || originalIndex >= _chartSignals.length) return;
+    setState(() {
+      _chartSignals[originalIndex] = _chartSignals[originalIndex].copyWith(
+        showIoNumber: showIoNumber,
+      );
+      _chartShowIoNumbers =
+          _chartSignals.map((signal) => signal.showIoNumber).toList();
     });
   }
 
@@ -731,6 +744,7 @@ class _TimingChartGeneratorHomePageState
     setState(() {
       _chartSignals.clear();
       _chartPortNumbers.clear();
+      _chartShowIoNumbers.clear();
       _chartIoSources.clear();
       _chartAnnotations.clear();
     });
@@ -1321,6 +1335,8 @@ class _TimingChartGeneratorHomePageState
                     _plcEipOption = result.plcEipOption;
                     _chartSignals = result.chartSignals;
                     _chartPortNumbers = result.chartPortNumbers;
+                    _chartShowIoNumbers =
+                        result.chartSignals.map((s) => s.showIoNumber).toList();
                     _chartIoSources = result.chartIoSources;
                   });
 
@@ -1670,6 +1686,8 @@ class _TimingChartGeneratorHomePageState
                   setState(() {
                     _chartSignals = result.signals;
                     _chartPortNumbers = result.portNumbers;
+                    _chartShowIoNumbers =
+                        result.signals.map((s) => s.showIoNumber).toList();
                     _chartIoSources = result.ioSources;
 
                     if (_timingChartKey.currentState != null) {
@@ -1712,6 +1730,8 @@ class _TimingChartGeneratorHomePageState
                 ioSources: _chartIoSources,
                 plcEipMode: _plcEipOption,
                 onSignalsChanged: _handleChartSignalsChanged,
+                onSignalShowIoNumberChanged: _handleSignalShowIoNumberChanged,
+                showIoNumbersPerSignal: _chartShowIoNumbers,
               ),
             ],
           ),
