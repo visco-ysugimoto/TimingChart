@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data' show BytesBuilder;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' show Color, Colors;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
@@ -364,6 +365,7 @@ class FileUtils {
     required List<String> hwTriggerNames,
     required List<SignalData> chartSignals,
     required List<int> chartPorts,
+    Map<SignalType, Color>? signalColors,
     List<TimingChartAnnotation> chartAnnotations = const [],
     List<int> omissionIndices = const [],
     String? customFileName,
@@ -396,6 +398,34 @@ class FileUtils {
 
       // チャート信号名のヘッダーを10列目（J列）から開始
       int chartStartCol = 9; // J列のインデックス（0ベース）
+      const int chartRowStart = 1;
+      final int waveStartCol = chartStartCol + 1; // K列
+      final excel.ExcelColor fallbackCommentColor = excel.ExcelColor.grey700;
+
+      excel.ExcelColor toExcelColorFromInt(int? argb) {
+        if (argb == null) return fallbackCommentColor;
+        final hex = argb.toRadixString(16).padLeft(8, '0').toUpperCase();
+        return excel.ExcelColor.fromHexString(hex);
+      }
+
+      int clampStepIndex(int idx, int maxLength) {
+        if (maxLength <= 0) return 0;
+        if (idx < 0) return 0;
+        if (idx >= maxLength) return maxLength - 1;
+        return idx;
+      }
+
+      int allocateTrack(List<int> trackEndIndices, int start, int end) {
+        for (int i = 0; i < trackEndIndices.length; i++) {
+          if (start > trackEndIndices[i]) {
+            trackEndIndices[i] = end;
+            return i;
+          }
+        }
+        trackEndIndices.add(end);
+        return trackEndIndices.length - 1;
+      }
+
       sheet
           .cell(
             excel.CellIndex.indexByColumnRow(
@@ -457,11 +487,10 @@ class FileUtils {
         }
       }
 
+      int maxSignalLength = 0;
+
       // 2. チャート情報の記載（10列目以降）
       if (chartSignals.isNotEmpty) {
-        // チャート用の開始行（データ1行目）
-        const int chartRowStart = 1;
-
         // 信号名と種別＋ポート情報をI,J列に記載（各信号の間に1行空ける）
         for (int i = 0; i < chartSignals.length; i++) {
           final signal = chartSignals[i];
@@ -513,17 +542,12 @@ class FileUtils {
         }
 
         // 各信号の波形をK列（11列目）以降に描画（信号ごとに1行分の空白行を挿入）
-        final int maxSignalLength =
+        maxSignalLength =
             chartSignals.isNotEmpty
                 ? chartSignals
                     .map((s) => s.values.length)
                     .reduce((a, b) => a > b ? a : b)
                 : 0;
-
-        // 罫線で波形を表現するための共通ボーダースタイル
-        final excel.Border waveBorder = excel.Border(
-          borderStyle: excel.BorderStyle.Thin,
-        );
 
         for (
           int signalIndex = 0;
@@ -533,6 +557,15 @@ class FileUtils {
           final signal = chartSignals[signalIndex];
           final List<int> values = signal.values;
           final int rowIndex = chartRowStart + signalIndex * 2;
+          final Color signalColor =
+              signalColors?[signal.signalType] ?? Colors.black;
+          final excel.ExcelColor excelSignalColor = excel.ExcelColor.fromHexString(
+            signalColor.toARGB32().toRadixString(16).padLeft(8, '0').toUpperCase(),
+          );
+          final excel.Border waveBorder = excel.Border(
+            borderStyle: excel.BorderStyle.Medium,
+            borderColorHex: excelSignalColor,
+          );
 
           for (int timeIndex = 0; timeIndex < maxSignalLength; timeIndex++) {
             final int colIndex = chartStartCol + 1 + timeIndex; // K列から開始
@@ -601,6 +634,158 @@ class FileUtils {
         }
       }
 
+      // 2-2. コメントレイヤーの近似描画（Sheet1内）
+      if (chartAnnotations.isNotEmpty && maxSignalLength > 0) {
+        final int waveformLastRow = chartRowStart + (chartSignals.length - 1) * 2;
+        final int commentHeaderRow = waveformLastRow + 2;
+        const int rowSpanPerTrack = 2;
+        const int maxTracksPerPlacement = 4;
+        final topTrackEnd = <int>[];
+        final bottomTrackEnd = <int>[];
+
+        sheet
+            .cell(
+              excel.CellIndex.indexByColumnRow(
+                columnIndex: chartStartCol,
+                rowIndex: commentHeaderRow,
+              ),
+            )
+            .value = excel.TextCellValue('Comment Layer');
+        sheet
+            .cell(
+              excel.CellIndex.indexByColumnRow(
+                columnIndex: chartStartCol - 1,
+                rowIndex: commentHeaderRow + 1,
+              ),
+            )
+            .value = excel.TextCellValue('Top');
+        sheet
+            .cell(
+              excel.CellIndex.indexByColumnRow(
+                columnIndex: chartStartCol - 1,
+                rowIndex: commentHeaderRow + 1 + maxTracksPerPlacement * rowSpanPerTrack + 1,
+              ),
+            )
+            .value = excel.TextCellValue('Bottom');
+
+        final int topBaseRow = commentHeaderRow + 1;
+        final int bottomBaseRow =
+            topBaseRow + maxTracksPerPlacement * rowSpanPerTrack + 1;
+
+        for (final ann in chartAnnotations) {
+          final int logicalStart = clampStepIndex(ann.startTimeIndex, maxSignalLength);
+          final int logicalEnd = clampStepIndex(
+            ann.endTimeIndex ?? ann.startTimeIndex,
+            maxSignalLength,
+          );
+          final int start = logicalStart <= logicalEnd ? logicalStart : logicalEnd;
+          final int end = logicalStart <= logicalEnd ? logicalEnd : logicalStart;
+          final bool isTop = ann.placement == 'top';
+          final tracks = isTop ? topTrackEnd : bottomTrackEnd;
+          final int allocatedTrack = allocateTrack(tracks, start, end);
+          final int track = allocatedTrack % maxTracksPerPlacement;
+          final int row = (isTop ? topBaseRow : bottomBaseRow) + track * rowSpanPerTrack;
+          final int startCol = waveStartCol + start;
+          final int endCol = waveStartCol + end;
+
+          final excel.ExcelColor borderColor = toExcelColorFromInt(ann.borderColorValue);
+          final excel.ExcelColor dashedColor = toExcelColorFromInt(
+            ann.dashedLineColorValue,
+          );
+          final bool isBold = ann.isBold ?? false;
+          final int? fontSize = ann.fontSize?.round();
+
+          final style = excel.CellStyle(
+            bold: isBold,
+            fontSize: fontSize,
+            horizontalAlign: excel.HorizontalAlign.Left,
+            verticalAlign: excel.VerticalAlign.Top,
+            textWrapping: excel.TextWrapping.WrapText,
+            leftBorder: excel.Border(
+              borderStyle: excel.BorderStyle.Medium,
+              borderColorHex: borderColor,
+            ),
+            rightBorder: excel.Border(
+              borderStyle: excel.BorderStyle.Medium,
+              borderColorHex: borderColor,
+            ),
+            topBorder: excel.Border(
+              borderStyle: excel.BorderStyle.Medium,
+              borderColorHex: borderColor,
+            ),
+            bottomBorder: excel.Border(
+              borderStyle: excel.BorderStyle.Medium,
+              borderColorHex: borderColor,
+            ),
+          );
+
+          final textCell = sheet.cell(
+            excel.CellIndex.indexByColumnRow(columnIndex: startCol, rowIndex: row),
+          );
+          textCell.value = excel.TextCellValue(ann.text);
+          textCell.cellStyle = style;
+
+          if (endCol > startCol) {
+            sheet.merge(
+              excel.CellIndex.indexByColumnRow(columnIndex: startCol, rowIndex: row),
+              excel.CellIndex.indexByColumnRow(columnIndex: endCol, rowIndex: row),
+            );
+            sheet.setMergedCellStyle(
+              excel.CellIndex.indexByColumnRow(columnIndex: startCol, rowIndex: row),
+              style,
+            );
+          }
+
+          // 境界の破線を近似的に描画（コメント上下領域の縦マーカー）
+          final boundaryStyle = excel.CellStyle(
+            leftBorder: excel.Border(
+              borderStyle: excel.BorderStyle.Dashed,
+              borderColorHex: dashedColor,
+            ),
+          );
+          for (int r = topBaseRow;
+              r <= bottomBaseRow + maxTracksPerPlacement * rowSpanPerTrack;
+              r++) {
+            final markerStart = sheet.cell(
+              excel.CellIndex.indexByColumnRow(columnIndex: startCol, rowIndex: r),
+            );
+            final markerStartStyle = markerStart.cellStyle ?? excel.CellStyle();
+            markerStartStyle.leftBorder = boundaryStyle.leftBorder;
+            markerStart.cellStyle = markerStartStyle;
+
+            if (ann.endTimeIndex != null) {
+              final markerEnd = sheet.cell(
+                excel.CellIndex.indexByColumnRow(columnIndex: endCol, rowIndex: r),
+              );
+              final markerEndStyle = markerEnd.cellStyle ?? excel.CellStyle();
+              markerEndStyle.leftBorder = boundaryStyle.leftBorder;
+              markerEnd.cellStyle = markerEndStyle;
+            }
+          }
+
+          // 矢印はセル表現で近似（横矢印/縦矢印）
+          final String arrowSymbol = (ann.arrowHorizontal ?? false)
+              ? (isTop ? '→' : '←')
+              : (isTop ? '▼' : '▲');
+          final int arrowRow = row + 1;
+          final int arrowCol = startCol;
+          final arrowCell = sheet.cell(
+            excel.CellIndex.indexByColumnRow(columnIndex: arrowCol, rowIndex: arrowRow),
+          );
+          arrowCell.value = excel.TextCellValue(arrowSymbol);
+          final arrowStyle = arrowCell.cellStyle ?? excel.CellStyle();
+          arrowStyle.horizontalAlignment = excel.HorizontalAlign.Center;
+          arrowStyle.verticalAlignment = excel.VerticalAlign.Center;
+          if (ann.arrowColorValue != null) {
+            arrowStyle.fontColor = toExcelColorFromInt(ann.arrowColorValue);
+          }
+          arrowCell.cellStyle = arrowStyle;
+
+          sheet.setRowHeight(row, 22);
+          sheet.setRowHeight(arrowRow, 16);
+        }
+      }
+
       // 3. コメント情報の記載（別シート）
       if (chartAnnotations.isNotEmpty) {
         final annotationsSheet = excelFile['Annotations'];
@@ -628,6 +813,36 @@ class FileUtils {
         annotationsSheet
             .cell(excel.CellIndex.indexByColumnRow(columnIndex: 7, rowIndex: 0))
             .value = excel.TextCellValue('Arrow Horizontal');
+        annotationsSheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 8, rowIndex: 0))
+            .value = excel.TextCellValue('Arrow Tip Row Index');
+        annotationsSheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 9, rowIndex: 0))
+            .value = excel.TextCellValue('Font Size');
+        annotationsSheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 10, rowIndex: 0))
+            .value = excel.TextCellValue('Bold');
+        annotationsSheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 11, rowIndex: 0))
+            .value = excel.TextCellValue('Border Color ARGB');
+        annotationsSheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 12, rowIndex: 0))
+            .value = excel.TextCellValue('Dashed Color ARGB');
+        annotationsSheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 13, rowIndex: 0))
+            .value = excel.TextCellValue('Arrow Color ARGB');
+        annotationsSheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 14, rowIndex: 0))
+            .value = excel.TextCellValue('Max Width');
+        annotationsSheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 15, rowIndex: 0))
+            .value = excel.TextCellValue('Max Lines');
+        annotationsSheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 16, rowIndex: 0))
+            .value = excel.TextCellValue('Ellipsis');
+        annotationsSheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 17, rowIndex: 0))
+            .value = excel.TextCellValue('Placement');
 
         for (int i = 0; i < chartAnnotations.length; i++) {
           final ann = chartAnnotations[i];
@@ -715,6 +930,120 @@ class FileUtils {
                 .value = excel.TextCellValue(
               ann.arrowHorizontal! ? 'true' : 'false',
             );
+          }
+
+          if (ann.arrowTipRowIndex != null) {
+            annotationsSheet
+                .cell(
+                  excel.CellIndex.indexByColumnRow(
+                    columnIndex: 8,
+                    rowIndex: rowIndex,
+                  ),
+                )
+                .value = excel.IntCellValue(ann.arrowTipRowIndex!);
+          }
+
+          if (ann.fontSize != null) {
+            annotationsSheet
+                .cell(
+                  excel.CellIndex.indexByColumnRow(
+                    columnIndex: 9,
+                    rowIndex: rowIndex,
+                  ),
+                )
+                .value = excel.TextCellValue(ann.fontSize!.toString());
+          }
+
+          if (ann.isBold != null) {
+            annotationsSheet
+                .cell(
+                  excel.CellIndex.indexByColumnRow(
+                    columnIndex: 10,
+                    rowIndex: rowIndex,
+                  ),
+                )
+                .value = excel.TextCellValue(ann.isBold! ? 'true' : 'false');
+          }
+
+          if (ann.borderColorValue != null) {
+            annotationsSheet
+                .cell(
+                  excel.CellIndex.indexByColumnRow(
+                    columnIndex: 11,
+                    rowIndex: rowIndex,
+                  ),
+                )
+                .value = excel.TextCellValue(ann.borderColorValue!.toString());
+          }
+
+          if (ann.dashedLineColorValue != null) {
+            annotationsSheet
+                .cell(
+                  excel.CellIndex.indexByColumnRow(
+                    columnIndex: 12,
+                    rowIndex: rowIndex,
+                  ),
+                )
+                .value = excel.TextCellValue(
+              ann.dashedLineColorValue!.toString(),
+            );
+          }
+
+          if (ann.arrowColorValue != null) {
+            annotationsSheet
+                .cell(
+                  excel.CellIndex.indexByColumnRow(
+                    columnIndex: 13,
+                    rowIndex: rowIndex,
+                  ),
+                )
+                .value = excel.TextCellValue(ann.arrowColorValue!.toString());
+          }
+
+          if (ann.maxWidth != null) {
+            annotationsSheet
+                .cell(
+                  excel.CellIndex.indexByColumnRow(
+                    columnIndex: 14,
+                    rowIndex: rowIndex,
+                  ),
+                )
+                .value = excel.TextCellValue(ann.maxWidth!.toString());
+          }
+
+          if (ann.maxLines != null) {
+            annotationsSheet
+                .cell(
+                  excel.CellIndex.indexByColumnRow(
+                    columnIndex: 15,
+                    rowIndex: rowIndex,
+                  ),
+                )
+                .value = excel.IntCellValue(ann.maxLines!);
+          }
+
+          if (ann.ellipsisEnabled != null) {
+            annotationsSheet
+                .cell(
+                  excel.CellIndex.indexByColumnRow(
+                    columnIndex: 16,
+                    rowIndex: rowIndex,
+                  ),
+                )
+                .value = excel.TextCellValue(
+              ann.ellipsisEnabled! ? 'true' : 'false',
+            );
+          }
+
+          if (ann.placement != null && ann.placement!.isNotEmpty) {
+            annotationsSheet
+                .cell(
+                  excel.CellIndex.indexByColumnRow(
+                    columnIndex: 17,
+                    rowIndex: rowIndex,
+                  ),
+                )
+                .value = excel.TextCellValue(ann.placement!);
           }
         }
       }

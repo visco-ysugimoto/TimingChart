@@ -1049,6 +1049,11 @@ class _TimingChartGeneratorHomePageState
   /// 信号データ、アノテーション、省略情報などをExcel形式で保存します。
   Future<void> _exportXlsx() async {
     String? savedPath;
+    final latestAnnotations =
+        _timingChartKey.currentState?.getAnnotations() ??
+        List<TimingChartAnnotation>.from(_chartController.annotations);
+    _chartAnnotations = List<TimingChartAnnotation>.from(latestAnnotations);
+
     final success = await ExportService.exportXlsx(
       context: context,
       chartSignals: _chartSignals,
@@ -1059,7 +1064,7 @@ class _TimingChartGeneratorHomePageState
       hwTriggerControllers: _hwTriggerControllers,
       formTabState: _formTabKey.currentState,
       timingChartState: _timingChartKey.currentState,
-      chartAnnotations: _chartAnnotations,
+      chartAnnotations: latestAnnotations,
       omissionIndices:
           _timingChartKey.currentState?.getOmissionTimeIndices() ?? [],
       onExported: (path) => savedPath = path,

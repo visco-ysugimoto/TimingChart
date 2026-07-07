@@ -415,12 +415,14 @@ class ExportService {
       }
 
       // XLSXエクスポート
+      final settings = Provider.of<SettingsNotifier>(context, listen: false);
       final success = await FileUtils.exportXlsx(
         inputNames: inputNames,
         outputNames: outputNames,
         hwTriggerNames: hwTriggerNames,
         chartSignals: signalData,
         chartPorts: signalPorts,
+        signalColors: settings.signalColors,
         chartAnnotations: chartAnnotations,
         omissionIndices:
             omissionIndices ??
