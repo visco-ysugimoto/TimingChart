@@ -126,7 +126,8 @@ class VxVisMgrParser {
           final val = kv.group(2)!.trim();
           if (key == 'softenable') {
             eipUse = (int.tryParse(val) ?? 0) != 0;
-          } else if (key == 'softcommandenable') {
+          } else if (key == 'softcommandenable' || key == 'softcomanndenable') {
+            // 互換性: 一部環境で SoftComanndEnable (スペル揺れ) が出力される
             ethernetIpCommandEnabled = (int.tryParse(val) ?? 0) != 0;
           }
         }
@@ -150,6 +151,33 @@ class VxVisMgrParser {
       plcCommandEnabled: plcCommandEnabled,
       ethernetIpCommandEnabled: ethernetIpCommandEnabled,
     );
+  }
+
+  /// [SystemSetting] の ShutdownMonitor を取得（0/未定義=false, 1=true）
+  static bool parseShutdownMonitor(String iniContent) {
+    final lines = iniContent.split(RegExp(r'\r?\n'));
+    bool inSection = false;
+
+    for (final raw in lines) {
+      final line = raw.trim();
+      if (line.isEmpty) continue;
+      if (line.startsWith(';') || line.startsWith('#')) continue;
+
+      if (line.startsWith('[') && line.endsWith(']')) {
+        final section = line.substring(1, line.length - 1).trim();
+        inSection = section.toLowerCase() == 'systemsetting';
+        continue;
+      }
+      if (!inSection) continue;
+
+      final m = RegExp(r'^([^=]+)=\s*(.*)$').firstMatch(line);
+      if (m == null) continue;
+      final key = m.group(1)!.trim().toLowerCase();
+      if (key != 'shutdownmonitor') continue;
+      final val = m.group(2)!.trim();
+      return (int.tryParse(val) ?? 0) != 0;
+    }
+    return false;
   }
 
   /// [IOActive] セクションから Pin.Ports / Pout.Ports を取得

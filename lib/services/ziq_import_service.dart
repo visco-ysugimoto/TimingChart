@@ -15,6 +15,7 @@ import '../utils/compute_workers.dart';
 import '../providers/form_controllers_notifier.dart';
 import '../providers/timing_chart_controller.dart';
 import '../widgets/form/form_tab.dart' show FormTabState;
+import '../widgets/form/form_tab_constants.dart' show SignalNames;
 
 /// ZIQインポート処理を担当するサービスクラス
 class ZiqImportService {
@@ -92,6 +93,7 @@ class ZiqImportService {
         triggerOption: currentFormState.triggerOption,
         inputPorts: null,
         outputPorts: null,
+        shutdownMonitor: false,
       );
     }
 
@@ -99,6 +101,7 @@ class ZiqImportService {
     final ioActive = VxVisMgrParser.parseIOActive(iniContent);
     final inputPorts = ioActive?.pinPorts;
     final outputPorts = ioActive?.poutPorts;
+    final shutdownMonitor = VxVisMgrParser.parseShutdownMonitor(iniContent);
 
     // StatusSignalSettingsの解析
     final all = VxVisMgrParser.parseStatusSignalSettings(iniContent);
@@ -178,6 +181,7 @@ class ZiqImportService {
       triggerOption: triggerOption,
       inputPorts: inputPorts,
       outputPorts: outputPorts,
+      shutdownMonitor: shutdownMonitor,
     );
   }
 
@@ -400,6 +404,23 @@ class ZiqImportService {
       controllersNotifier.setInputText(0, 'TRIGGER');
     }
 
+    // ShutdownMonitor=1 の場合、DIO最終入力ポートにシステム起動保持信号を強制設定
+    final dioInputPortCount =
+        iniResult.inputPorts ?? currentFormState.inputCount;
+    final lastDioInputIdx = dioInputPortCount - 1;
+    if (iniResult.shutdownMonitor && lastDioInputIdx >= 0) {
+      if (dioInputPortCount > inputControllers.length) {
+        controllersNotifier.setInputCount(dioInputPortCount);
+      }
+      if (lastDioInputIdx < inputControllers.length) {
+        inputControllers[lastDioInputIdx].text =
+            SignalNames.systemKeepRunningSignal;
+        debugPrint(
+          'ShutdownMonitor: ${SignalNames.systemKeepRunningSignal} -> DIO:$dioInputPortCount',
+        );
+      }
+    }
+
     // 出力信号の処理
     final outSource = <String, String>{};
     final outNamesDio = <String>[];
@@ -601,27 +622,45 @@ class ZiqImportService {
     }
 
     // 入力信号の処理
-    final int inputs = currentFormState.inputCount;
+    int inputs = currentFormState.inputCount;
+    if (iniResult.shutdownMonitor && dioInputPortCount > inputs) {
+      inputs = dioInputPortCount;
+    }
     final inChart = <List<int>>[];
     final inNames = <String>[];
     final inTypes = <SignalType>[];
 
     // DIO入力信号の処理
     for (int idx0 = 0; idx0 < inputs; idx0++) {
-      if (idx0 >= inputControllers.length) continue;
-      final name = inputControllers[idx0].text.trim();
-      if (name.isEmpty) continue;
-      final series = List.filled(timeLength, 0);
-      for (int t = 0; t < timeLength; t++) {
-        final e = timeline.entries[t];
-        if (e.type == 'IN' && e.source == 'DIO') {
-          final row = e.bits;
-          final col = row.length - (idx0 + 1);
-          if (col >= 0 && col < row.length) {
-            series[t] = row[col] != 0 ? 1 : 0;
+      final bool isShutdownKeepPort =
+          iniResult.shutdownMonitor && idx0 == lastDioInputIdx;
+
+      String name;
+      if (isShutdownKeepPort) {
+        name = SignalNames.systemKeepRunningSignal;
+      } else {
+        if (idx0 >= inputControllers.length) continue;
+        name = inputControllers[idx0].text.trim();
+        if (name.isEmpty) continue;
+      }
+
+      late final List<int> series;
+      if (isShutdownKeepPort) {
+        // ShutdownMonitor=1: DIO最終ポートはタイムライン全区間を High にする
+        series = List.filled(timeLength, 1);
+      } else {
+        series = List.filled(timeLength, 0);
+        for (int t = 0; t < timeLength; t++) {
+          final e = timeline.entries[t];
+          if (e.type == 'IN' && e.source == 'DIO') {
+            final row = e.bits;
+            final col = row.length - (idx0 + 1);
+            if (col >= 0 && col < row.length) {
+              series[t] = row[col] != 0 ? 1 : 0;
+            }
+          } else if (e.type != 'IN') {
+            series[t] = 0;
           }
-        } else if (e.type != 'IN') {
-          series[t] = 0;
         }
       }
       inChart.add(series);
@@ -782,6 +821,10 @@ class ZiqImportService {
     final inputNameToPort = <String, int>{
       for (int i = 0; i < inNames.length; i++) inNames[i]: i + 1,
     };
+    if (iniResult.shutdownMonitor && dioInputPortCount > 0) {
+      // DIO最終ポート番号を明示（inNames の並びによる番号ずれを防ぐ）
+      inputNameToPort[SignalNames.systemKeepRunningSignal] = dioInputPortCount;
+    }
 
     final outputNameToPort = <String, int>{};
     for (int i = 0; i < outNamesDio.length; i++) {
@@ -999,6 +1042,7 @@ class _IniParseResult {
   final String triggerOption;
   final int? inputPorts;
   final int? outputPorts;
+  final bool shutdownMonitor;
 
   _IniParseResult({
     required this.enabledStatusSignals,
@@ -1009,6 +1053,7 @@ class _IniParseResult {
     required this.triggerOption,
     this.inputPorts,
     this.outputPorts,
+    this.shutdownMonitor = false,
   });
 }
 
