@@ -3,6 +3,7 @@ import '../models/chart/signal_type.dart';
 import '../models/chart/io_channel_source.dart';
 import '../providers/timing_chart_controller.dart';
 import '../widgets/chart/timing_chart.dart';
+import 'package:flutter/foundation.dart';
 
 /// チャート更新処理の結果を保持するクラス
 class ChartUpdateResult {
@@ -75,20 +76,11 @@ class ChartUpdateService {
         }
       } else {
         if (existingValuesMap.containsKey(signalNames[i])) {
-          signalValues = List<int>.from(existingValuesMap[signalNames[i]]!);
-
-          if (i < chartData.length &&
-              signalValues.length != chartData[i].length) {
-            if (signalValues.length < chartData[i].length) {
-              signalValues.addAll(
-                List.filled(
-                  chartData[i].length - signalValues.length,
-                  0,
-                ),
-              );
-            }
-            // 長い場合はそのまま（切り詰めない）
-          }
+          signalValues = mergeExistingWithFormLength(
+            existingValues: existingValuesMap[signalNames[i]]!,
+            formLength: i < chartData.length ? chartData[i].length : 0,
+            chartLengthIsAuthoritative: timingChartState != null,
+          );
         } else if (i < chartData.length) {
           signalValues = List<int>.from(chartData[i]);
         } else {
@@ -244,6 +236,26 @@ class ChartUpdateService {
       if (signal.name == name) return signal.showIoNumber;
     }
     return true;
+  }
+
+  /// 既存波形とフォーム波形の長さを調整する
+  ///
+  /// チャート表示中はチャート側の長さを正とし、短い場合の0埋めを行わない。
+  @visibleForTesting
+  static List<int> mergeExistingWithFormLength({
+    required List<int> existingValues,
+    required int formLength,
+    required bool chartLengthIsAuthoritative,
+  }) {
+    final signalValues = List<int>.from(existingValues);
+    if (formLength > 0 &&
+        signalValues.length < formLength &&
+        !chartLengthIsAuthoritative) {
+      signalValues.addAll(
+        List.filled(formLength - signalValues.length, 0),
+      );
+    }
+    return signalValues;
   }
 }
 

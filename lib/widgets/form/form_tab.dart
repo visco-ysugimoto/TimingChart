@@ -745,9 +745,22 @@ class FormTabState extends State<FormTab>
         for (final sig in _signalDataList) sig.name: List<int>.from(sig.values),
       };
       if (_externalSignalValues.isNotEmpty) {
-        for (final entry in _externalSignalValues.entries) {
+        final externalCopy = {
+          for (final entry in _externalSignalValues.entries)
+            entry.key: List<int>.from(entry.value),
+        };
+        for (final entry in externalCopy.entries) {
           prevValueMap[entry.key] = List<int>.from(entry.value);
         }
+        FormTabSignalMapper.applyExternalValuesToPortCache(
+          prevPortValues: prevPortValues,
+          externalValues: externalCopy,
+          inputControllers: widget.inputControllers,
+          plcEipInputControllers: widget.plcEipInputControllers,
+          hwTriggerControllers: widget.hwTriggerControllers,
+          outputControllers: widget.outputControllers,
+          plcEipOutputControllers: widget.plcEipOutputControllers,
+        );
         _externalSignalValues.clear();
       }
 

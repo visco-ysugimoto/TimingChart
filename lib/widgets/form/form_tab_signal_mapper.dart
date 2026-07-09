@@ -134,6 +134,51 @@ class FormTabSignalMapper {
     return defaultWaveLength == 0 ? fallbackLength : defaultWaveLength;
   }
 
+  /// チャート編集など外部から渡された波形を portKey キャッシュへ反映する
+  ///
+  /// NOTE: `resolveSignalValues` は portKey を信号名より優先するため、
+  /// 列削除後に `_portValues` を更新しないと古い長さが残る。
+  static void applyExternalValuesToPortCache({
+    required Map<String, List<int>> prevPortValues,
+    required Map<String, List<int>> externalValues,
+    required List<TextEditingController> inputControllers,
+    required List<TextEditingController> plcEipInputControllers,
+    required List<TextEditingController> hwTriggerControllers,
+    required List<TextEditingController> outputControllers,
+    required List<TextEditingController> plcEipOutputControllers,
+  }) {
+    for (final entry in externalValues.entries) {
+      final values = List<int>.from(entry.value);
+      final name = entry.key;
+
+      for (int i = 0; i < inputControllers.length; i++) {
+        if (inputControllers[i].text == name) {
+          prevPortValues[dioInputKey(i)] = values;
+        }
+      }
+      for (int i = 0; i < plcEipInputControllers.length; i++) {
+        if (plcEipInputControllers[i].text == name) {
+          prevPortValues[plcInputKey(i)] = values;
+        }
+      }
+      for (int i = 0; i < hwTriggerControllers.length; i++) {
+        if (hwTriggerControllers[i].text == name) {
+          prevPortValues[hwKey(i)] = values;
+        }
+      }
+      for (int i = 0; i < outputControllers.length; i++) {
+        if (outputControllers[i].text == name) {
+          prevPortValues[dioOutputKey(i)] = values;
+        }
+      }
+      for (int i = 0; i < plcEipOutputControllers.length; i++) {
+        if (plcEipOutputControllers[i].text == name) {
+          prevPortValues[plcOutputKey(i)] = values;
+        }
+      }
+    }
+  }
+
   /// 入力信号マップを構築
   ///
   /// - `inferSignalType` / `inferVisibility` は FormTab 側のルールを注入するためのコールバックです。
