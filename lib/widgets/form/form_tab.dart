@@ -45,6 +45,7 @@ import 'form_tab_controller_mapper.dart';
 import 'form_tab_constants.dart';
 import 'form_tab_output_preset.dart';
 import 'form_tab_rules.dart';
+import '../../utils/code_trigger_helpers.dart';
 
 class FormTab extends StatefulWidget {
   /// 入力（DIO）信号名
@@ -315,49 +316,38 @@ class FormTabState extends State<FormTab>
     }
 
     if (fs.triggerOption == TriggerOptions.code) {
+      if (fs.codeTriggerOnPlcEip) {
+        if (fs.useDioTriggerPortWithVirtualIo) {
+          if (widget.inputControllers.isNotEmpty) {
+            widget.controllersNotifier.setInputText(0, SignalNames.trigger);
+          }
+        } else {
+          if (widget.plcEipInputControllers.isNotEmpty) {
+            widget.plcEipInputControllers[0].text = SignalNames.trigger;
+          }
+          if (widget.inputControllers.isNotEmpty) {
+            widget.inputControllers[0].text = '';
+          }
+        }
+      } else if (widget.inputControllers.isNotEmpty) {
+        widget.controllersNotifier.setInputText(0, SignalNames.trigger);
+      }
       _assignCodeTriggerInputNames(fs);
     }
   }
 
   /// Code Trigger モード用の入力名を設定する（自動命名）
   ///
-  /// NOTE: “表示名”自体が仕様（下流の波形/変換が文字列に依存する）なので、
-  /// ここでの命名規則は慎重に変更すること。
+  /// [codeTriggerOnPlcEip] が true のときは PLI/ESI 側へ、
+  /// false のときは従来どおり DIO 側へ割り当てる。
   void _assignCodeTriggerInputNames(TimingFormState fs) {
-    final controllers = widget.inputControllers;
-    String? nameForIndex(int index) {
-      if (fs.inputCount >= FormTabConstants.maxInputPorts) {
-        if (index >= FormTabConstants.codeTrigger32ControlStart &&
-            index <= FormTabConstants.codeTrigger32ControlEnd) {
-          return 'Control Code$index(bit)';
-        }
-        if (index >= FormTabConstants.codeTrigger32GroupStart &&
-            index <= FormTabConstants.codeTrigger32GroupEnd) {
-          return 'Group Code$index(bit)';
-        }
-        if (index >= FormTabConstants.codeTrigger32TaskStart &&
-            index <= FormTabConstants.codeTrigger32TaskEnd) {
-          return 'Task Code$index(bit)';
-        }
-      } else if (fs.inputCount == FormTabConstants.standardInputPorts) {
-        if (index >= FormTabConstants.codeTrigger16ControlStart &&
-            index <= FormTabConstants.codeTrigger16ControlEnd) {
-          return 'Control Code$index(bit)';
-        }
-        if (index >= FormTabConstants.codeTrigger16GroupStart &&
-            index <= FormTabConstants.codeTrigger16GroupEnd) {
-          return 'Group Code$index(bit)';
-        }
-        if (index >= FormTabConstants.codeTrigger16TaskStart &&
-            index <= FormTabConstants.codeTrigger16TaskEnd) {
-          return 'Task Code$index(bit)';
-        }
-      }
-      return null;
-    }
+    final dioControllers = widget.inputControllers;
+    final plcControllers = widget.plcEipInputControllers;
+    final bool onPlcEip = fs.codeTriggerOnPlcEip;
+    final controllers = onPlcEip ? plcControllers : dioControllers;
 
     for (int i = 0; i < fs.inputCount && i < controllers.length; i++) {
-      final newName = nameForIndex(i);
+      final newName = CodeTriggerHelpers.nameForIndex(i, fs.inputCount);
       if (newName != null && controllers[i].text != newName) {
         controllers[i].text = newName;
       }
@@ -747,7 +737,7 @@ class FormTabState extends State<FormTab>
     setState(() {
       // Code Trigger 時の入力名自動設定（従来の副作用を維持）
       if (formState.triggerOption == TriggerOptions.code) {
-        _assignCodeTriggerInputNames(formState);
+        applyInputNamesForTriggerOption();
       }
 
       // 前の値を収集
@@ -777,8 +767,10 @@ class FormTabState extends State<FormTab>
         plcEipInputControllers: widget.plcEipInputControllers,
         plcEipOption: _plcEipOption,
         inputVisibility: _inputVisibility,
-        inferSignalType: (index) => _inferSignalType(formState, index),
-        inferVisibility: (index) => _inferVisibility(formState, index),
+        inferSignalType: (index, {bool isPlcEipChannel = false}) =>
+            _inferSignalType(formState, index, isPlcEipChannel: isPlcEipChannel),
+        inferVisibility: (index, {bool isPlcEipChannel = false}) =>
+            _inferVisibility(formState, index, isPlcEipChannel: isPlcEipChannel),
         prevPortValues: prevPortValues,
         prevValueMap: prevValueMap,
         defaultWaveLength: defaultWaveLength,
@@ -1440,6 +1432,8 @@ class FormTabState extends State<FormTab>
           triggerOption: formState.triggerOption,
           inputCount: formState.inputCount,
           index: i,
+          codeTriggerOnPlcEip: formState.codeTriggerOnPlcEip,
+          isPlcEipChannel: false,
         );
 
         List<int> values;
@@ -1764,6 +1758,10 @@ class FormTabState extends State<FormTab>
       if (newSignalList.isNotEmpty) {
         _signalDataList = newSignalList;
       }
+
+      if (formState.triggerOption == TriggerOptions.code) {
+        applyInputNamesForTriggerOption();
+      }
     });
   }
 
@@ -2002,19 +2000,31 @@ class FormTabState extends State<FormTab>
     );
   }
 
-  SignalType _inferSignalType(TimingFormState fs, int index) {
+  SignalType _inferSignalType(
+    TimingFormState fs,
+    int index, {
+    bool isPlcEipChannel = false,
+  }) {
     return FormTabRules.inferInputSignalType(
       triggerOption: fs.triggerOption,
       inputCount: fs.inputCount,
       index: index,
+      codeTriggerOnPlcEip: fs.codeTriggerOnPlcEip,
+      isPlcEipChannel: isPlcEipChannel,
     );
   }
 
-  bool _inferVisibility(TimingFormState fs, int index) {
+  bool _inferVisibility(
+    TimingFormState fs,
+    int index, {
+    bool isPlcEipChannel = false,
+  }) {
     return FormTabRules.inferInputVisibility(
       triggerOption: fs.triggerOption,
       inputCount: fs.inputCount,
       index: index,
+      codeTriggerOnPlcEip: fs.codeTriggerOnPlcEip,
+      isPlcEipChannel: isPlcEipChannel,
     );
   }
 
@@ -2491,6 +2501,8 @@ class _FormTabBodySection extends StatelessWidget {
                                     SignalType.input,
                                   ),
                               triggerOption: formState.triggerOption,
+                              codeTriggerOnPlcEip: formState.codeTriggerOnPlcEip,
+                              isPlcEipChannel: useTabs && inputTabIndex == 1,
                             ),
                           ),
                         ),

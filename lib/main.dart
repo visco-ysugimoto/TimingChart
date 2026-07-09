@@ -1340,12 +1340,13 @@ class _TimingChartGeneratorHomePageState
                     _chartIoSources = result.chartIoSources;
                   });
 
-                  // トリガーオプションの更新
-                  if (result.triggerOption != _formState.triggerOption) {
-                    _scheduleFormUpdate(
-                      (n) => n.update(triggerOption: result.triggerOption),
-                    );
-                  }
+                  // トリガーオプション・VirtualIO フラグの更新（チャート反映前に同期適用）
+                  _formNotifier.update(
+                    triggerOption: result.triggerOption,
+                    codeTriggerOnPlcEip: result.codeTriggerOnPlcEip,
+                    useDioTriggerPortWithVirtualIo:
+                        result.useDioTriggerPortWithVirtualIo,
+                  );
 
                   // PLC/EIPオプションの設定
                   if (_formTabKey.currentState != null) {

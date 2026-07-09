@@ -68,6 +68,7 @@ class VxVisMgrParser {
     bool inSection = false;
     int? triggerMode;
     int? useVirtualIoOnTrigger;
+    int? useDioTriggerPortWithVirtualIo;
     bool plcCommandEnabled = false;
     bool ethernetIpCommandEnabled = false;
 
@@ -92,6 +93,9 @@ class VxVisMgrParser {
         triggerMode = int.tryParse(value) ?? triggerMode;
       } else if (key.toLowerCase() == 'usevirtualio_on_trigger') {
         useVirtualIoOnTrigger = int.tryParse(value) ?? useVirtualIoOnTrigger;
+      } else if (key.toLowerCase() == 'usediotriggerport_with_virtualio') {
+        useDioTriggerPortWithVirtualIo =
+            int.tryParse(value) ?? useDioTriggerPortWithVirtualIo;
       }
     }
 
@@ -136,6 +140,7 @@ class VxVisMgrParser {
 
     if (triggerMode == null &&
         useVirtualIoOnTrigger == null &&
+        useDioTriggerPortWithVirtualIo == null &&
         !plcUse &&
         !eipUse &&
         !plcCommandEnabled &&
@@ -146,6 +151,7 @@ class VxVisMgrParser {
     return IOSetting(
       triggerMode: triggerMode ?? 1,
       useVirtualIoOnTrigger: useVirtualIoOnTrigger ?? 0,
+      useDioTriggerPortWithVirtualIo: useDioTriggerPortWithVirtualIo ?? 0,
       plcLinkEnabled: plcUse,
       ethernetIpEnabled: eipUse,
       plcCommandEnabled: plcCommandEnabled,
@@ -257,6 +263,7 @@ class _MutableSignal {
 class IOSetting {
   final int triggerMode; // 0: Code Trigger, 1: Single Trigger (要件より)
   final int useVirtualIoOnTrigger; // 0: None, 1: PLC
+  final int useDioTriggerPortWithVirtualIo; // 0/1
   final bool plcLinkEnabled;
   final bool ethernetIpEnabled;
   // 追加: Command Trigger 判定用フラグ
@@ -266,6 +273,7 @@ class IOSetting {
   const IOSetting({
     required this.triggerMode,
     required this.useVirtualIoOnTrigger,
+    required this.useDioTriggerPortWithVirtualIo,
     required this.plcLinkEnabled,
     required this.ethernetIpEnabled,
     required this.plcCommandEnabled,

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../models/form/form_state.dart';
+import '../../utils/code_trigger_helpers.dart';
+import 'form_tab_constants.dart';
 
 /// `updateSignalDataFromChartData()` で行っている「信号→各TextEditingControllerへの割当」を整理するヘルパー。
 ///
@@ -170,6 +172,21 @@ class FormTabControllerMapper {
     return targetIndex;
   }
 
+  /// チャート専用または Code Trigger 自動命名の信号はコントローラーへ割り当てない
+  static bool shouldSkipChartToControllerAssignment({
+    required TimingFormState formState,
+    required String name,
+  }) {
+    if (name == SignalNames.codeOption || name == SignalNames.commandOption) {
+      return true;
+    }
+    if (formState.triggerOption == TriggerOptions.code &&
+        CodeTriggerHelpers.isCodeBitName(name, formState.inputCount)) {
+      return true;
+    }
+    return false;
+  }
+
   static void assignInputSignal({
     required TimingFormState formState,
     required String name,
@@ -180,6 +197,10 @@ class FormTabControllerMapper {
     required String contactInputWaitingName,
     required int contactInputWaitingIndex32,
   }) {
+    if (shouldSkipChartToControllerAssignment(formState: formState, name: name)) {
+      return;
+    }
+
     // PLC/EIP入力として既存にある場合は PLC/EIP 側へ戻す
     if (existingPlcInputMap.containsKey(name)) {
       final plcTargetIndex = existingPlcInputMap[name]!;

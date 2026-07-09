@@ -5,6 +5,10 @@ class TimingFormState {
   final int camera;
   final int inputCount;
   final int outputCount;
+  /// Code Trigger の Control/Group/Task を PLC/EIP 側で表現する
+  final bool codeTriggerOnPlcEip;
+  /// UseDioTriggerPort_with_VirtualIO=1（Code 時はトリガを DIO1 に置く）
+  final bool useDioTriggerPortWithVirtualIo;
 
   const TimingFormState({
     required this.triggerOption,
@@ -13,6 +17,8 @@ class TimingFormState {
     required this.camera,
     required this.inputCount,
     required this.outputCount,
+    this.codeTriggerOnPlcEip = false,
+    this.useDioTriggerPortWithVirtualIo = false,
   });
 
   TimingFormState copyWith({
@@ -22,6 +28,8 @@ class TimingFormState {
     int? camera,
     int? inputCount,
     int? outputCount,
+    bool? codeTriggerOnPlcEip,
+    bool? useDioTriggerPortWithVirtualIo,
   }) {
     return TimingFormState(
       triggerOption: triggerOption ?? this.triggerOption,
@@ -30,6 +38,11 @@ class TimingFormState {
       camera: camera ?? this.camera,
       inputCount: inputCount ?? this.inputCount,
       outputCount: outputCount ?? this.outputCount,
+      codeTriggerOnPlcEip:
+          codeTriggerOnPlcEip ?? this.codeTriggerOnPlcEip,
+      useDioTriggerPortWithVirtualIo:
+          useDioTriggerPortWithVirtualIo ??
+          this.useDioTriggerPortWithVirtualIo,
     );
   }
 }

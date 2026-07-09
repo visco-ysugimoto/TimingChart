@@ -31,8 +31,18 @@ class FormTabRules {
     required String triggerOption,
     required int inputCount,
     required int index,
+    bool codeTriggerOnPlcEip = false,
+    bool isPlcEipChannel = false,
   }) {
     if (triggerOption != TriggerOptions.code) return SignalType.input;
+
+    if (codeTriggerOnPlcEip) {
+      // CODE_OPTION を PLC/EIP で表現: DIO 側はロックしない
+      if (!isPlcEipChannel) return SignalType.input;
+    } else {
+      // 従来: DIO 側で Code 領域をロック、PLI/ESI 側はロックしない
+      if (isPlcEipChannel) return SignalType.input;
+    }
 
     if (inputCount >= FormTabConstants.maxInputPorts) {
       if (index >= FormTabConstants.codeTrigger32ControlStart &&
@@ -73,8 +83,16 @@ class FormTabRules {
     required String triggerOption,
     required int inputCount,
     required int index,
+    bool codeTriggerOnPlcEip = false,
+    bool isPlcEipChannel = false,
   }) {
     if (triggerOption != TriggerOptions.code) return true;
+
+    if (codeTriggerOnPlcEip) {
+      if (!isPlcEipChannel) return true;
+    } else {
+      if (isPlcEipChannel) return true;
+    }
 
     if (inputCount >= FormTabConstants.maxInputPorts) {
       return index == 0 || index > FormTabConstants.codeTrigger32TaskEnd;

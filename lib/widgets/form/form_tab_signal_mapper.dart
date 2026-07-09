@@ -144,8 +144,9 @@ class FormTabSignalMapper {
     required List<TextEditingController> plcEipInputControllers,
     required String plcEipOption,
     required List<bool> inputVisibility,
-    required SignalType Function(int index) inferSignalType,
-    required bool Function(int index) inferVisibility,
+    required SignalType Function(int index, {bool isPlcEipChannel})
+        inferSignalType,
+    required bool Function(int index, {bool isPlcEipChannel}) inferVisibility,
     required Map<String, List<int>> prevPortValues,
     required Map<String, List<int>> prevValueMap,
     required int defaultWaveLength,
@@ -167,9 +168,9 @@ class FormTabSignalMapper {
 
         inputSignalMap[i] = SignalData(
           name: name,
-          signalType: inferSignalType(i),
+          signalType: inferSignalType(i, isPlcEipChannel: false),
           values: values,
-          isVisible: inferVisibility(i),
+          isVisible: inferVisibility(i, isPlcEipChannel: false),
         );
       }
     }
@@ -192,9 +193,10 @@ class FormTabSignalMapper {
           );
           inputSignalMap[key] = SignalData(
             name: name,
-            signalType: SignalType.input,
+            signalType: inferSignalType(i, isPlcEipChannel: true),
             values: values,
-            isVisible: i < inputVisibility.length ? inputVisibility[i] : true,
+            isVisible:
+                inferVisibility(i, isPlcEipChannel: true),
           );
         }
       }

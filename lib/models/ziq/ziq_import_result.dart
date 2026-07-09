@@ -16,6 +16,8 @@ class ZiqImportResult {
   final List<OutputAssignment> plcEipOutputAssignments;
   final String plcEipOption;
   final String triggerOption;
+  final bool codeTriggerOnPlcEip;
+  final bool useDioTriggerPortWithVirtualIo;
   final int? inputPorts;
   final int? outputPorts;
   final List<SignalData> chartSignals;
@@ -35,6 +37,8 @@ class ZiqImportResult {
     required this.plcEipOutputAssignments,
     required this.plcEipOption,
     required this.triggerOption,
+    this.codeTriggerOnPlcEip = false,
+    this.useDioTriggerPortWithVirtualIo = false,
     this.inputPorts,
     this.outputPorts,
     required this.chartSignals,
@@ -43,4 +47,3 @@ class ZiqImportResult {
     required this.stepDurationsMs,
   });
 }
-

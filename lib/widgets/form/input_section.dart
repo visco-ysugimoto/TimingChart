@@ -10,8 +10,8 @@ class InputSection extends StatelessWidget {
   final List<bool> visibilityList;
   final Function(int) onVisibilityChanged;
   final String triggerOption;
-  // Inputポート数（総数）
-  // これまでは ioPort で保持していたが、Input/Output 分割に伴い count を直接使用
+  final bool codeTriggerOnPlcEip;
+  final bool isPlcEipChannel;
 
   const InputSection({
     super.key,
@@ -20,6 +20,8 @@ class InputSection extends StatelessWidget {
     required this.visibilityList,
     required this.onVisibilityChanged,
     required this.triggerOption,
+    this.codeTriggerOnPlcEip = false,
+    this.isPlcEipChannel = false,
   });
 
   // SignalTypeを取得する関数
@@ -28,6 +30,8 @@ class InputSection extends StatelessWidget {
       triggerOption: triggerOption,
       inputCount: count,
       index: index,
+      codeTriggerOnPlcEip: codeTriggerOnPlcEip,
+      isPlcEipChannel: isPlcEipChannel,
     );
   }
 

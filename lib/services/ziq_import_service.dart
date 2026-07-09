@@ -10,6 +10,7 @@ import '../models/chart/io_channel_source.dart';
 import '../models/form/form_state.dart';
 import '../utils/vxvismgr_parser.dart';
 import '../utils/vxvismgr_mapping_loader.dart';
+import '../utils/code_trigger_helpers.dart';
 import '../utils/csv_io_log_parser.dart';
 import '../utils/compute_workers.dart';
 import '../providers/form_controllers_notifier.dart';
@@ -43,7 +44,13 @@ class ZiqImportService {
     final fnlCsvContent = files['FNL_DioMonitorLog.csv'];
 
     // INIファイルの解析
-    final iniResult = _parseIniFile(iniContent, mapping, currentFormState);
+    final iniResult = _parseIniFile(
+      iniContent,
+      mapping,
+      currentFormState,
+      hasPlcCsv: plcCsvContent != null && plcCsvContent.isNotEmpty,
+      hasEipCsv: fnlCsvContent != null && fnlCsvContent.isNotEmpty,
+    );
 
     // CSVファイルの処理とチャートデータの構築
     final chartData = await _processCsvFiles(
@@ -68,6 +75,8 @@ class ZiqImportService {
       plcEipOutputAssignments: iniResult.plcEipOutputAssignments,
       plcEipOption: iniResult.plcEipOption,
       triggerOption: iniResult.triggerOption,
+      codeTriggerOnPlcEip: iniResult.codeTriggerOnPlcEip,
+      useDioTriggerPortWithVirtualIo: iniResult.useDioTriggerPortWithVirtualIo,
       inputPorts: iniResult.inputPorts,
       outputPorts: iniResult.outputPorts,
       chartSignals: chartData.signals,
@@ -81,8 +90,10 @@ class ZiqImportService {
   static _IniParseResult _parseIniFile(
     String? iniContent,
     Map<String, String> mapping,
-    TimingFormState currentFormState,
-  ) {
+    TimingFormState currentFormState, {
+    bool hasPlcCsv = false,
+    bool hasEipCsv = false,
+  }) {
     if (iniContent == null) {
       return _IniParseResult(
         enabledStatusSignals: [],
@@ -94,6 +105,8 @@ class ZiqImportService {
         inputPorts: null,
         outputPorts: null,
         shutdownMonitor: false,
+        codeTriggerOnPlcEip: false,
+        useDioTriggerPortWithVirtualIo: false,
       );
     }
 
@@ -120,11 +133,7 @@ class ZiqImportService {
       } else if (ioSetting.ethernetIpEnabled) {
         plcEipOption = 'EIP';
       } else if (ioSetting.useVirtualIoOnTrigger == 1) {
-        if (ioSetting.plcLinkEnabled) {
-          plcEipOption = 'PLC';
-        } else if (ioSetting.ethernetIpEnabled) {
-          plcEipOption = 'EIP';
-        }
+        plcEipOption = 'PLC';
       }
 
       final bool isPlcCommand =
@@ -138,6 +147,19 @@ class ZiqImportService {
             ioSetting.triggerMode == 0 ? 'Code Trigger' : 'Single Trigger';
       }
     }
+
+    if (triggerOption == 'Code Trigger' && plcEipOption == 'None') {
+      if (hasPlcCsv) {
+        plcEipOption = 'PLC';
+      } else if (hasEipCsv) {
+        plcEipOption = 'EIP';
+      }
+    }
+
+    final bool useDioTriggerPortWithVirtualIo =
+        ioSetting?.useDioTriggerPortWithVirtualIo == 1;
+    final bool codeTriggerOnPlcEip =
+        triggerOption == 'Code Trigger' && plcEipOption != 'None';
 
     // 出力割り当ての作成
     final dioOutputAssignments = <OutputAssignment>[];
@@ -182,6 +204,8 @@ class ZiqImportService {
       inputPorts: inputPorts,
       outputPorts: outputPorts,
       shutdownMonitor: shutdownMonitor,
+      codeTriggerOnPlcEip: codeTriggerOnPlcEip,
+      useDioTriggerPortWithVirtualIo: useDioTriggerPortWithVirtualIo,
     );
   }
 
@@ -398,10 +422,31 @@ class ZiqImportService {
       }
     }
 
-    // Code Triggerの場合、最初の入力コントローラーに'TRIGGER'を設定
-    if (iniResult.triggerOption == 'Code Trigger' &&
+    // トリガー / Code Trigger 入力名の設定
+    final dioInputCount =
+        iniResult.inputPorts ?? currentFormState.inputCount;
+    if (iniResult.triggerOption == 'Single Trigger' &&
         inputControllers.isNotEmpty) {
-      controllersNotifier.setInputText(0, 'TRIGGER');
+      controllersNotifier.setInputText(0, SignalNames.trigger);
+    } else if (iniResult.triggerOption == 'Code Trigger') {
+      if (iniResult.codeTriggerOnPlcEip) {
+        for (final idx in CodeTriggerHelpers.codeBitIndices(dioInputCount)) {
+          if (idx >= plcEipInputControllers.length) continue;
+          final name = CodeTriggerHelpers.nameForIndex(idx, dioInputCount);
+          if (name != null) {
+            plcEipInputControllers[idx].text = name;
+          }
+        }
+        if (iniResult.useDioTriggerPortWithVirtualIo) {
+          if (inputControllers.isNotEmpty) {
+            controllersNotifier.setInputText(0, SignalNames.trigger);
+          }
+        } else if (plcEipInputControllers.isNotEmpty) {
+          plcEipInputControllers[0].text = SignalNames.trigger;
+        }
+      } else if (inputControllers.isNotEmpty) {
+        controllersNotifier.setInputText(0, SignalNames.trigger);
+      }
     }
 
     // ShutdownMonitor=1 の場合、DIO最終入力ポートにシステム起動保持信号を強制設定
@@ -722,15 +767,39 @@ class ZiqImportService {
     final combinedNames = <String>[];
     final combinedTypes = <SignalType>[];
 
+    List<int>? synthesizedCodeOption;
+    if (iniResult.codeTriggerOnPlcEip &&
+        iniResult.triggerOption == 'Code Trigger' &&
+        iniResult.plcEipOption != 'None') {
+      final source = iniResult.plcEipOption == 'PLC' ? 'PLC' : 'EIP';
+      final bitSeries = <List<int>>[];
+      for (final idx0 in CodeTriggerHelpers.codeBitIndices(dioInputCount)) {
+        bitSeries.add(
+          _readInputSeriesFromTimeline(
+            timeline: timeline,
+            timeLength: timeLength,
+            source: source,
+            port1Based: idx0 + 1,
+          ),
+        );
+      }
+      synthesizedCodeOption =
+          CodeTriggerHelpers.synthesizeCodeOptionWave(bitSeries);
+    }
+
     // CODE_OPTIONの処理
-    int idxCode = inNames.indexOf('CODE_OPTION');
+    int idxCode = inNames.indexOf(SignalNames.codeOption);
     if (idxCode != -1) {
       combinedNames.add(inNames[idxCode]);
       combinedTypes.add(inTypes[idxCode]);
       combinedValues.add(inChart[idxCode]);
+    } else if (synthesizedCodeOption != null) {
+      combinedNames.add(SignalNames.codeOption);
+      combinedTypes.add(SignalType.input);
+      combinedValues.add(synthesizedCodeOption);
     } else {
       if (iniResult.triggerOption == 'Code Trigger') {
-        combinedNames.add('CODE_OPTION');
+        combinedNames.add(SignalNames.codeOption);
         combinedTypes.add(SignalType.input);
         combinedValues.add(List<int>.filled(timeLength, 0));
       }
@@ -747,7 +816,12 @@ class ZiqImportService {
     // その他の入力信号の追加
     for (int i = 0; i < inNames.length; i++) {
       if (i == idxCode || i == idxCmd) continue;
-      combinedNames.add(inNames[i]);
+      final name = inNames[i];
+      if (iniResult.triggerOption == 'Code Trigger' &&
+          CodeTriggerHelpers.isCodeBitName(name, dioInputCount)) {
+        continue;
+      }
+      combinedNames.add(name);
       combinedTypes.add(inTypes[i]);
       combinedValues.add(inChart[i]);
     }
@@ -818,13 +892,16 @@ class ZiqImportService {
     final syncedPorts = <int>[];
     final syncedSources = <IoChannelSource>[];
 
-    final inputNameToPort = <String, int>{
-      for (int i = 0; i < inNames.length; i++) inNames[i]: i + 1,
+    final dioInputNameToPort = <String, int>{
+      for (int i = 0; i < inputControllers.length; i++)
+        if (inputControllers[i].text.trim().isNotEmpty)
+          inputControllers[i].text.trim(): i + 1,
     };
-    if (iniResult.shutdownMonitor && dioInputPortCount > 0) {
-      // DIO最終ポート番号を明示（inNames の並びによる番号ずれを防ぐ）
-      inputNameToPort[SignalNames.systemKeepRunningSignal] = dioInputPortCount;
-    }
+    final plcInputNameToPort = <String, int>{
+      for (int i = 0; i < plcEipInputControllers.length; i++)
+        if (plcEipInputControllers[i].text.trim().isNotEmpty)
+          plcEipInputControllers[i].text.trim(): i + 1,
+    };
 
     final outputNameToPort = <String, int>{};
     for (int i = 0; i < outNamesDio.length; i++) {
@@ -850,24 +927,6 @@ class ZiqImportService {
         SignalData(name: name, signalType: type, values: vals, isVisible: true),
       );
 
-      int portNum = 0;
-      switch (type) {
-        case SignalType.output:
-          portNum = outputNameToPort[name] ?? 0;
-          break;
-        case SignalType.input:
-          if (name != 'CODE_OPTION' && name != 'Command Option') {
-            portNum = inputNameToPort[name] ?? 0;
-          }
-          break;
-        case SignalType.hwTrigger:
-          portNum = hwNameToPort[name] ?? 0;
-          break;
-        default:
-          portNum = 0;
-      }
-      syncedPorts.add(portNum);
-
       IoChannelSource source;
       if (type == SignalType.output) {
         source = _mapOutSourceTag(outSource[name] ?? 'DIO');
@@ -892,6 +951,38 @@ class ZiqImportService {
         source = IoChannelSource.unknown;
       }
       syncedSources.add(source);
+
+      int portNum = 0;
+      switch (type) {
+        case SignalType.output:
+          portNum = outputNameToPort[name] ?? 0;
+          break;
+        case SignalType.input:
+          if (name != SignalNames.codeOption &&
+              name != SignalNames.commandOption) {
+            switch (source) {
+              case IoChannelSource.plc:
+              case IoChannelSource.eip:
+                portNum = plcInputNameToPort[name] ?? 0;
+                break;
+              case IoChannelSource.dio:
+                portNum = dioInputNameToPort[name] ?? 0;
+                break;
+              default:
+                portNum =
+                    dioInputNameToPort[name] ??
+                    plcInputNameToPort[name] ??
+                    0;
+            }
+          }
+          break;
+        case SignalType.hwTrigger:
+          portNum = hwNameToPort[name] ?? 0;
+          break;
+        default:
+          portNum = 0;
+      }
+      syncedPorts.add(portNum);
     }
 
     debugPrint(
@@ -904,6 +995,27 @@ class ZiqImportService {
       ioSources: syncedSources,
       stepDurationsMs: stepDurationsMs,
     );
+  }
+
+  /// CSV タイムラインから入力ポート系列を読み取る
+  static List<int> _readInputSeriesFromTimeline({
+    required CsvTimeline timeline,
+    required int timeLength,
+    required String source,
+    required int port1Based,
+  }) {
+    final series = List.filled(timeLength, 0);
+    for (int t = 0; t < timeLength; t++) {
+      final e = timeline.entries[t];
+      if (e.type == 'IN' && e.source == source) {
+        final row = e.bits;
+        final col = row.length - port1Based;
+        if (col >= 0 && col < row.length) {
+          series[t] = row[col] != 0 ? 1 : 0;
+        }
+      }
+    }
+    return series;
   }
 
   /// 出力ソースタグをIoChannelSourceにマッピング
@@ -1043,6 +1155,8 @@ class _IniParseResult {
   final int? inputPorts;
   final int? outputPorts;
   final bool shutdownMonitor;
+  final bool codeTriggerOnPlcEip;
+  final bool useDioTriggerPortWithVirtualIo;
 
   _IniParseResult({
     required this.enabledStatusSignals,
@@ -1054,6 +1168,8 @@ class _IniParseResult {
     this.inputPorts,
     this.outputPorts,
     this.shutdownMonitor = false,
+    this.codeTriggerOnPlcEip = false,
+    this.useDioTriggerPortWithVirtualIo = false,
   });
 }
 

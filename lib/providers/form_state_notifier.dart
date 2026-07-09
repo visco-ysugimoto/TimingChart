@@ -30,6 +30,8 @@ class FormStateNotifier extends ChangeNotifier {
     int? camera,
     int? inputCount,
     int? outputCount,
+    bool? codeTriggerOnPlcEip,
+    bool? useDioTriggerPortWithVirtualIo,
   }) {
     _state = _state.copyWith(
       triggerOption: triggerOption,
@@ -38,6 +40,8 @@ class FormStateNotifier extends ChangeNotifier {
       camera: camera,
       inputCount: inputCount,
       outputCount: outputCount,
+      codeTriggerOnPlcEip: codeTriggerOnPlcEip,
+      useDioTriggerPortWithVirtualIo: useDioTriggerPortWithVirtualIo,
     );
     notifyListeners();
   }
