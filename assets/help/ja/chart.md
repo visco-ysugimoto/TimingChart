@@ -29,9 +29,4 @@
 
 ## 画像 / 動画について（将来拡張）
 
-このヘルプは Markdown で管理しています。将来的に、次のような埋め込みも可能にする想定です。
-
-- 画像（assets 例）: `![説明](assets/help/media/example.png)`
-- 動画（拡張記法・例）:
-
 :::video assets/help/media/example.mp4

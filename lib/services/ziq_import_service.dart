@@ -7,6 +7,7 @@ import '../models/ziq/output_assignment.dart';
 import '../models/chart/signal_data.dart';
 import '../models/chart/signal_type.dart';
 import '../models/chart/io_channel_source.dart';
+import '../models/chart/timing_chart_annotation.dart';
 import '../models/form/form_state.dart';
 import '../utils/vxvismgr_parser.dart';
 import '../utils/vxvismgr_mapping_loader.dart';
@@ -83,6 +84,7 @@ class ZiqImportService {
       chartPortNumbers: chartData.portNumbers,
       chartIoSources: chartData.ioSources,
       stepDurationsMs: chartData.stepDurationsMs,
+      chartAnnotations: chartData.annotations,
     );
   }
 
@@ -237,6 +239,7 @@ class ZiqImportService {
         portNumbers: [],
         ioSources: [],
         stepDurationsMs: [],
+        annotations: const [],
       );
     }
 
@@ -264,6 +267,7 @@ class ZiqImportService {
       portNumbers: chartData.portNumbers,
       ioSources: chartData.ioSources,
       stepDurationsMs: stepDurationsMs,
+      annotations: chartData.annotations,
     );
   }
 
@@ -284,6 +288,7 @@ class ZiqImportService {
         portNumbers: [],
         ioSources: [],
         stepDurationsMs: stepDurationsMs,
+        annotations: const [],
       );
     }
 
@@ -768,12 +773,14 @@ class ZiqImportService {
     final combinedTypes = <SignalType>[];
 
     List<int>? synthesizedCodeOption;
+    var codeBitAnnotations = <TimingChartAnnotation>[];
     if (iniResult.codeTriggerOnPlcEip &&
         iniResult.triggerOption == 'Code Trigger' &&
         iniResult.plcEipOption != 'None') {
       final source = iniResult.plcEipOption == 'PLC' ? 'PLC' : 'EIP';
+      final bitIndices = CodeTriggerHelpers.codeBitIndices(dioInputCount);
       final bitSeries = <List<int>>[];
-      for (final idx0 in CodeTriggerHelpers.codeBitIndices(dioInputCount)) {
+      for (final idx0 in bitIndices) {
         bitSeries.add(
           _readInputSeriesFromTimeline(
             timeline: timeline,
@@ -783,8 +790,20 @@ class ZiqImportService {
           ),
         );
       }
+      // 同ビット間のチャート上のゼロ挟みを埋め、連続 High として扱う
+      CodeTriggerHelpers.fillSameCodeGaps(
+        indices: bitIndices,
+        bitSeries: bitSeries,
+        inputCount: dioInputCount,
+      );
+      // 個別ビット系列を保持したまま OR 合成し、変化点コメントも生成する
       synthesizedCodeOption =
           CodeTriggerHelpers.synthesizeCodeOptionWave(bitSeries);
+      codeBitAnnotations = CodeTriggerHelpers.buildCodeBitChangeAnnotations(
+        indices: bitIndices,
+        bitSeries: bitSeries,
+        inputCount: dioInputCount,
+      );
     }
 
     // CODE_OPTIONの処理
@@ -994,6 +1013,7 @@ class ZiqImportService {
       portNumbers: syncedPorts,
       ioSources: syncedSources,
       stepDurationsMs: stepDurationsMs,
+      annotations: codeBitAnnotations,
     );
   }
 
@@ -1179,11 +1199,13 @@ class _ChartDataResult {
   final List<int> portNumbers;
   final List<IoChannelSource> ioSources;
   final List<double> stepDurationsMs;
+  final List<TimingChartAnnotation> annotations;
 
   _ChartDataResult({
     required this.signals,
     required this.portNumbers,
     required this.ioSources,
     required this.stepDurationsMs,
+    this.annotations = const [],
   });
 }

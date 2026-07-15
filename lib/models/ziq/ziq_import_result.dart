@@ -1,5 +1,6 @@
 import '../chart/signal_data.dart';
 import '../chart/io_channel_source.dart';
+import '../chart/timing_chart_annotation.dart';
 import 'output_assignment.dart';
 import '../../utils/vxvismgr_parser.dart';
 
@@ -24,6 +25,8 @@ class ZiqImportResult {
   final List<int> chartPortNumbers;
   final List<IoChannelSource> chartIoSources;
   final List<double> stepDurationsMs;
+  /// Code Trigger 時の個別ビット変化コメント（空の場合もあり）
+  final List<TimingChartAnnotation> chartAnnotations;
 
   const ZiqImportResult({
     required this.vxVisMgrIniContent,
@@ -45,5 +48,6 @@ class ZiqImportResult {
     required this.chartPortNumbers,
     required this.chartIoSources,
     required this.stepDurationsMs,
+    this.chartAnnotations = const [],
   });
 }

@@ -21,7 +21,7 @@
 | Feature | Description |
 | --- | --- |
 | **Import** | Load a saved JSON configuration |
-| **Import (.ziq)** | Restore form and chart from measurement ZIP |
+| **Import (.ziq)** | Restore form and chart from measurement ZIQ |
 | **Export** | Save the current configuration as JSON |
 
 ## Tips

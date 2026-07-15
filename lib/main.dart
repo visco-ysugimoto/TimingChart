@@ -1471,6 +1471,16 @@ class _TimingChartGeneratorHomePageState
                     _chartController.setSignals(signalValues);
                   }
 
+                  // Code Trigger 個別ビット変化コメントを適用
+                  _chartAnnotations =
+                      List<TimingChartAnnotation>.from(result.chartAnnotations);
+                  _chartController.setAnnotations(_chartAnnotations);
+                  if (_timingChartKey.currentState != null) {
+                    _timingChartKey.currentState!.updateAnnotations(
+                      _chartAnnotations,
+                    );
+                  }
+
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     if (mounted) {
                       _chartController.requestGridRecompute();
