@@ -13,6 +13,8 @@
 | Action | Effect |
 | --- | --- |
 | **Ctrl / Cmd + Wheel** | Zoom in/out (cursor-centered) |
+| **Scrollbar at the bottom** | Appears when zoomed in; drag the thumb to pan horizontally |
+| **Eye icon** | Show / hide the scrollbar |
 | **Ctrl / Cmd + Z** | Undo |
 | **Ctrl / Cmd + Y** | Redo |
 | **Ctrl / Cmd + A** | Select all |

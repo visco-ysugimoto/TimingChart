@@ -316,10 +316,7 @@ class TimingChartState extends State<TimingChart>
     if (_measuredTopCommentAreaHeight != null &&
         _measuredTopCommentAreaHeight!.isFinite &&
         _measuredTopCommentAreaHeight! > 0) {
-      return math.min(
-        _measuredTopCommentAreaHeight!,
-        _maxTopCommentAreaHeight,
-      );
+      return math.min(_measuredTopCommentAreaHeight!, _maxTopCommentAreaHeight);
     }
     // 初回など実測前は件数ベースで概算
     final int topCount = annotations.where((a) => a.placement == 'top').length;
@@ -342,9 +339,7 @@ class TimingChartState extends State<TimingChart>
       if (!mounted) return;
       setState(() {
         _measuredTopCommentAreaHeight =
-            height <= 0
-                ? null
-                : math.min(height, _maxTopCommentAreaHeight);
+            height <= 0 ? null : math.min(height, _maxTopCommentAreaHeight);
       });
     });
   }
@@ -415,6 +410,9 @@ class TimingChartState extends State<TimingChart>
 
   /// チャートコンテンツの垂直スクロールコントローラー
   final ScrollController _vScrollController = ScrollController();
+
+  /// 水平スクロールバーを表示するかどうか
+  bool _showHorizontalScrollbar = true;
 
   /// ステップ継続時間編集モードがアクティブかどうか
   bool _isEditingSteps = false;
@@ -1193,8 +1191,7 @@ class TimingChartState extends State<TimingChart>
                     decoration: BoxDecoration(
                       color: Colors.grey.shade200,
                       border: Border.all(
-                        color:
-                            selected.a == 0 ? Colors.black : Colors.black26,
+                        color: selected.a == 0 ? Colors.black : Colors.black26,
                         width: selected.a == 0 ? 2 : 1,
                       ),
                       borderRadius: BorderRadius.circular(6),
@@ -1292,7 +1289,10 @@ class TimingChartState extends State<TimingChart>
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(labelName, style: Theme.of(context).textTheme.titleSmall),
+                    Text(
+                      labelName,
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
                     const SizedBox(height: 12),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
@@ -1350,9 +1350,12 @@ class TimingChartState extends State<TimingChart>
         ann.dashedLineColorValue ?? Colors.black.toARGB32();
     int arrowColorValue = ann.arrowColorValue ?? Colors.blue.toARGB32();
     double maxWidth =
-        (ann.maxWidth != null && ann.maxWidth!.isFinite) ? ann.maxWidth! : 120.0;
+        (ann.maxWidth != null && ann.maxWidth!.isFinite)
+            ? ann.maxWidth!
+            : 120.0;
     // 0 = 無制限として扱う（スライダーの最小値を0に割り当て）
-    int maxLines = (ann.maxLines != null && ann.maxLines! > 0) ? ann.maxLines! : 0;
+    int maxLines =
+        (ann.maxLines != null && ann.maxLines! > 0) ? ann.maxLines! : 0;
     bool ellipsisEnabled = ann.ellipsisEnabled ?? true;
 
     final bool prevCanRequest = _focusNode.canRequestFocus;
@@ -1538,9 +1541,7 @@ class TimingChartState extends State<TimingChart>
                     SizedBox(
                       width: 34,
                       child: Text(
-                        maxLines <= 0
-                            ? '∞'
-                            : maxLines.toString(),
+                        maxLines <= 0 ? '∞' : maxLines.toString(),
                         textAlign: TextAlign.right,
                       ),
                     ),
@@ -1551,9 +1552,8 @@ class TimingChartState extends State<TimingChart>
                   onChanged:
                       maxLines <= 0
                           ? null
-                          : (v) => setLocalState(
-                            () => ellipsisEnabled = v ?? true,
-                          ),
+                          : (v) =>
+                              setLocalState(() => ellipsisEnabled = v ?? true),
                   title: Text(s.comment_properties_ellipsis),
                   controlAffinity: ListTileControlAffinity.leading,
                   contentPadding: EdgeInsets.zero,
@@ -2283,124 +2283,137 @@ class TimingChartState extends State<TimingChart>
                   onPanDown: isEditingMode ? null : _onPanDown,
                   onSecondaryTapDown:
                       isEditingMode ? null : _onSecondaryTapDown,
-                  child: SingleChildScrollView(
+                  child: Scrollbar(
                     controller: _hScrollController,
-                    scrollDirection: Axis.horizontal,
-                    physics:
-                        (isEditingMode ||
-                                _draggingAnnotationId != null ||
-                                _isModifierPressed)
-                            ? const NeverScrollableScrollPhysics()
-                            : null,
+                    thumbVisibility:
+                        _showHorizontalScrollbar &&
+                        layoutData.effectiveZoomFactor > 1.0 + 0.001,
+                    trackVisibility:
+                        _showHorizontalScrollbar &&
+                        layoutData.effectiveZoomFactor > 1.0 + 0.001,
+                    interactive: true,
+                    scrollbarOrientation: ScrollbarOrientation.bottom,
                     child: SingleChildScrollView(
-                      controller: _vScrollController,
-                      scrollDirection: Axis.vertical,
-                      physics: const NeverScrollableScrollPhysics(),
-                      clipBehavior: Clip.none,
-                      child: RepaintBoundary(
-                        key: _repaintBoundaryKey,
-                        child: CustomPaint(
-                          key: _customPaintKey,
-                          isComplex: true,
-                          willChange: true,
-                          size: Size(
-                            layoutData.totalWidth,
-                            layoutData.totalHeight,
-                          ),
-                          painter: _StepTimingChartPainter(
-                            signals: visibleSignals,
-                            signalNames: visibleSignalNames,
-                            signalTypes: visibleSignalTypes,
-                            annotations: annotations,
-                            cellWidth: layoutData.cellWidth,
-                            cellHeight: layoutData.cellHeight,
-                            labelWidth: labelWidth,
-                            commentAreaHeight: layoutData.commentAreaHeight,
-                            topCommentAreaHeight:
-                                layoutData.topCommentAreaHeight,
-                            chartMarginLeft: chartMarginLeft,
-                            chartMarginTop: chartMarginTop,
-                            startSignalIndex:
-                                isEditingMode ? null : _startSignalIndex,
-                            endSignalIndex:
-                                isEditingMode ? null : _endSignalIndex,
-                            startTimeIndex:
-                                isEditingMode ? null : _startTimeIndex,
-                            endTimeIndex: isEditingMode ? null : _endTimeIndex,
-                            highlightTimeIndices:
-                                isEditingMode
-                                    ? const []
-                                    : _highlightTimeIndices,
-                            omissionTimeIndices: _omissionTimeIndices,
-                            selectedAnnotationId:
-                                isEditingMode ? null : _selectedAnnotationId,
-                            annotationRects: _annotationHitRects,
-                            showAllSignalTypes: widget.showAllSignalTypes,
-                            showIoNumbers: widget.showIoNumbers,
-                            portNumbers: visiblePortNumbers,
-                            timeUnitIsMs: settings.timeUnitIsMs,
-                            msPerStep: settings.msPerStep,
-                            stepDurationsMs: _durationsForLayout(settingsRW),
-                            activeStepIndex:
-                                (settings.timeUnitIsMs && isEditingMode)
-                                    ? _activeStepIndex
-                                    : null,
-                            showBottomUnitLabels:
-                                Provider.of<SettingsNotifier>(
-                                  context,
-                                ).showBottomUnitLabels,
-                            labelColor:
-                                Theme.of(context).brightness == Brightness.dark
-                                    ? Colors.white
-                                    : Colors.black,
-                            dashedColor:
-                                Theme.of(context).brightness ==
-                                            Brightness.dark &&
-                                        Provider.of<SettingsNotifier>(
-                                              context,
-                                            ).commentDashedColor ==
-                                            Colors.black
-                                    ? Colors.white
-                                    : Provider.of<SettingsNotifier>(
-                                      context,
-                                    ).commentDashedColor,
-                            arrowColor:
-                                Theme.of(context).brightness ==
-                                            Brightness.dark &&
-                                        Provider.of<SettingsNotifier>(
-                                              context,
-                                            ).commentArrowColor ==
-                                            Colors.black
-                                    ? Colors.white
-                                    : Provider.of<SettingsNotifier>(
-                                      context,
-                                    ).commentArrowColor,
-                            omissionColor:
-                                Theme.of(context).brightness ==
-                                            Brightness.dark &&
-                                        Provider.of<SettingsNotifier>(
-                                              context,
-                                            ).omissionLineColor ==
-                                            Colors.black
-                                    ? Colors.white
-                                    : Provider.of<SettingsNotifier>(
-                                      context,
-                                    ).omissionLineColor,
-                            omissionFillColor:
-                                Theme.of(context).scaffoldBackgroundColor,
-                            signalColors:
-                                Provider.of<SettingsNotifier>(
-                                  context,
-                                ).signalColors,
-                            onCommentAreaMeasured: _onCommentAreaMeasured,
-                            onTopCommentAreaMeasured:
-                                _onTopCommentAreaMeasured,
-                            draggingAnnotationId:
-                                isEditingMode ? null : _draggingAnnotationId,
-                            draggingStartRow:
-                                isEditingMode ? null : _labelDragStartRow,
-                            draggingCurrentRow:
-                                isEditingMode ? null : _labelDragCurrentRow,
+                      controller: _hScrollController,
+                      scrollDirection: Axis.horizontal,
+                      physics:
+                          (isEditingMode ||
+                                  _draggingAnnotationId != null ||
+                                  _isModifierPressed)
+                              ? const NeverScrollableScrollPhysics()
+                              : null,
+                      child: SingleChildScrollView(
+                        controller: _vScrollController,
+                        scrollDirection: Axis.vertical,
+                        physics: const NeverScrollableScrollPhysics(),
+                        clipBehavior: Clip.none,
+                        child: RepaintBoundary(
+                          key: _repaintBoundaryKey,
+                          child: CustomPaint(
+                            key: _customPaintKey,
+                            isComplex: true,
+                            willChange: true,
+                            size: Size(
+                              layoutData.totalWidth,
+                              layoutData.totalHeight,
+                            ),
+                            painter: _StepTimingChartPainter(
+                              signals: visibleSignals,
+                              signalNames: visibleSignalNames,
+                              signalTypes: visibleSignalTypes,
+                              annotations: annotations,
+                              cellWidth: layoutData.cellWidth,
+                              cellHeight: layoutData.cellHeight,
+                              labelWidth: labelWidth,
+                              commentAreaHeight: layoutData.commentAreaHeight,
+                              topCommentAreaHeight:
+                                  layoutData.topCommentAreaHeight,
+                              chartMarginLeft: chartMarginLeft,
+                              chartMarginTop: chartMarginTop,
+                              startSignalIndex:
+                                  isEditingMode ? null : _startSignalIndex,
+                              endSignalIndex:
+                                  isEditingMode ? null : _endSignalIndex,
+                              startTimeIndex:
+                                  isEditingMode ? null : _startTimeIndex,
+                              endTimeIndex:
+                                  isEditingMode ? null : _endTimeIndex,
+                              highlightTimeIndices:
+                                  isEditingMode
+                                      ? const []
+                                      : _highlightTimeIndices,
+                              omissionTimeIndices: _omissionTimeIndices,
+                              selectedAnnotationId:
+                                  isEditingMode ? null : _selectedAnnotationId,
+                              annotationRects: _annotationHitRects,
+                              showAllSignalTypes: widget.showAllSignalTypes,
+                              showIoNumbers: widget.showIoNumbers,
+                              portNumbers: visiblePortNumbers,
+                              timeUnitIsMs: settings.timeUnitIsMs,
+                              msPerStep: settings.msPerStep,
+                              stepDurationsMs: _durationsForLayout(settingsRW),
+                              activeStepIndex:
+                                  (settings.timeUnitIsMs && isEditingMode)
+                                      ? _activeStepIndex
+                                      : null,
+                              showBottomUnitLabels:
+                                  Provider.of<SettingsNotifier>(
+                                    context,
+                                  ).showBottomUnitLabels,
+                              labelColor:
+                                  Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? Colors.white
+                                      : Colors.black,
+                              dashedColor:
+                                  Theme.of(context).brightness ==
+                                              Brightness.dark &&
+                                          Provider.of<SettingsNotifier>(
+                                                context,
+                                              ).commentDashedColor ==
+                                              Colors.black
+                                      ? Colors.white
+                                      : Provider.of<SettingsNotifier>(
+                                        context,
+                                      ).commentDashedColor,
+                              arrowColor:
+                                  Theme.of(context).brightness ==
+                                              Brightness.dark &&
+                                          Provider.of<SettingsNotifier>(
+                                                context,
+                                              ).commentArrowColor ==
+                                              Colors.black
+                                      ? Colors.white
+                                      : Provider.of<SettingsNotifier>(
+                                        context,
+                                      ).commentArrowColor,
+                              omissionColor:
+                                  Theme.of(context).brightness ==
+                                              Brightness.dark &&
+                                          Provider.of<SettingsNotifier>(
+                                                context,
+                                              ).omissionLineColor ==
+                                              Colors.black
+                                      ? Colors.white
+                                      : Provider.of<SettingsNotifier>(
+                                        context,
+                                      ).omissionLineColor,
+                              omissionFillColor:
+                                  Theme.of(context).scaffoldBackgroundColor,
+                              signalColors:
+                                  Provider.of<SettingsNotifier>(
+                                    context,
+                                  ).signalColors,
+                              onCommentAreaMeasured: _onCommentAreaMeasured,
+                              onTopCommentAreaMeasured:
+                                  _onTopCommentAreaMeasured,
+                              draggingAnnotationId:
+                                  isEditingMode ? null : _draggingAnnotationId,
+                              draggingStartRow:
+                                  isEditingMode ? null : _labelDragStartRow,
+                              draggingCurrentRow:
+                                  isEditingMode ? null : _labelDragCurrentRow,
+                            ),
                           ),
                         ),
                       ),
@@ -2550,6 +2563,8 @@ class TimingChartState extends State<TimingChart>
             label: const Text('Fit sel'),
             onPressed: canFitSelection ? _zoomToSelectionFit : null,
           ),
+          const SizedBox(width: 6),
+          _buildScrollbarToggle(),
         ],
       );
     }
@@ -2619,7 +2634,30 @@ class TimingChartState extends State<TimingChart>
           label: const Text('Fit sel'),
           onPressed: canFitSelection ? _zoomToSelectionFit : null,
         ),
+        const SizedBox(width: 6),
+        _buildScrollbarToggle(),
       ],
+    );
+  }
+
+  Widget _buildScrollbarToggle() {
+    final s = S.of(context);
+    return IconButton(
+      icon: Icon(
+        _showHorizontalScrollbar ? Icons.visibility : Icons.visibility_off,
+        size: 18,
+      ),
+      tooltip:
+          _showHorizontalScrollbar
+              ? s.chart_hide_scrollbar
+              : s.chart_show_scrollbar,
+      isSelected: _showHorizontalScrollbar,
+      visualDensity: VisualDensity.compact,
+      onPressed: () {
+        setState(() {
+          _showHorizontalScrollbar = !_showHorizontalScrollbar;
+        });
+      },
     );
   }
 
@@ -2919,6 +2957,9 @@ class TimingChartState extends State<TimingChart>
   void dispose() {
     suggestionLanguageVersion.removeListener(_langListener);
     HardwareKeyboard.instance.removeHandler(_handleModifierKeyEvent);
+    _controller?.removeListener(_controllerListener);
+    _hScrollController.dispose();
+    _vScrollController.dispose();
     _focusNode.dispose();
     super.dispose();
   }

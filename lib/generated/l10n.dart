@@ -1216,6 +1216,26 @@ class S {
       args: [],
     );
   }
+
+  /// `Show chart scrollbar`
+  String get chart_show_scrollbar {
+    return Intl.message(
+      'Show chart scrollbar',
+      name: 'chart_show_scrollbar',
+      desc: 'Tooltip for showing the horizontal chart scrollbar',
+      args: [],
+    );
+  }
+
+  /// `Hide chart scrollbar`
+  String get chart_hide_scrollbar {
+    return Intl.message(
+      'Hide chart scrollbar',
+      name: 'chart_hide_scrollbar',
+      desc: 'Tooltip for hiding the horizontal chart scrollbar',
+      args: [],
+    );
+  }
 }
 
 class AppLocalizationDelegate extends LocalizationsDelegate<S> {

@@ -33,6 +33,12 @@ class MessageLookup extends MessageLookupByLibrary {
     "chart_edit_unlock_tooltip": MessageLookupByLibrary.simpleMessage(
       "チャート編集のロックを解除",
     ),
+    "chart_hide_scrollbar": MessageLookupByLibrary.simpleMessage(
+      "チャートのスクロールバーを非表示",
+    ),
+    "chart_show_scrollbar": MessageLookupByLibrary.simpleMessage(
+      "チャートのスクロールバーを表示",
+    ),
     "color_picker_selected": MessageLookupByLibrary.simpleMessage("選択中:"),
     "color_picker_title": MessageLookupByLibrary.simpleMessage("色を選択"),
     "color_picker_transparent": MessageLookupByLibrary.simpleMessage("透明"),

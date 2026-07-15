@@ -33,6 +33,12 @@ class MessageLookup extends MessageLookupByLibrary {
     "chart_edit_unlock_tooltip": MessageLookupByLibrary.simpleMessage(
       "Unlock chart editing",
     ),
+    "chart_hide_scrollbar": MessageLookupByLibrary.simpleMessage(
+      "Hide chart scrollbar",
+    ),
+    "chart_show_scrollbar": MessageLookupByLibrary.simpleMessage(
+      "Show chart scrollbar",
+    ),
     "color_picker_selected": MessageLookupByLibrary.simpleMessage("Selected:"),
     "color_picker_title": MessageLookupByLibrary.simpleMessage("Select Color"),
     "color_picker_transparent": MessageLookupByLibrary.simpleMessage(
