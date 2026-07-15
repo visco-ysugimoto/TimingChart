@@ -48,6 +48,9 @@ import 'form_tab_rules.dart';
 import '../../utils/code_trigger_helpers.dart';
 
 class FormTab extends StatefulWidget {
+  /// Template、インポート、またはチャート編集による基準チャートが存在するか
+  final bool hasChartBaseline;
+
   /// 入力（DIO）信号名
   final List<TextEditingController> inputControllers;
 
@@ -94,6 +97,7 @@ class FormTab extends StatefulWidget {
 
   const FormTab({
     super.key,
+    required this.hasChartBaseline,
     required this.inputControllers,
     required this.plcEipInputControllers,
     required this.outputControllers,
@@ -440,9 +444,9 @@ class FormTabState extends State<FormTab>
       final isVisible = _inferVisibility(formState, i);
       final name =
           (i < widget.inputControllers.length &&
-                  widget.inputControllers[i].text.isNotEmpty)
-              ? widget.inputControllers[i].text
-              : 'Input ${i + 1}';
+              widget.inputControllers[i].text.isNotEmpty)
+          ? widget.inputControllers[i].text
+          : 'Input ${i + 1}';
 
       _signalDataList.add(
         SignalData(
@@ -461,10 +465,9 @@ class FormTabState extends State<FormTab>
             name: widget.hwTriggerControllers[i].text,
             signalType: SignalType.hwTrigger,
             values: List.filled(FormTabConstants.defaultWaveLength, 0),
-            isVisible:
-                i < _hwTriggerVisibility.length
-                    ? _hwTriggerVisibility[i]
-                    : true,
+            isVisible: i < _hwTriggerVisibility.length
+                ? _hwTriggerVisibility[i]
+                : true,
           ),
         );
       }
@@ -478,8 +481,9 @@ class FormTabState extends State<FormTab>
             name: widget.outputControllers[i].text,
             signalType: SignalType.output,
             values: List.filled(FormTabConstants.defaultWaveLength, 0),
-            isVisible:
-                i < _outputVisibility.length ? _outputVisibility[i] : true,
+            isVisible: i < _outputVisibility.length
+                ? _outputVisibility[i]
+                : true,
           ),
         );
       }
@@ -489,10 +493,9 @@ class FormTabState extends State<FormTab>
       for (int i = 0; i < formState.outputCount; i++) {
         if (i < widget.plcEipOutputControllers.length &&
             widget.plcEipOutputControllers[i].text.isNotEmpty) {
-          final base =
-              _plcEipOption == PlcEipOptions.plc
-                  ? 'PLO${i + 1}'
-                  : 'ESO${i + 1}';
+          final base = _plcEipOption == PlcEipOptions.plc
+              ? 'PLO${i + 1}'
+              : 'ESO${i + 1}';
           final user = widget.plcEipOutputControllers[i].text;
           final label = '$base: $user';
           _signalDataList.add(
@@ -500,8 +503,9 @@ class FormTabState extends State<FormTab>
               name: label,
               signalType: SignalType.output,
               values: List.filled(FormTabConstants.defaultWaveLength, 0),
-              isVisible:
-                  i < _outputVisibility.length ? _outputVisibility[i] : true,
+              isVisible: i < _outputVisibility.length
+                  ? _outputVisibility[i]
+                  : true,
             ),
           );
         }
@@ -640,8 +644,9 @@ class FormTabState extends State<FormTab>
   void _changeRowMode(int row) {
     setState(() {
       final current = _rowModes[row];
-      _rowModes[row] =
-          current == RowMode.none ? RowMode.simultaneous : RowMode.none;
+      _rowModes[row] = current == RowMode.none
+          ? RowMode.simultaneous
+          : RowMode.none;
     });
   }
 
@@ -771,8 +776,9 @@ class FormTabState extends State<FormTab>
             fallbackLength: FormTabConstants.defaultWaveLength,
           );
 
-      final List<String> prevOrder =
-          _signalDataList.map((s) => s.name).toList();
+      final List<String> prevOrder = _signalDataList
+          .map((s) => s.name)
+          .toList();
 
       final inputSignalMap = FormTabSignalMapper.buildInputSignalMap(
         formState: formState,
@@ -781,9 +787,17 @@ class FormTabState extends State<FormTab>
         plcEipOption: _plcEipOption,
         inputVisibility: _inputVisibility,
         inferSignalType: (index, {bool isPlcEipChannel = false}) =>
-            _inferSignalType(formState, index, isPlcEipChannel: isPlcEipChannel),
+            _inferSignalType(
+              formState,
+              index,
+              isPlcEipChannel: isPlcEipChannel,
+            ),
         inferVisibility: (index, {bool isPlcEipChannel = false}) =>
-            _inferVisibility(formState, index, isPlcEipChannel: isPlcEipChannel),
+            _inferVisibility(
+              formState,
+              index,
+              isPlcEipChannel: isPlcEipChannel,
+            ),
         prevPortValues: prevPortValues,
         prevValueMap: prevValueMap,
         defaultWaveLength: defaultWaveLength,
@@ -1058,10 +1072,9 @@ class FormTabState extends State<FormTab>
     final autoIdx = names.indexOf(SignalNames.autoMode);
     final optionIdx = names.indexOf(optionSignalName);
 
-    int waveLength =
-        chartData.isNotEmpty
-            ? chartData[0].length
-            : FormTabConstants.defaultWaveLength;
+    int waveLength = chartData.isNotEmpty
+        ? chartData[0].length
+        : FormTabConstants.defaultWaveLength;
     List<int> optionWave = List<int>.filled(waveLength, 0);
 
     if (autoIdx != -1) {
@@ -1117,8 +1130,10 @@ class FormTabState extends State<FormTab>
       );
     }
 
-    final visibleNameSet =
-        _signalDataList.where((s) => s.isVisible).map((s) => s.name).toSet();
+    final visibleNameSet = _signalDataList
+        .where((s) => s.isVisible)
+        .map((s) => s.name)
+        .toSet();
 
     List<String> outNames = [];
     List<SignalType> outTypes = [];
@@ -1194,6 +1209,66 @@ class FormTabState extends State<FormTab>
       context,
     ).showSnackBar(const SnackBar(content: Text('信号データの更新が完了しました')));
   }
+
+  bool _hasUpdateTarget(TimingFormState fs) {
+    // Code/Command は専用のオプション信号を自動生成する。
+    if (fs.triggerOption == TriggerOptions.code ||
+        fs.triggerOption == TriggerOptions.command) {
+      return true;
+    }
+
+    bool hasNamedSignal(
+      List<TextEditingController> controllers,
+      int count, {
+      List<bool>? visibility,
+    }) {
+      final limit = math.min(count, controllers.length);
+      for (int i = 0; i < limit; i++) {
+        final isVisible =
+            visibility == null || i >= visibility.length || visibility[i];
+        if (isVisible && controllers[i].text.trim().isNotEmpty) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    if (hasNamedSignal(widget.inputControllers, fs.inputCount)) {
+      return true;
+    }
+    if (_plcEipOption != PlcEipOptions.none &&
+        hasNamedSignal(widget.plcEipInputControllers, fs.inputCount)) {
+      return true;
+    }
+    if (hasNamedSignal(
+      widget.outputControllers,
+      fs.outputCount,
+      visibility: _outputVisibility,
+    )) {
+      return true;
+    }
+    if (_plcEipOption != PlcEipOptions.none &&
+        hasNamedSignal(
+          widget.plcEipOutputControllers,
+          fs.outputCount,
+          visibility: _outputVisibility,
+        )) {
+      return true;
+    }
+    return hasNamedSignal(
+      widget.hwTriggerControllers,
+      fs.hwPort,
+      visibility: _hwTriggerVisibility,
+    );
+  }
+
+  List<TextEditingController> get _signalControllers => [
+    ...widget.inputControllers,
+    ...widget.plcEipInputControllers,
+    ...widget.outputControllers,
+    ...widget.plcEipOutputControllers,
+    ...widget.hwTriggerControllers,
+  ];
 
   // Template 信号データの更新
 
@@ -1308,10 +1383,9 @@ class FormTabState extends State<FormTab>
     // === 信号データの更新 ===
     List<SignalData> filteredSignals = generatedSignals;
     if (formState.hwPort == 0) {
-      filteredSignals =
-          generatedSignals
-              .where((sig) => sig.signalType != SignalType.hwTrigger)
-              .toList();
+      filteredSignals = generatedSignals
+          .where((sig) => sig.signalType != SignalType.hwTrigger)
+          .toList();
     }
 
     bool hasContactInputMode = false; // Mode2
@@ -1324,16 +1398,14 @@ class FormTabState extends State<FormTab>
     }
 
     if (!hasContactInputMode) {
-      filteredSignals =
-          filteredSignals
-              .where((sig) => sig.name != 'CONTACT_INPUT_WAITING')
-              .toList();
+      filteredSignals = filteredSignals
+          .where((sig) => sig.name != 'CONTACT_INPUT_WAITING')
+          .toList();
     }
     if (!(hasContactInputMode || hasHwTriggerMode)) {
-      filteredSignals =
-          filteredSignals
-              .where((sig) => sig.name != 'ACQ_TRIGGER_WAITING')
-              .toList();
+      filteredSignals = filteredSignals
+          .where((sig) => sig.name != 'ACQ_TRIGGER_WAITING')
+          .toList();
     }
 
     updateSignalDataFromChartData(
@@ -1372,8 +1444,10 @@ class FormTabState extends State<FormTab>
       _updateSignalDataList();
     }
 
-    final visibleNameSet =
-        _signalDataList.where((s) => s.isVisible).map((s) => s.name).toSet();
+    final visibleNameSet = _signalDataList
+        .where((s) => s.isVisible)
+        .map((s) => s.name)
+        .toSet();
 
     List<String> outNames = [];
     List<SignalType> outTypes = [];
@@ -1476,10 +1550,9 @@ class FormTabState extends State<FormTab>
                 name: widget.hwTriggerControllers[i].text,
                 signalType: SignalType.hwTrigger,
                 values: List.from(_actualChartData[dataIndex]),
-                isVisible:
-                    i < _hwTriggerVisibility.length
-                        ? _hwTriggerVisibility[i]
-                        : true,
+                isVisible: i < _hwTriggerVisibility.length
+                    ? _hwTriggerVisibility[i]
+                    : true,
               ),
             );
             dataIndex++;
@@ -1497,8 +1570,9 @@ class FormTabState extends State<FormTab>
                 name: widget.outputControllers[i].text,
                 signalType: SignalType.output,
                 values: List.from(_actualChartData[dataIndex]),
-                isVisible:
-                    i < _outputVisibility.length ? _outputVisibility[i] : true,
+                isVisible: i < _outputVisibility.length
+                    ? _outputVisibility[i]
+                    : true,
               ),
             );
             dataIndex++;
@@ -1512,8 +1586,9 @@ class FormTabState extends State<FormTab>
           final text = widget.plcEipOutputControllers[i].text;
           if (text.isEmpty) continue;
 
-          final String prefix =
-              _plcEipOption == PlcEipOptions.plc ? 'PLO' : 'ESO';
+          final String prefix = _plcEipOption == PlcEipOptions.plc
+              ? 'PLO'
+              : 'ESO';
           final String name = '$prefix${i + 1}: $text';
 
           if (dataIndex < _actualChartData.length) {
@@ -1522,8 +1597,9 @@ class FormTabState extends State<FormTab>
                 name: name,
                 signalType: SignalType.output,
                 values: List.from(_actualChartData[dataIndex]),
-                isVisible:
-                    i < _outputVisibility.length ? _outputVisibility[i] : true,
+                isVisible: i < _outputVisibility.length
+                    ? _outputVisibility[i]
+                    : true,
               ),
             );
             dataIndex++;
@@ -1533,8 +1609,9 @@ class FormTabState extends State<FormTab>
                 name: name,
                 signalType: SignalType.output,
                 values: List.filled(FormTabConstants.defaultWaveLength, 0),
-                isVisible:
-                    i < _outputVisibility.length ? _outputVisibility[i] : true,
+                isVisible: i < _outputVisibility.length
+                    ? _outputVisibility[i]
+                    : true,
               ),
             );
           }
@@ -1575,15 +1652,14 @@ class FormTabState extends State<FormTab>
         _rowCount = _tableData.length;
       }
 
-      _rowModes =
-          config.rowModes
-              .map(
-                (name) => RowMode.values.firstWhere(
-                  (e) => e.name == name,
-                  orElse: () => RowMode.none,
-                ),
-              )
-              .toList();
+      _rowModes = config.rowModes
+          .map(
+            (name) => RowMode.values.firstWhere(
+              (e) => e.name == name,
+              orElse: () => RowMode.none,
+            ),
+          )
+          .toList();
 
       if (_rowModes.length < _rowCount) {
         _rowModes.addAll(
@@ -1607,11 +1683,10 @@ class FormTabState extends State<FormTab>
 
       _signalDataList = List.from(config.signals);
 
-      _actualChartData =
-          _signalDataList
-              .where((s) => s.isVisible)
-              .map((s) => List<int>.from(s.values))
-              .toList();
+      _actualChartData = _signalDataList
+          .where((s) => s.isVisible)
+          .map((s) => List<int>.from(s.values))
+          .toList();
 
       _onUpdateChart();
     });
@@ -1941,41 +2016,54 @@ class FormTabState extends State<FormTab>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _FormTabHeaderSection(
-          formState: fs,
-          plcEipOption: _plcEipOption,
-          onTriggerOptionChanged: widget.onTriggerOptionChanged,
-          onPlcEipOptionChanged: (newValue) {
-            if (newValue == null) return;
-            setState(() {
-              _plcEipOption = newValue;
-            });
-            widget.onPlcEipOptionChanged(newValue);
-            _ensureOutputTabController();
-            _ensureInputTabController();
-          },
-          onInputPortChanged: widget.onInputPortChanged,
-          onOutputPortChanged: widget.onOutputPortChanged,
-          onHwPortChanged: widget.onHwPortChanged,
-          onCameraChanged: widget.onCameraChanged,
-          showTransferButtons: _plcEipOption != PlcEipOptions.none,
-          onTransferInputs:
-              () => _transferInputControllers(
+        AnimatedBuilder(
+          animation: Listenable.merge(_signalControllers),
+          builder: (context, child) {
+            final hasUpdateTarget = _hasUpdateTarget(fs);
+            final canUpdateChart = widget.hasChartBaseline && hasUpdateTarget;
+            final updateChartTooltip = !widget.hasChartBaseline
+                ? '先にTemplateを実行するか、ファイルをインポートしてください'
+                : !hasUpdateTarget
+                ? '更新対象の信号名を1件以上入力してください'
+                : 'フォームの内容を既存チャートに反映します';
+
+            return _FormTabHeaderSection(
+              formState: fs,
+              plcEipOption: _plcEipOption,
+              onTriggerOptionChanged: widget.onTriggerOptionChanged,
+              onPlcEipOptionChanged: (newValue) {
+                if (newValue == null) return;
+                setState(() {
+                  _plcEipOption = newValue;
+                });
+                widget.onPlcEipOptionChanged(newValue);
+                _ensureOutputTabController();
+                _ensureInputTabController();
+              },
+              onInputPortChanged: widget.onInputPortChanged,
+              onOutputPortChanged: widget.onOutputPortChanged,
+              onHwPortChanged: widget.onHwPortChanged,
+              onCameraChanged: widget.onCameraChanged,
+              showTransferButtons: _plcEipOption != PlcEipOptions.none,
+              onTransferInputs: () => _transferInputControllers(
                 widget.inputControllers,
                 widget.plcEipInputControllers,
               ),
-          onTransferOutputs:
-              () => _transferOutputControllers(
+              onTransferOutputs: () => _transferOutputControllers(
                 widget.outputControllers,
                 widget.plcEipOutputControllers,
               ),
-          onClear: () {
-            _clearTableData();
-            widget.onClearFields();
+              onClear: () {
+                _clearTableData();
+                widget.onClearFields();
+              },
+              onTemplatePressed: _onTemplatePressed,
+              onUpdateChartPressed: _onUpdateChart,
+              canUpdateChart: canUpdateChart,
+              updateChartTooltip: updateChartTooltip,
+              buttonStyles: buttonStyles,
+            );
           },
-          onTemplatePressed: _onTemplatePressed,
-          onUpdateChartPressed: _onUpdateChart,
-          buttonStyles: buttonStyles,
         ),
 
         Expanded(
@@ -2131,13 +2219,15 @@ class _FormTabHeaderStyles {
 
   static _FormTabHeaderStyles from(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color headerBg =
-        Theme.of(context).colorScheme.surfaceContainerHighest;
+    final Color headerBg = Theme.of(
+      context,
+    ).colorScheme.surfaceContainerHighest;
     final Color background = headerBg.withAlpha(
       (FormTabConstants.alphaBlendValue * 255).round(),
     );
-    final Color borderColor =
-        isDark ? Colors.grey.shade700 : Colors.grey.shade300;
+    final Color borderColor = isDark
+        ? Colors.grey.shade700
+        : Colors.grey.shade300;
 
     final headerDecoration = BoxDecoration(
       color: background,
@@ -2187,6 +2277,8 @@ class _FormTabHeaderSection extends StatelessWidget {
   final VoidCallback onClear;
   final Future<void> Function() onTemplatePressed;
   final Future<void> Function() onUpdateChartPressed;
+  final bool canUpdateChart;
+  final String updateChartTooltip;
   final _FormTabButtonStyles buttonStyles;
 
   const _FormTabHeaderSection({
@@ -2204,6 +2296,8 @@ class _FormTabHeaderSection extends StatelessWidget {
     required this.onClear,
     required this.onTemplatePressed,
     required this.onUpdateChartPressed,
+    required this.canUpdateChart,
+    required this.updateChartTooltip,
     required this.buttonStyles,
   });
 
@@ -2212,10 +2306,9 @@ class _FormTabHeaderSection extends StatelessWidget {
     final List<String> triggerItems = FormTabRules.triggerOptionsForInputCount(
       formState.inputCount,
     );
-    final String dropdownValue =
-        triggerItems.contains(formState.triggerOption)
-            ? formState.triggerOption
-            : TriggerOptions.single;
+    final String dropdownValue = triggerItems.contains(formState.triggerOption)
+        ? formState.triggerOption
+        : TriggerOptions.single;
 
     return Padding(
       padding: const EdgeInsets.all(16.0),
@@ -2247,13 +2340,12 @@ class _FormTabHeaderSection extends StatelessWidget {
               const SizedBox(width: 16),
               Expanded(
                 child: CustomDropdown<int>(
-                  value:
-                      FormTabRules.portOptions.contains(formState.inputCount)
-                          ? formState.inputCount
-                          : FormTabRules.portOptions.firstWhere(
-                            (v) => v >= formState.inputCount,
-                            orElse: () => FormTabRules.portOptions.last,
-                          ),
+                  value: FormTabRules.portOptions.contains(formState.inputCount)
+                      ? formState.inputCount
+                      : FormTabRules.portOptions.firstWhere(
+                          (v) => v >= formState.inputCount,
+                          orElse: () => FormTabRules.portOptions.last,
+                        ),
                   items: FormTabRules.portOptions,
                   onChanged: onInputPortChanged,
                   label: 'Input Port',
@@ -2264,11 +2356,11 @@ class _FormTabHeaderSection extends StatelessWidget {
                 child: CustomDropdown<int>(
                   value:
                       FormTabRules.portOptions.contains(formState.outputCount)
-                          ? formState.outputCount
-                          : FormTabRules.portOptions.firstWhere(
-                            (v) => v >= formState.outputCount,
-                            orElse: () => FormTabRules.portOptions.last,
-                          ),
+                      ? formState.outputCount
+                      : FormTabRules.portOptions.firstWhere(
+                          (v) => v >= formState.outputCount,
+                          orElse: () => FormTabRules.portOptions.last,
+                        ),
                   items: FormTabRules.portOptions,
                   onChanged: onOutputPortChanged,
                   label: 'Output Port',
@@ -2279,9 +2371,9 @@ class _FormTabHeaderSection extends StatelessWidget {
                 child: CustomDropdown<int>(
                   value:
                       (formState.hwPort == 0 ||
-                              formState.hwPort == formState.camera)
-                          ? formState.hwPort
-                          : formState.camera,
+                          formState.hwPort == formState.camera)
+                      ? formState.hwPort
+                      : formState.camera,
                   items: [0, formState.camera],
                   onChanged: onHwPortChanged,
                   label: 'HW Port',
@@ -2328,10 +2420,13 @@ class _FormTabHeaderSection extends StatelessWidget {
                 child: const Text('Template'),
               ),
               const SizedBox(width: 16),
-              ElevatedButton(
-                onPressed: onUpdateChartPressed,
-                style: buttonStyles.update,
-                child: const Text('Update Chart'),
+              Tooltip(
+                message: updateChartTooltip,
+                child: ElevatedButton(
+                  onPressed: canUpdateChart ? onUpdateChartPressed : null,
+                  style: buttonStyles.update,
+                  child: const Text('Update Chart'),
+                ),
               ),
             ],
           ),
@@ -2434,21 +2529,20 @@ class _FormTabBodySection extends StatelessWidget {
                         decoration: headerStyles.headerDecoration,
                         padding: headerStyles.headerPadding,
                         height: headerStyles.headerHeight,
-                        tabBar:
-                            (useTabs && inputTabController != null)
-                                ? TabBar(
-                                  controller: inputTabController,
-                                  isScrollable: true,
-                                  tabAlignment: TabAlignment.center,
-                                  labelPadding: const EdgeInsets.symmetric(
-                                    horizontal: 8.0,
-                                  ),
-                                  tabs: const [
-                                    Tab(text: 'DI'),
-                                    Tab(text: 'PLI/ESI'),
-                                  ],
-                                )
-                                : null,
+                        tabBar: (useTabs && inputTabController != null)
+                            ? TabBar(
+                                controller: inputTabController,
+                                isScrollable: true,
+                                tabAlignment: TabAlignment.center,
+                                labelPadding: const EdgeInsets.symmetric(
+                                  horizontal: 8.0,
+                                ),
+                                tabs: const [
+                                  Tab(text: 'DI'),
+                                  Tab(text: 'PLI/ESI'),
+                                ],
+                              )
+                            : null,
                       ),
                     ),
                     Expanded(
@@ -2457,34 +2551,33 @@ class _FormTabBodySection extends StatelessWidget {
                         decoration: headerStyles.headerDecoration,
                         padding: headerStyles.headerPadding,
                         height: headerStyles.headerHeight,
-                        tabBar:
-                            (useTabs && outputTabController != null)
-                                ? TabBar(
-                                  controller: outputTabController,
-                                  isScrollable: true,
-                                  tabAlignment: TabAlignment.center,
-                                  labelPadding: const EdgeInsets.symmetric(
-                                    horizontal: 8.0,
-                                  ),
-                                  tabs: const [
-                                    Tab(text: 'DO'),
-                                    Tab(text: 'PLO/ESO'),
-                                  ],
-                                )
-                                : null,
+                        tabBar: (useTabs && outputTabController != null)
+                            ? TabBar(
+                                controller: outputTabController,
+                                isScrollable: true,
+                                tabAlignment: TabAlignment.center,
+                                labelPadding: const EdgeInsets.symmetric(
+                                  horizontal: 8.0,
+                                ),
+                                tabs: const [
+                                  Tab(text: 'DO'),
+                                  Tab(text: 'PLO/ESO'),
+                                ],
+                              )
+                            : null,
                       ),
                     ),
                     Expanded(
                       child: _SignalHeader(
                         title: 'HW Trigger Signals',
-                        decoration:
-                            formState.hwPort > 0
-                                ? headerStyles.headerDecoration
-                                : headerStyles.inactiveHeaderDecoration,
+                        decoration: formState.hwPort > 0
+                            ? headerStyles.headerDecoration
+                            : headerStyles.inactiveHeaderDecoration,
                         padding: headerStyles.headerPadding,
                         height: headerStyles.headerHeight,
-                        titleColor:
-                            formState.hwPort > 0 ? null : Colors.grey.shade500,
+                        titleColor: formState.hwPort > 0
+                            ? null
+                            : Colors.grey.shade500,
                       ),
                     ),
                   ],
@@ -2502,19 +2595,16 @@ class _FormTabBodySection extends StatelessWidget {
                               bottom: _signalsScrollBottomPadding,
                             ),
                             child: InputSection(
-                              controllers:
-                                  (!useTabs || inputTabIndex == 0)
-                                      ? inputControllers
-                                      : plcEipInputControllers,
+                              controllers: (!useTabs || inputTabIndex == 0)
+                                  ? inputControllers
+                                  : plcEipInputControllers,
                               count: formState.inputCount,
                               visibilityList: inputVisibility,
-                              onVisibilityChanged:
-                                  (index) => onToggleVisibility(
-                                    index,
-                                    SignalType.input,
-                                  ),
+                              onVisibilityChanged: (index) =>
+                                  onToggleVisibility(index, SignalType.input),
                               triggerOption: formState.triggerOption,
-                              codeTriggerOnPlcEip: formState.codeTriggerOnPlcEip,
+                              codeTriggerOnPlcEip:
+                                  formState.codeTriggerOnPlcEip,
                               isPlcEipChannel: useTabs && inputTabIndex == 1,
                             ),
                           ),
@@ -2528,50 +2618,43 @@ class _FormTabBodySection extends StatelessWidget {
                               bottom: _signalsScrollBottomPadding,
                             ),
                             child: OutputSection(
-                              controllers:
-                                  (!useTabs || outputTabIndex == 0)
-                                      ? outputControllers
-                                      : plcEipOutputControllers,
+                              controllers: (!useTabs || outputTabIndex == 0)
+                                  ? outputControllers
+                                  : plcEipOutputControllers,
                               count: formState.outputCount,
                               visibilityList: outputVisibility,
-                              onVisibilityChanged:
-                                  (index) => onToggleVisibility(
-                                    index,
-                                    SignalType.output,
-                                  ),
+                              onVisibilityChanged: (index) =>
+                                  onToggleVisibility(index, SignalType.output),
                             ),
                           ),
                         ),
                       ),
                       Expanded(
-                        child:
-                            formState.hwPort > 0
-                                ? SingleChildScrollView(
-                                  padding: const EdgeInsets.only(
-                                    bottom: _signalsScrollBottomPadding,
-                                  ),
-                                  child: HwTriggerSection(
-                                    controllers: hwTriggerControllers,
-                                    count: formState.hwPort,
-                                    visibilityList: hwTriggerVisibility,
-                                    onVisibilityChanged:
-                                        (index) => onToggleVisibility(
-                                          index,
-                                          SignalType.hwTrigger,
-                                        ),
-                                  ),
-                                )
-                                : const Center(
-                                  child: Padding(
-                                    padding: EdgeInsets.symmetric(
-                                      vertical: 16.0,
-                                    ),
-                                    child: Text(
-                                      "HW Trigger Ports are not available.",
-                                      style: TextStyle(color: Colors.grey),
-                                    ),
+                        child: formState.hwPort > 0
+                            ? SingleChildScrollView(
+                                padding: const EdgeInsets.only(
+                                  bottom: _signalsScrollBottomPadding,
+                                ),
+                                child: HwTriggerSection(
+                                  controllers: hwTriggerControllers,
+                                  count: formState.hwPort,
+                                  visibilityList: hwTriggerVisibility,
+                                  onVisibilityChanged: (index) =>
+                                      onToggleVisibility(
+                                        index,
+                                        SignalType.hwTrigger,
+                                      ),
+                                ),
+                              )
+                            : const Center(
+                                child: Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 16.0),
+                                  child: Text(
+                                    "HW Trigger Ports are not available.",
+                                    style: TextStyle(color: Colors.grey),
                                   ),
                                 ),
+                              ),
                       ),
                     ],
                   ),

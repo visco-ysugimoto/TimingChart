@@ -1626,6 +1626,7 @@ class _TimingChartGeneratorHomePageState
             children: [
               FormTab(
                 key: _formTabKey,
+                hasChartBaseline: _chartSignals.isNotEmpty,
                 inputControllers: _inputControllers,
                 plcEipInputControllers: _plcEipInputControllers,
                 outputControllers: _outputControllers,
