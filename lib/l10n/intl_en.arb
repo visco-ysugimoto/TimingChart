@@ -232,9 +232,5 @@
   "export_failed_xlsx": "XLSX export failed",
   "@export_failed_xlsx": {"description": "SnackBar after XLSX export failure"},
   "import_success_config": "Configuration imported",
-  "@import_success_config": {"description": "SnackBar after config import success"},
-  "chart_show_scrollbar": "Show chart scrollbar",
-  "@chart_show_scrollbar": {"description": "Tooltip for showing the horizontal chart scrollbar"},
-  "chart_hide_scrollbar": "Hide chart scrollbar",
-  "@chart_hide_scrollbar": {"description": "Tooltip for hiding the horizontal chart scrollbar"}
+  "@import_success_config": {"description": "SnackBar after config import success"}
 }

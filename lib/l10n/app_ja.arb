@@ -76,7 +76,5 @@
   "export_failed_jpeg": "JPEGのエクスポートに失敗しました",
   "export_success_xlsx": "XLSXをエクスポートしました",
   "export_failed_xlsx": "XLSXのエクスポートに失敗しました",
-  "import_success_config": "設定をインポートしました",
-  "chart_show_scrollbar": "チャートのスクロールバーを表示",
-  "chart_hide_scrollbar": "チャートのスクロールバーを非表示"
+  "import_success_config": "設定をインポートしました"
 }

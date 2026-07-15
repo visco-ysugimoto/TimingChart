@@ -411,9 +411,6 @@ class TimingChartState extends State<TimingChart>
   /// チャートコンテンツの垂直スクロールコントローラー
   final ScrollController _vScrollController = ScrollController();
 
-  /// 水平スクロールバーを表示するかどうか
-  bool _showHorizontalScrollbar = true;
-
   /// ステップ継続時間編集モードがアクティブかどうか
   bool _isEditingSteps = false;
 
@@ -2285,31 +2282,29 @@ class TimingChartState extends State<TimingChart>
                       isEditingMode ? null : _onSecondaryTapDown,
                   child: Scrollbar(
                     controller: _hScrollController,
-                    thumbVisibility:
-                        _showHorizontalScrollbar &&
-                        layoutData.effectiveZoomFactor > 1.0 + 0.001,
-                    trackVisibility:
-                        _showHorizontalScrollbar &&
-                        layoutData.effectiveZoomFactor > 1.0 + 0.001,
                     interactive: true,
                     scrollbarOrientation: ScrollbarOrientation.bottom,
-                    child: SingleChildScrollView(
-                      controller: _hScrollController,
-                      scrollDirection: Axis.horizontal,
-                      physics:
-                          (isEditingMode ||
-                                  _draggingAnnotationId != null ||
-                                  _isModifierPressed)
-                              ? const NeverScrollableScrollPhysics()
-                              : null,
+                    child: ScrollConfiguration(
+                      behavior: ScrollConfiguration.of(
+                        context,
+                      ).copyWith(scrollbars: false),
                       child: SingleChildScrollView(
-                        controller: _vScrollController,
-                        scrollDirection: Axis.vertical,
-                        physics: const NeverScrollableScrollPhysics(),
-                        clipBehavior: Clip.none,
-                        child: RepaintBoundary(
-                          key: _repaintBoundaryKey,
-                          child: CustomPaint(
+                        controller: _hScrollController,
+                        scrollDirection: Axis.horizontal,
+                        physics:
+                            (isEditingMode ||
+                                    _draggingAnnotationId != null ||
+                                    _isModifierPressed)
+                                ? const NeverScrollableScrollPhysics()
+                                : null,
+                        child: SingleChildScrollView(
+                          controller: _vScrollController,
+                          scrollDirection: Axis.vertical,
+                          physics: const NeverScrollableScrollPhysics(),
+                          clipBehavior: Clip.none,
+                          child: RepaintBoundary(
+                            key: _repaintBoundaryKey,
+                            child: CustomPaint(
                             key: _customPaintKey,
                             isComplex: true,
                             willChange: true,
@@ -2413,6 +2408,7 @@ class TimingChartState extends State<TimingChart>
                                   isEditingMode ? null : _labelDragStartRow,
                               draggingCurrentRow:
                                   isEditingMode ? null : _labelDragCurrentRow,
+                              ),
                             ),
                           ),
                         ),
@@ -2563,8 +2559,6 @@ class TimingChartState extends State<TimingChart>
             label: const Text('Fit sel'),
             onPressed: canFitSelection ? _zoomToSelectionFit : null,
           ),
-          const SizedBox(width: 6),
-          _buildScrollbarToggle(),
         ],
       );
     }
@@ -2634,30 +2628,7 @@ class TimingChartState extends State<TimingChart>
           label: const Text('Fit sel'),
           onPressed: canFitSelection ? _zoomToSelectionFit : null,
         ),
-        const SizedBox(width: 6),
-        _buildScrollbarToggle(),
       ],
-    );
-  }
-
-  Widget _buildScrollbarToggle() {
-    final s = S.of(context);
-    return IconButton(
-      icon: Icon(
-        _showHorizontalScrollbar ? Icons.visibility : Icons.visibility_off,
-        size: 18,
-      ),
-      tooltip:
-          _showHorizontalScrollbar
-              ? s.chart_hide_scrollbar
-              : s.chart_show_scrollbar,
-      isSelected: _showHorizontalScrollbar,
-      visualDensity: VisualDensity.compact,
-      onPressed: () {
-        setState(() {
-          _showHorizontalScrollbar = !_showHorizontalScrollbar;
-        });
-      },
     );
   }
 
