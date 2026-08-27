@@ -84,6 +84,9 @@ class _ChartLayoutData {
   /// すべての信号配列の最大長（最長の信号）
   final int maxLen;
 
+  /// コメント領域込みの高さがビューポートを超え、縦スクロールが必要か
+  final bool needsVerticalScroll;
+
   _ChartLayoutData({
     required this.visibleIndexes,
     required this.totalSteps,
@@ -100,7 +103,77 @@ class _ChartLayoutData {
     required this.commentAreaHeight,
     required this.topCommentAreaHeight,
     required this.maxLen,
+    required this.needsVerticalScroll,
   });
+}
+
+/// コメント増加時の行高さと縦スクロール要否
+class _VerticalLayout {
+  final double cellHeight;
+  final double totalHeight;
+  final bool needsVerticalScroll;
+
+  const _VerticalLayout({
+    required this.cellHeight,
+    required this.totalHeight,
+    required this.needsVerticalScroll,
+  });
+
+  /// 画面フィット時はコメントなしの行高さを基準に、[minVerticalFitScale] 未満へは圧縮しない。
+  /// 溢れた分は [needsVerticalScroll] で縦スクロールへ回す。
+  static _VerticalLayout calculate({
+    required bool fitToScreen,
+    required double viewportHeight,
+    required double chartMarginTop,
+    required double topCommentAreaHeight,
+    required double commentAreaHeight,
+    required double noCommentBottomMargin,
+    required int visibleRowCount,
+    required double minVerticalFitScale,
+    required double minCellHeight,
+    required double defaultCellHeight,
+  }) {
+    final double safeViewport = viewportHeight.isFinite && viewportHeight > 0
+        ? viewportHeight
+        : 0.0;
+
+    double cellHeight;
+    if (!fitToScreen || visibleRowCount <= 0) {
+      cellHeight = defaultCellHeight;
+    } else {
+      final double naturalAvailable = math.max(
+        0.0,
+        safeViewport - chartMarginTop - noCommentBottomMargin,
+      );
+      final double naturalCellHeight = math.max(
+        naturalAvailable / visibleRowCount,
+        minCellHeight,
+      );
+      final double fittedAvailable =
+          safeViewport -
+          chartMarginTop -
+          topCommentAreaHeight -
+          commentAreaHeight;
+      final double fittedCellHeight = fittedAvailable / visibleRowCount;
+      final double minByRatio = naturalCellHeight * minVerticalFitScale;
+      cellHeight = math.max(
+        math.max(fittedCellHeight, minByRatio),
+        minCellHeight,
+      );
+    }
+
+    final double totalHeight =
+        chartMarginTop +
+        topCommentAreaHeight +
+        visibleRowCount * cellHeight +
+        commentAreaHeight;
+
+    return _VerticalLayout(
+      cellHeight: cellHeight,
+      totalHeight: totalHeight,
+      needsVerticalScroll: totalHeight > safeViewport + 0.5,
+    );
+  }
 }
 
 /// タイミングチャートでの時間位置計算用のヘルパークラス
@@ -128,10 +201,9 @@ class _TimePositionCalculator {
   ) {
     final List<double> pos = List<double>.filled(maxLen + 1, 0.0);
     for (int i = 0; i < maxLen; i++) {
-      final durSteps =
-          (i < stepDurationsMs.length && settings.msPerStep > 0)
-              ? stepDurationsMs[i] / settings.msPerStep
-              : 1.0;
+      final durSteps = (i < stepDurationsMs.length && settings.msPerStep > 0)
+          ? stepDurationsMs[i] / settings.msPerStep
+          : 1.0;
       pos[i + 1] = pos[i] + durSteps;
     }
     return pos;
@@ -169,5 +241,3 @@ class _TimePositionCalculator {
     return (relX / cellWidth).floor();
   }
 }
-
-

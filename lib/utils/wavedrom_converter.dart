@@ -182,23 +182,7 @@ class WaveDromConverter {
   static Map<String, dynamic> _buildConfig(AppConfig config) {
     return {
       'chartOrder': config.signals.map((s) => s.name).toList(),
-      'annotations':
-          config.annotations
-              .map(
-                (a) => {
-                  'id': a.id,
-                  'start': a.startTimeIndex,
-                  // range でなければ null を出力（新仕様）
-                  'end': a.endTimeIndex,
-                  'text': a.text,
-                  if (a.offsetX != null) 'offsetX': a.offsetX,
-                  if (a.offsetY != null) 'offsetY': a.offsetY,
-                  if (a.arrowTipY != null) 'arrowTipY': a.arrowTipY,
-                  if (a.arrowHorizontal != null)
-                    'arrowHorizontal': a.arrowHorizontal,
-                },
-              )
-              .toList(),
+      'annotations': config.annotations.map((a) => a.toJson()).toList(),
       'omissionIndices': config.omissionIndices,
       'triggerOption': config.formState.triggerOption,
       'ioPort': config.formState.ioPort,
@@ -303,24 +287,8 @@ class WaveDromConverter {
     List<TimingChartAnnotation> annotations =
         ((cfg['annotations'] ?? []) as List)
             .map(
-              (e) => TimingChartAnnotation(
-                id: e['id']?.toString() ?? '',
-                startTimeIndex: e['start'] ?? 0,
-                endTimeIndex: e['end'],
-                text: e['text']?.toString() ?? '',
-                offsetX: (e['offsetX'] as num?)?.toDouble(),
-                offsetY: (e['offsetY'] as num?)?.toDouble(),
-                arrowTipY: (e['arrowTipY'] as num?)?.toDouble(),
-                arrowTipRowIndex: (e['arrowTipRowIndex'] as num?)?.toInt(),
-                arrowHorizontal: e['arrowHorizontal'] as bool?,
-                fontSize: (e['fontSize'] as num?)?.toDouble(),
-                isBold: e['isBold'] as bool?,
-                borderColorValue: (e['borderColorValue'] as num?)?.toInt(),
-                backgroundColorValue:
-                    (e['backgroundColorValue'] as num?)?.toInt(),
-                textColorValue: (e['textColorValue'] as num?)?.toInt(),
-                dashedLineColorValue: (e['dashedLineColorValue'] as num?)?.toInt(),
-                arrowColorValue: (e['arrowColorValue'] as num?)?.toInt(),
+              (e) => TimingChartAnnotation.fromJson(
+                Map<String, dynamic>.from(e as Map),
               ),
             )
             .toList();

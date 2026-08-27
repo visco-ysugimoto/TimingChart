@@ -108,4 +108,58 @@ class TimingChartAnnotation {
       placement: placement ?? this.placement,
     );
   }
+
+  /// JSON エクスポート用。キー名は既存ファイルとの互換のため `start` / `end` を使う。
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'start': startTimeIndex,
+      'end': endTimeIndex,
+      'text': text,
+      if (offsetX != null) 'offsetX': offsetX,
+      if (offsetY != null) 'offsetY': offsetY,
+      if (arrowTipY != null) 'arrowTipY': arrowTipY,
+      if (arrowTipRowIndex != null) 'arrowTipRowIndex': arrowTipRowIndex,
+      if (arrowHorizontal != null) 'arrowHorizontal': arrowHorizontal,
+      if (fontSize != null) 'fontSize': fontSize,
+      if (isBold != null) 'isBold': isBold,
+      if (borderColorValue != null) 'borderColorValue': borderColorValue,
+      if (backgroundColorValue != null)
+        'backgroundColorValue': backgroundColorValue,
+      if (textColorValue != null) 'textColorValue': textColorValue,
+      if (dashedLineColorValue != null)
+        'dashedLineColorValue': dashedLineColorValue,
+      if (arrowColorValue != null) 'arrowColorValue': arrowColorValue,
+      if (maxWidth != null) 'maxWidth': maxWidth,
+      if (maxLines != null) 'maxLines': maxLines,
+      if (ellipsisEnabled != null) 'ellipsisEnabled': ellipsisEnabled,
+      if (placement != null) 'placement': placement,
+    };
+  }
+
+  static TimingChartAnnotation fromJson(Map<String, dynamic> json) {
+    return TimingChartAnnotation(
+      id: json['id']?.toString() ?? '',
+      startTimeIndex: (json['start'] as num?)?.toInt() ?? 0,
+      endTimeIndex:
+          json['end'] == null ? null : (json['end'] as num).toInt(),
+      text: json['text']?.toString() ?? '',
+      offsetX: (json['offsetX'] as num?)?.toDouble(),
+      offsetY: (json['offsetY'] as num?)?.toDouble(),
+      arrowTipY: (json['arrowTipY'] as num?)?.toDouble(),
+      arrowTipRowIndex: (json['arrowTipRowIndex'] as num?)?.toInt(),
+      arrowHorizontal: json['arrowHorizontal'] as bool?,
+      fontSize: (json['fontSize'] as num?)?.toDouble(),
+      isBold: json['isBold'] as bool?,
+      borderColorValue: (json['borderColorValue'] as num?)?.toInt(),
+      backgroundColorValue: (json['backgroundColorValue'] as num?)?.toInt(),
+      textColorValue: (json['textColorValue'] as num?)?.toInt(),
+      dashedLineColorValue: (json['dashedLineColorValue'] as num?)?.toInt(),
+      arrowColorValue: (json['arrowColorValue'] as num?)?.toInt(),
+      maxWidth: (json['maxWidth'] as num?)?.toDouble(),
+      maxLines: (json['maxLines'] as num?)?.toInt(),
+      ellipsisEnabled: json['ellipsisEnabled'] as bool?,
+      placement: json['placement']?.toString(),
+    );
+  }
 }

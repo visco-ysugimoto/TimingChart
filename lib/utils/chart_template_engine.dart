@@ -108,7 +108,9 @@ class ChartTemplateEngine {
       int riseIdx = triggerWave.indexWhere((v) => v == 1);
       if (riseIdx != -1) {
         List<int> busy = List.filled(sampleLength, 0);
-        for (int i = riseIdx; i < sampleLength; i++) busy[i] = 1;
+        for (int i = riseIdx; i < sampleLength; i++) {
+          busy[i] = 1;
+        }
         waves['BUSY'] = busy;
         waves['INSPECTION_BUSY'] = List<int>.from(busy);
 
@@ -147,19 +149,19 @@ class ChartTemplateEngine {
 
     // ---- 追加: CONTACT_INPUT_WAITING / HW_TRIGGER# が指定された時刻のみ Exposure を 2 サンプル幅へ拡張 ----
     // specialTimes = CONTACT_INPUT_WAITING または HW_TRIGGER# が High になるインデックス集合
-    final Set<int> _specialTimes = {
+    final Set<int> specialTimes = {
       if (contactWaitTimes != null)
         for (final lst in contactWaitTimes.values) ...lst,
       if (hwTriggerTimes != null)
         for (final lst in hwTriggerTimes.values) ...lst,
     };
-    if (_specialTimes.isNotEmpty) {
+    if (specialTimes.isNotEmpty) {
       final expRegexExtend = RegExp(r'^CAMERA_(\d+)_IMAGE_EXPOSURE');
       waves.forEach((name, vals) {
         if (expRegexExtend.hasMatch(name)) {
           final orig = List<int>.from(vals);
           for (int t = 0; t < orig.length; t++) {
-            if (orig[t] == 1 && t > 0 && _specialTimes.contains(t)) {
+            if (orig[t] == 1 && t > 0 && specialTimes.contains(t)) {
               vals[t - 1] = 1; // 直前サンプルを High
             }
           }
@@ -447,7 +449,7 @@ class ChartTemplateEngine {
       );
     });
     // カスタム並び替え: TRIGGER → AUTO_MODE → BUSY → EXPOSURE → ACQUISITION → BATCH_EXPOSURE → その他
-    int _priority(SignalData s) {
+    int priority(SignalData s) {
       // --- 第一階層: 明示的な特別扱い ---
       if (s.name == 'TRIGGER') return 0;
       if (s.name == 'CONTACT_INPUT_WAITING') return 1;
@@ -489,7 +491,7 @@ class ChartTemplateEngine {
     }
 
     result.sort((a, b) {
-      int pa = _priority(a), pb = _priority(b);
+      int pa = priority(a), pb = priority(b);
       if (pa != pb) return pa - pb;
 
       // Within camera signals

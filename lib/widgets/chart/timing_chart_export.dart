@@ -11,32 +11,17 @@ part of 'timing_chart.dart';
 extension TimingChartExportExt on TimingChartState {
   /// チャートをPNG画像としてキャプチャします
   ///
-  /// RepaintBoundaryを使用してチャートコンテンツを画像にレンダリングし、
-  /// PNGバイトを返します。より良い品質のために高いピクセル比を使用します。
+  /// スクロールで隠れている部分も含め、チャート全体を画像にレンダリングします。
+  /// より良い品質のために高いピクセル比を使用します。
   ///
   /// [pixelRatio] - オプションのピクセル比（デフォルトはデバイス比または3.0）
   /// PNG画像バイトを返します。キャプチャに失敗した場合はnullを返します
   Future<Uint8List?> captureChartPng({double? pixelRatio}) async {
     try {
-      RenderRepaintBoundary? boundary =
-          _viewportBoundaryKey.currentContext?.findRenderObject()
-              as RenderRepaintBoundary?;
-      boundary ??=
-          _repaintBoundaryKey.currentContext?.findRenderObject()
-              as RenderRepaintBoundary?;
-      if (boundary == null) return null;
-      final double devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
-      final double defaultRatio =
-          kIsWeb
-              ? 2.0
-              : TimingChartState
-                  ._defaultExportPixelRatio; // Webは負荷が高いので控えめに
-      final double targetRatio =
-          pixelRatio ?? math.max(devicePixelRatio, defaultRatio);
-      final double maxRatio =
-          kIsWeb ? 3.0 : TimingChartState._maxExportPixelRatio;
-      final double pr = targetRatio.clamp(1.0, maxRatio).toDouble();
-      final ui.Image image = await boundary.toImage(pixelRatio: pr);
+      final ui.Image? image = await _captureFullChartUiImage(
+        pixelRatio: pixelRatio,
+      );
+      if (image == null) return null;
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       return byteData?.buffer.asUint8List();
     } catch (e) {
@@ -47,8 +32,8 @@ extension TimingChartExportExt on TimingChartState {
 
   /// チャートをJPEG画像としてキャプチャします
   ///
-  /// チャートコンテンツを画像にレンダリングし、JPEG形式に変換します。
-  /// 背景色とのアルファチャネル合成を処理します。
+  /// スクロールで隠れている部分も含め、チャート全体を画像にレンダリングし、
+  /// JPEG形式に変換します。背景色とのアルファチャネル合成を処理します。
   ///
   /// [pixelRatio] - オプションのピクセル比（デフォルトはデバイス比または3.0）
   /// [backgroundColor] - アルファ合成用の背景色（デフォルトはテーマ）
@@ -60,30 +45,13 @@ extension TimingChartExportExt on TimingChartState {
     int quality = 90,
   }) async {
     try {
-      RenderRepaintBoundary? boundary =
-          _viewportBoundaryKey.currentContext?.findRenderObject()
-              as RenderRepaintBoundary?;
-      boundary ??=
-          _repaintBoundaryKey.currentContext?.findRenderObject()
-              as RenderRepaintBoundary?;
-      if (boundary == null) return null;
-
       // avoid `use_build_context_synchronously`（await後のcontext参照）対策として先に評価
       final Brightness brightness = Theme.of(context).brightness;
 
-      final double devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
-      final double defaultRatio =
-          kIsWeb
-              ? 2.0
-              : TimingChartState
-                  ._defaultExportPixelRatio; // Webは負荷が高いので控えめに
-      final double targetRatio =
-          pixelRatio ?? math.max(devicePixelRatio, defaultRatio);
-      final double maxRatio =
-          kIsWeb ? 3.0 : TimingChartState._maxExportPixelRatio;
-      final double pr = targetRatio.clamp(1.0, maxRatio).toDouble();
-
-      final ui.Image image = await boundary.toImage(pixelRatio: pr);
+      final ui.Image? image = await _captureFullChartUiImage(
+        pixelRatio: pixelRatio,
+      );
+      if (image == null) return null;
 
       final width = image.width;
       final height = image.height;
@@ -147,6 +115,127 @@ extension TimingChartExportExt on TimingChartState {
       return null;
     }
   }
+
+  /// 表示中のビューポートではなく、チャート全体を画像化する。
+  ///
+  /// 縦/横スクロールで画面外にある行・時間軸も含めるため、
+  /// CustomPaint の painter をオフスクリーンへ再描画する。
+  Future<ui.Image?> _captureFullChartUiImage({double? pixelRatio}) async {
+    final Size? logicalSize = _exportLogicalChartSize();
+    if (logicalSize == null) return null;
+
+    final double pr = _resolveExportPixelRatio(pixelRatio, logicalSize);
+
+    try {
+      final ui.Image? painted = await _paintChartToImage(logicalSize, pr);
+      if (painted != null) return painted;
+    } catch (e) {
+      debugPrint('Offscreen chart paint failed, falling back: $e');
+    }
+
+    return _captureRepaintBoundaryToImage(pr);
+  }
+
+  Size? _exportLogicalChartSize() {
+    final renderObject = _customPaintKey.currentContext?.findRenderObject();
+    if (renderObject is RenderBox &&
+        renderObject.hasSize &&
+        renderObject.size.width.isFinite &&
+        renderObject.size.height.isFinite &&
+        renderObject.size.width > 0 &&
+        renderObject.size.height > 0) {
+      return renderObject.size;
+    }
+
+    final contentBoundary =
+        _repaintBoundaryKey.currentContext?.findRenderObject();
+    if (contentBoundary is RenderBox &&
+        contentBoundary.hasSize &&
+        contentBoundary.size.width.isFinite &&
+        contentBoundary.size.height.isFinite &&
+        contentBoundary.size.width > 0 &&
+        contentBoundary.size.height > 0) {
+      return contentBoundary.size;
+    }
+    return null;
+  }
+
+  double _resolveExportPixelRatio(double? pixelRatio, Size logicalSize) {
+    final double devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
+    final double defaultRatio =
+        kIsWeb
+            ? 2.0
+            : TimingChartState._defaultExportPixelRatio;
+    final double maxRatio =
+        kIsWeb ? 3.0 : TimingChartState._maxExportPixelRatio;
+    double pr =
+        (pixelRatio ?? math.max(devicePixelRatio, defaultRatio))
+            .clamp(1.0, maxRatio)
+            .toDouble();
+    final double maxDim = math.max(logicalSize.width, logicalSize.height);
+    if (maxDim > 0 &&
+        maxDim * pr > TimingChartState._maxExportImageDimension) {
+      pr = TimingChartState._maxExportImageDimension / maxDim;
+    }
+    return pr;
+  }
+
+  Future<ui.Image?> _paintChartToImage(Size logicalSize, double pixelRatio) async {
+    final renderObject = _customPaintKey.currentContext?.findRenderObject();
+    if (renderObject is! RenderCustomPaint) return null;
+    final CustomPainter? painter = renderObject.painter;
+    if (painter == null) return null;
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    canvas.scale(pixelRatio);
+    painter.paint(canvas, logicalSize);
+    _paintLabelsOverlayForExport(canvas);
+    final picture = recorder.endRecording();
+    try {
+      return await picture.toImage(
+        math.max(1, (logicalSize.width * pixelRatio).ceil()),
+        math.max(1, (logicalSize.height * pixelRatio).ceil()),
+      );
+    } finally {
+      picture.dispose();
+    }
+  }
+
+  /// 画面では別レイヤーの信号ラベルを、チャート全体座標に乗せて描画する。
+  /// 縦スクロールオフセットは含めない（全行のラベルが波形と揃うようにする）。
+  void _paintLabelsOverlayForExport(Canvas canvas) {
+    final overlayObject =
+        _labelsOverlayKey.currentContext?.findRenderObject();
+    if (overlayObject is! RenderCustomPaint) return;
+    final CustomPainter? overlayPainter = overlayObject.painter;
+    if (overlayPainter == null) return;
+
+    final double labelAreaHeight = math.max(
+      0.0,
+      _visibleIndexes.length * _cellHeight,
+    );
+    if (labelAreaHeight <= 0) return;
+
+    final Size overlaySize = Size(
+      chartMarginLeft + labelWidth,
+      labelAreaHeight,
+    );
+    canvas.save();
+    canvas.translate(0, chartMarginTop + _topCommentAreaHeight);
+    canvas.clipRect(Offset.zero & overlaySize);
+    overlayPainter.paint(canvas, overlaySize);
+    canvas.restore();
+  }
+
+  Future<ui.Image?> _captureRepaintBoundaryToImage(double pixelRatio) async {
+    RenderRepaintBoundary? boundary =
+        _repaintBoundaryKey.currentContext?.findRenderObject()
+            as RenderRepaintBoundary?;
+    boundary ??=
+        _viewportBoundaryKey.currentContext?.findRenderObject()
+            as RenderRepaintBoundary?;
+    if (boundary == null) return null;
+    return boundary.toImage(pixelRatio: pixelRatio);
+  }
 }
-
-

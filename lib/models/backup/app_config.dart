@@ -135,42 +135,7 @@ class AppConfig {
       'outputVisibility': outputVisibility,
       'hwTriggerVisibility': hwTriggerVisibility,
       'rowModes': rowModes,
-      'annotations':
-          annotations
-              .map(
-                (a) => {
-                  'id': a.id,
-                  'start': a.startTimeIndex,
-                  // range でなければ null を出力（新仕様）
-                  'end': a.endTimeIndex,
-                  'text': a.text,
-                  if (a.offsetX != null) 'offsetX': a.offsetX,
-                  if (a.offsetY != null) 'offsetY': a.offsetY,
-                  if (a.arrowTipY != null) 'arrowTipY': a.arrowTipY,
-                  if (a.arrowTipRowIndex != null)
-                    'arrowTipRowIndex': a.arrowTipRowIndex,
-                  if (a.arrowHorizontal != null)
-                    'arrowHorizontal': a.arrowHorizontal,
-                  if (a.fontSize != null) 'fontSize': a.fontSize,
-                  if (a.isBold != null) 'isBold': a.isBold,
-                  if (a.borderColorValue != null)
-                    'borderColorValue': a.borderColorValue,
-                  if (a.backgroundColorValue != null)
-                    'backgroundColorValue': a.backgroundColorValue,
-                  if (a.textColorValue != null)
-                    'textColorValue': a.textColorValue,
-                  if (a.dashedLineColorValue != null)
-                    'dashedLineColorValue': a.dashedLineColorValue,
-                  if (a.arrowColorValue != null)
-                    'arrowColorValue': a.arrowColorValue,
-                  if (a.maxWidth != null) 'maxWidth': a.maxWidth,
-                  if (a.maxLines != null) 'maxLines': a.maxLines,
-                  if (a.ellipsisEnabled != null)
-                    'ellipsisEnabled': a.ellipsisEnabled,
-                  if (a.placement != null) 'placement': a.placement,
-                },
-              )
-              .toList(),
+      'annotations': annotations.map((a) => a.toJson()).toList(),
       'omissionIndices': omissionIndices,
       'timeUnitIsMs': timeUnitIsMs,
       'msPerStep': msPerStep,
@@ -238,30 +203,8 @@ class AppConfig {
       annotations:
           ((json['annotations'] ?? []) as List)
               .map(
-                (e) => TimingChartAnnotation(
-                  id: e['id']?.toString() ?? '',
-                  startTimeIndex: e['start'] ?? 0,
-                  endTimeIndex:
-                      e['end'] == null ? null : (e['end'] as num).toInt(),
-                  text: e['text']?.toString() ?? '',
-                  offsetX: (e['offsetX'] as num?)?.toDouble(),
-                  offsetY: (e['offsetY'] as num?)?.toDouble(),
-                  arrowTipY: (e['arrowTipY'] as num?)?.toDouble(),
-                  arrowTipRowIndex: (e['arrowTipRowIndex'] as num?)?.toInt(),
-                  arrowHorizontal: e['arrowHorizontal'] as bool?,
-                  fontSize: (e['fontSize'] as num?)?.toDouble(),
-                  isBold: e['isBold'] as bool?,
-                  borderColorValue: (e['borderColorValue'] as num?)?.toInt(),
-                  backgroundColorValue:
-                      (e['backgroundColorValue'] as num?)?.toInt(),
-                  textColorValue: (e['textColorValue'] as num?)?.toInt(),
-                  dashedLineColorValue:
-                      (e['dashedLineColorValue'] as num?)?.toInt(),
-                  arrowColorValue: (e['arrowColorValue'] as num?)?.toInt(),
-                  maxWidth: (e['maxWidth'] as num?)?.toDouble(),
-                  maxLines: (e['maxLines'] as num?)?.toInt(),
-                  ellipsisEnabled: e['ellipsisEnabled'] as bool?,
-                  placement: e['placement']?.toString(),
+                (e) => TimingChartAnnotation.fromJson(
+                  Map<String, dynamic>.from(e as Map),
                 ),
               )
               .toList(),
