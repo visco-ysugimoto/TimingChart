@@ -11,6 +11,7 @@ import '../../utils/web_jpeg.dart' as web_jpeg;
 import '../../models/chart/timing_chart_annotation.dart';
 import '../../models/chart/signal_type.dart';
 import '../../models/chart/io_channel_source.dart';
+import '../../utils/comment_text_spans.dart';
 import 'chart_annotations.dart';
 import 'chart_grid.dart';
 import 'chart_signals.dart';
@@ -102,6 +103,10 @@ class TimingChart extends StatefulWidget {
   final void Function(int originalIndex, bool showIoNumber)?
   onSignalShowIoNumberChanged;
 
+  /// アノテーションが変更されたときに呼び出されるコールバック
+  final void Function(List<TimingChartAnnotation> annotations)?
+  onAnnotationsChanged;
+
   const TimingChart({
     super.key,
     required this.initialSignalNames,
@@ -118,6 +123,7 @@ class TimingChart extends StatefulWidget {
     this.plcEipMode = 'None',
     this.onSignalsChanged,
     this.onSignalShowIoNumberChanged,
+    this.onAnnotationsChanged,
   });
 
   @override
@@ -788,10 +794,17 @@ class TimingChartState extends State<TimingChart>
           a[i].textColorValue != b[i].textColorValue ||
           a[i].dashedLineColorValue != b[i].dashedLineColorValue ||
           a[i].arrowColorValue != b[i].arrowColorValue ||
+          a[i].showBorder != b[i].showBorder ||
+          a[i].showDashedLine != b[i].showDashedLine ||
+          a[i].showArrow != b[i].showArrow ||
           a[i].maxWidth != b[i].maxWidth ||
           a[i].maxLines != b[i].maxLines ||
           a[i].ellipsisEnabled != b[i].ellipsisEnabled ||
-          a[i].placement != b[i].placement) {
+          a[i].placement != b[i].placement ||
+          !listEquals(
+            a[i].colorSpans ?? const <CommentColorSpan>[],
+            b[i].colorSpans ?? const <CommentColorSpan>[],
+          )) {
         return false;
       }
     }
@@ -1342,32 +1355,60 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
-  /// コメントボックスの見た目（フォント/太字/罫線色）を編集します
+  /// 新規コメントと同じ見た目になるプロパティ初期値。
+  /// 破線・矢印は未指定時と同様にアプリ設定の色を使う。
+  _CommentPropertyDefaults _commentPropertyDefaults() {
+    final SettingsNotifier settings = Provider.of<SettingsNotifier>(
+      context,
+      listen: false,
+    );
+    return _CommentPropertyDefaults(
+      fontSize: 14.0,
+      isBold: false,
+      borderColorValue: Colors.grey.shade600.toARGB32(),
+      backgroundColorValue: const Color(0xFFFDFDFD).toARGB32(),
+      textColorValue: Colors.black.toARGB32(),
+      dashedLineColorValue: settings.commentDashedColor.toARGB32(),
+      arrowColorValue: settings.commentArrowColor.toARGB32(),
+      showBorder: true,
+      showDashedLine: true,
+      showArrow: true,
+      maxWidth: 120.0,
+      maxLines: 0,
+      ellipsisEnabled: true,
+    );
+  }
+
+  /// コメントボックスの見た目（フォント/太字/枠線色）を編集します
   void _editCommentProperties(String annId) async {
     final int index = annotations.indexWhere((a) => a.id == annId);
     if (index == -1) return;
     final TimingChartAnnotation ann = annotations[index];
+    final _CommentPropertyDefaults defaults = _commentPropertyDefaults();
 
     double fontSize = (ann.fontSize != null && ann.fontSize!.isFinite)
         ? ann.fontSize!
-        : 14.0;
+        : defaults.fontSize;
     bool isBold = ann.isBold == true;
     int borderColorValue =
-        ann.borderColorValue ?? Colors.grey.shade600.toARGB32();
+        ann.borderColorValue ?? defaults.borderColorValue;
     int backgroundColorValue =
-        ann.backgroundColorValue ?? const Color(0xFFFDFDFD).toARGB32();
-    int textColorValue = ann.textColorValue ?? Colors.black.toARGB32();
+        ann.backgroundColorValue ?? defaults.backgroundColorValue;
+    int textColorValue = ann.textColorValue ?? defaults.textColorValue;
     int dashedLineColorValue =
-        ann.dashedLineColorValue ?? Colors.black.toARGB32();
-    int arrowColorValue = ann.arrowColorValue ?? Colors.blue.toARGB32();
+        ann.dashedLineColorValue ?? defaults.dashedLineColorValue;
+    int arrowColorValue = ann.arrowColorValue ?? defaults.arrowColorValue;
+    bool showBorder = ann.showBorder ?? defaults.showBorder;
+    bool showDashedLine = ann.showDashedLine ?? defaults.showDashedLine;
+    bool showArrow = ann.showArrow ?? defaults.showArrow;
     double maxWidth = (ann.maxWidth != null && ann.maxWidth!.isFinite)
         ? ann.maxWidth!
-        : 120.0;
+        : defaults.maxWidth;
     // 0 = 無制限として扱う（スライダーの最小値を0に割り当て）
     int maxLines = (ann.maxLines != null && ann.maxLines! > 0)
         ? ann.maxLines!
-        : 0;
-    bool ellipsisEnabled = ann.ellipsisEnabled ?? true;
+        : defaults.maxLines;
+    bool ellipsisEnabled = ann.ellipsisEnabled ?? defaults.ellipsisEnabled;
 
     final bool prevCanRequest = _focusNode.canRequestFocus;
     _focusNode.canRequestFocus = false;
@@ -1379,16 +1420,19 @@ class TimingChartState extends State<TimingChart>
       Widget stateBuilder(BuildContext ctx, StateSetter setLocalState) {
         void resetDefaults() {
           setLocalState(() {
-            fontSize = 14.0;
-            isBold = false;
-            borderColorValue = Colors.grey.shade600.toARGB32();
-            backgroundColorValue = const Color(0xFFFDFDFD).toARGB32();
-            textColorValue = Colors.black.toARGB32();
-            dashedLineColorValue = Colors.black.toARGB32();
-            arrowColorValue = Colors.blue.toARGB32();
-            maxWidth = 120.0;
-            maxLines = 0;
-            ellipsisEnabled = true;
+            fontSize = defaults.fontSize;
+            isBold = defaults.isBold;
+            borderColorValue = defaults.borderColorValue;
+            backgroundColorValue = defaults.backgroundColorValue;
+            textColorValue = defaults.textColorValue;
+            dashedLineColorValue = defaults.dashedLineColorValue;
+            arrowColorValue = defaults.arrowColorValue;
+            showBorder = defaults.showBorder;
+            showDashedLine = defaults.showDashedLine;
+            showArrow = defaults.showArrow;
+            maxWidth = defaults.maxWidth;
+            maxLines = defaults.maxLines;
+            ellipsisEnabled = defaults.ellipsisEnabled;
           });
         }
 
@@ -1448,6 +1492,44 @@ class TimingChartState extends State<TimingChart>
           if (picked != null) {
             setLocalState(() => arrowColorValue = picked.toARGB32());
           }
+        }
+
+        Widget buildLineColorRow({
+          required String label,
+          required Color color,
+          required VoidCallback onPickColor,
+          bool? visible,
+          ValueChanged<bool>? onVisibleChanged,
+          String? visibilityTooltip,
+        }) {
+          final bool enabled = visible != false;
+          return Row(
+            children: [
+              SizedBox(
+                width: 60,
+                child:
+                    visible == null || onVisibleChanged == null
+                        ? null
+                        : Tooltip(
+                          message: visibilityTooltip ?? '',
+                          child: Switch(
+                            value: visible,
+                            onChanged: onVisibleChanged,
+                          ),
+                        ),
+              ),
+              SizedBox(width: 92, child: Text(label)),
+              Opacity(
+                opacity: enabled ? 1.0 : 0.35,
+                child: _buildCommentColorPreview(color),
+              ),
+              const SizedBox(width: 10),
+              TextButton(
+                onPressed: enabled ? onPickColor : null,
+                child: Text(s.common_change),
+              ),
+            ],
+          );
         }
 
         return AlertDialog(
@@ -1568,69 +1650,47 @@ class TimingChartState extends State<TimingChart>
                   dense: true,
                 ),
                 const SizedBox(height: 8),
-                Row(
-                  children: [
-                    SizedBox(
-                      width: 92,
-                      child: Text(s.comment_properties_border_color),
-                    ),
-                    _buildCommentColorPreview(Color(borderColorValue)),
-                    const SizedBox(width: 10),
-                    TextButton(
-                      onPressed: pickBorderColor,
-                      child: Text(s.common_change),
-                    ),
-                    const Spacer(),
-                    TextButton(
-                      onPressed: resetDefaults,
-                      child: Text(s.common_default),
-                    ),
-                  ],
+                buildLineColorRow(
+                  label: s.comment_properties_border_color,
+                  color: Color(borderColorValue),
+                  onPickColor: pickBorderColor,
+                  visible: showBorder,
+                  onVisibleChanged: (v) =>
+                      setLocalState(() => showBorder = v),
+                  visibilityTooltip: s.comment_properties_show_border,
                 ),
                 const SizedBox(height: 8),
-                Row(
-                  children: [
-                    SizedBox(
-                      width: 92,
-                      child: Text(s.comment_properties_background_color),
-                    ),
-                    _buildCommentColorPreview(Color(backgroundColorValue)),
-                    const SizedBox(width: 10),
-                    TextButton(
-                      onPressed: pickBackgroundColor,
-                      child: Text(s.common_change),
-                    ),
-                  ],
+                buildLineColorRow(
+                  label: s.comment_properties_background_color,
+                  color: Color(backgroundColorValue),
+                  onPickColor: pickBackgroundColor,
                 ),
                 const SizedBox(height: 8),
-                Row(
-                  children: [
-                    SizedBox(
-                      width: 92,
-                      child: Text(s.comment_properties_dashed_color),
-                    ),
-                    _buildCommentColorPreview(Color(dashedLineColorValue)),
-                    const SizedBox(width: 10),
-                    TextButton(
-                      onPressed: pickDashedLineColor,
-                      child: Text(s.common_change),
-                    ),
-                  ],
+                buildLineColorRow(
+                  label: s.comment_properties_dashed_color,
+                  color: Color(dashedLineColorValue),
+                  onPickColor: pickDashedLineColor,
+                  visible: showDashedLine,
+                  onVisibleChanged: (v) =>
+                      setLocalState(() => showDashedLine = v),
+                  visibilityTooltip: s.comment_properties_show_dashed,
                 ),
                 const SizedBox(height: 8),
-                Row(
-                  children: [
-                    SizedBox(
-                      width: 92,
-                      child: Text(s.comment_properties_arrow_color),
-                    ),
-                    _buildCommentColorPreview(Color(arrowColorValue)),
-                    const SizedBox(width: 10),
-                    TextButton(
-                      onPressed: pickArrowColor,
-                      child: Text(s.common_change),
-                    ),
-                  ],
+                buildLineColorRow(
+                  label: s.comment_properties_arrow_color,
+                  color: Color(arrowColorValue),
+                  onPickColor: pickArrowColor,
+                  visible: showArrow,
+                  onVisibleChanged: (v) =>
+                      setLocalState(() => showArrow = v),
+                  visibilityTooltip: s.comment_properties_show_arrow,
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: resetDefaults,
+                    child: Text(s.common_default),
+                  ),
                 ),
               ],
             ),
@@ -1670,6 +1730,9 @@ class TimingChartState extends State<TimingChart>
           textColorValue: textColorValue,
           dashedLineColorValue: dashedLineColorValue,
           arrowColorValue: arrowColorValue,
+          showBorder: showBorder,
+          showDashedLine: showDashedLine,
+          showArrow: showArrow,
           maxWidth: maxWidth,
           maxLines: maxLines,
           ellipsisEnabled: ellipsisEnabled,
@@ -1677,6 +1740,110 @@ class TimingChartState extends State<TimingChart>
         _forceRepaint();
       });
       _controller?.setAnnotations(annotations);
+    }
+  }
+
+  Future<_CommentTextEditResult?> _showColoredCommentTextDialog({
+    required String title,
+    String initialText = '',
+    List<CommentColorSpan>? initialColorSpans,
+    Color baseTextColor = Colors.black,
+    String? hintText,
+  }) async {
+    final controller = ColoredCommentTextEditingController(
+      text: initialText,
+      colorSpans: initialColorSpans,
+      baseColor: baseTextColor,
+    );
+
+    Widget dialogBuilder(BuildContext ctx) {
+      final s = S.of(context);
+      return AlertDialog(
+        title: Text(title),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: controller,
+                autofocus: true,
+                maxLines: null,
+                decoration: hintText != null
+                    ? InputDecoration(hintText: hintText)
+                    : const InputDecoration(),
+              ),
+              const SizedBox(height: 8),
+              AnimatedBuilder(
+                animation: controller,
+                builder: (context, _) {
+                  final bool hasSelection = controller.hasSelection;
+                  return Row(
+                    children: [
+                      TextButton(
+                        onPressed: hasSelection
+                            ? () async {
+                                final TextSelection selection =
+                                    controller.selection;
+                                final Color? picked =
+                                    await _showBorderColorPickerDialog(
+                                  ctx,
+                                  title: s.comment_selection_color,
+                                  initial: controller.baseColor,
+                                  includeWhite: true,
+                                );
+                                if (!ctx.mounted) return;
+                                controller.selection = selection;
+                                if (picked != null) {
+                                  controller.applyColorToSelection(
+                                    picked.toARGB32(),
+                                  );
+                                }
+                              }
+                            : null,
+                        child: Text(s.comment_selection_color),
+                      ),
+                      TextButton(
+                        onPressed: hasSelection
+                            ? controller.clearColorFromSelection
+                            : null,
+                        child: Text(s.comment_clear_selection_color),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(s.common_cancel),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(
+                ctx,
+                _CommentTextEditResult(
+                  text: controller.text,
+                  colorSpans: List<CommentColorSpan>.from(controller.colorSpans),
+                ),
+              );
+            },
+            child: Text(s.common_ok),
+          ),
+        ],
+      );
+    }
+
+    try {
+      return await showDialog<_CommentTextEditResult>(
+        context: context,
+        builder: dialogBuilder,
+      );
+    } finally {
+      controller.dispose();
     }
   }
 
@@ -1696,52 +1863,27 @@ class TimingChartState extends State<TimingChart>
       return;
     }
 
-    String newComment = "";
-
     final bool prevCanRequest = _focusNode.canRequestFocus;
     _focusNode.canRequestFocus = false;
     FocusScope.of(context).unfocus();
 
-    void onChanged(String val) => newComment = val;
-
-    Widget dialogBuilder(BuildContext ctx) {
-      final s = S.of(context);
-      return AlertDialog(
-        title: Text(s.comment_add_title),
-        content: TextField(
-          autofocus: true,
-          onChanged: onChanged,
-          decoration: InputDecoration(hintText: s.comment_input_hint),
-          maxLines: null,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(s.common_cancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(s.common_ok),
-          ),
-        ],
-      );
-    }
-
-    final result = await showDialog<bool>(
-      context: context,
-      builder: dialogBuilder,
+    final s = S.of(context);
+    final _CommentTextEditResult? result = await _showColoredCommentTextDialog(
+      title: s.comment_add_title,
+      hintText: s.comment_input_hint,
     );
 
     _focusNode.canRequestFocus = prevCanRequest;
     if (mounted) _focusNode.requestFocus();
 
-    if (result == true && newComment.isNotEmpty) {
+    if (result != null && result.text.isNotEmpty) {
       final annId = "ann${DateTime.now().millisecondsSinceEpoch}";
       final newAnnotation = TimingChartAnnotation(
         id: annId,
         startTimeIndex: tIndex,
         endTimeIndex: null,
-        text: newComment,
+        text: result.text,
+        colorSpans: result.colorSpans.isEmpty ? null : result.colorSpans,
       );
 
       setState(() {
@@ -1764,52 +1906,27 @@ class TimingChartState extends State<TimingChart>
     final int stTime = math.min(_startTimeIndex!, _endTimeIndex!);
     final int edTime = math.max(_startTimeIndex!, _endTimeIndex!);
 
-    String newComment = "";
-
     final bool prevCanRequest = _focusNode.canRequestFocus;
     _focusNode.canRequestFocus = false;
     FocusScope.of(context).unfocus();
 
-    void onChanged(String val) => newComment = val;
-
-    Widget dialogBuilder(BuildContext ctx) {
-      final s = S.of(context);
-      return AlertDialog(
-        title: Text(s.comment_add_range_title),
-        content: TextField(
-          autofocus: true,
-          onChanged: onChanged,
-          decoration: InputDecoration(hintText: s.comment_input_hint),
-          maxLines: null,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(s.common_cancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(s.common_ok),
-          ),
-        ],
-      );
-    }
-
-    final result = await showDialog<bool>(
-      context: context,
-      builder: dialogBuilder,
+    final s = S.of(context);
+    final _CommentTextEditResult? result = await _showColoredCommentTextDialog(
+      title: s.comment_add_range_title,
+      hintText: s.comment_input_hint,
     );
 
     _focusNode.canRequestFocus = prevCanRequest;
     if (mounted) _focusNode.requestFocus();
 
-    if (result == true && newComment.isNotEmpty) {
+    if (result != null && result.text.isNotEmpty) {
       final annId = "ann${DateTime.now().millisecondsSinceEpoch}";
       final newAnnotation = TimingChartAnnotation(
         id: annId,
         startTimeIndex: stTime,
         endTimeIndex: edTime,
-        text: newComment,
+        text: result.text,
+        colorSpans: result.colorSpans.isEmpty ? null : result.colorSpans,
       );
 
       setState(() {
@@ -1831,54 +1948,42 @@ class TimingChartState extends State<TimingChart>
     final ann = annotations.firstWhereOrNull((a) => a.id == annId);
     if (ann == null) return;
 
-    String newText = ann.text;
-
     final bool prevCanRequest = _focusNode.canRequestFocus;
     _focusNode.canRequestFocus = false;
     FocusScope.of(context).unfocus();
 
-    Widget dialogBuilder(BuildContext ctx) {
-      final controller = TextEditingController(text: ann.text);
-      final s = S.of(context);
-      void onOk() {
-        newText = controller.text;
-        Navigator.pop(ctx, true);
-      }
-
-      return AlertDialog(
-        title: Text(s.comment_edit_title),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLines: null,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(s.common_cancel),
-          ),
-          TextButton(onPressed: onOk, child: Text(s.common_ok)),
-        ],
-      );
-    }
-
-    final result = await showDialog<bool>(
-      context: context,
-      builder: dialogBuilder,
+    final s = S.of(context);
+    final Color baseTextColor = ann.textColorValue != null
+        ? Color(ann.textColorValue!)
+        : Colors.black;
+    final _CommentTextEditResult? result = await _showColoredCommentTextDialog(
+      title: s.comment_edit_title,
+      initialText: ann.text,
+      initialColorSpans: ann.colorSpans,
+      baseTextColor: baseTextColor,
     );
 
     _focusNode.canRequestFocus = prevCanRequest;
     if (mounted) _focusNode.requestFocus();
 
-    if (result == true && newText.isNotEmpty && newText != ann.text) {
-      setState(() {
-        final index = annotations.indexWhere((a) => a.id == annId);
-        if (index != -1) {
-          annotations[index] = ann.copyWith(text: newText);
-        }
-      });
-      _controller?.setAnnotations(annotations);
-    }
+    if (result == null || result.text.isEmpty) return;
+    final bool spansChanged = !listEquals(
+      result.colorSpans,
+      ann.colorSpans ?? const <CommentColorSpan>[],
+    );
+    if (result.text == ann.text && !spansChanged) return;
+
+    setState(() {
+      final index = annotations.indexWhere((a) => a.id == annId);
+      if (index != -1) {
+        annotations[index] = ann.copyWith(
+          text: result.text,
+          colorSpans: result.colorSpans,
+        );
+        _forceRepaint();
+      }
+    });
+    _controller?.setAnnotations(annotations);
   }
 
   /// アノテーションを削除します
@@ -1892,12 +1997,15 @@ class TimingChartState extends State<TimingChart>
     if (index == -1) return;
 
     setState(() {
-      annotations.removeAt(index);
+      annotations = List<TimingChartAnnotation>.from(annotations)
+        ..removeAt(index);
       if (_selectedAnnotationId == annId) {
         _selectedAnnotationId = null;
       }
+      _forceRepaint();
     });
     _controller?.setAnnotations(annotations);
+    widget.onAnnotationsChanged?.call(List.from(annotations));
   }
 
   // NOTE: 選択/編集操作（範囲トグル/挿入/削除/複製/省略線）は `timing_chart_selection_ops.dart` に分離しました。
@@ -2975,6 +3083,48 @@ class TimingChartState extends State<TimingChart>
   /// [toVisible] - 宛先表示行インデックス
   void _reorderSignalRows(int fromVisible, int toVisible) =>
       _reorderSignalRowsImpl(fromVisible, toVisible);
+}
+
+class _CommentPropertyDefaults {
+  final double fontSize;
+  final bool isBold;
+  final int borderColorValue;
+  final int backgroundColorValue;
+  final int textColorValue;
+  final int dashedLineColorValue;
+  final int arrowColorValue;
+  final bool showBorder;
+  final bool showDashedLine;
+  final bool showArrow;
+  final double maxWidth;
+  final int maxLines;
+  final bool ellipsisEnabled;
+
+  const _CommentPropertyDefaults({
+    required this.fontSize,
+    required this.isBold,
+    required this.borderColorValue,
+    required this.backgroundColorValue,
+    required this.textColorValue,
+    required this.dashedLineColorValue,
+    required this.arrowColorValue,
+    required this.showBorder,
+    required this.showDashedLine,
+    required this.showArrow,
+    required this.maxWidth,
+    required this.maxLines,
+    required this.ellipsisEnabled,
+  });
+}
+
+class _CommentTextEditResult {
+  final String text;
+  final List<CommentColorSpan> colorSpans;
+
+  const _CommentTextEditResult({
+    required this.text,
+    required this.colorSpans,
+  });
 }
 
 // NOTE: Painter は `timing_chart_painters.dart` に分離しました。

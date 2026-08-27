@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/chart/timing_chart_annotation.dart';
+import '../../utils/comment_text_spans.dart';
 import 'chart_coordinate_mapper.dart';
 import 'dart:math' as math;
 import 'chart_drawing_util.dart';
@@ -56,7 +57,7 @@ class ChartAnnotationsManager {
     this.selectedAnnotationId,
     this.draggingAnnotationId,
     this.dashedColor = Colors.black,
-    this.arrowColor = Colors.blue,
+    this.arrowColor = Colors.black,
     this.showBottomUnitLabels = true,
     this.timeUnitIsMs = false,
     this.msPerStep = 1.0,
@@ -134,13 +135,14 @@ class ChartAnnotationsManager {
           ann.textColorValue != null
               ? Color(ann.textColorValue!)
               : Colors.black;
-      final textSpan = TextSpan(
+      final textSpan = buildCommentTextSpan(
         text: ann.text,
-        style: TextStyle(
+        baseStyle: TextStyle(
           color: textColor,
           fontSize: fontSize,
           fontWeight: fontWeight,
         ),
+        spans: ann.colorSpans,
       );
       final textPainter = TextPainter(
         text: textSpan,
@@ -165,9 +167,11 @@ class ChartAnnotationsManager {
               ? Color(ann.arrowColorValue!)
               : arrowColor;
       final Color borderColor =
-          ann.borderColorValue != null
-              ? Color(ann.borderColorValue!)
-              : Colors.grey.shade600;
+          !ann.isBorderVisible
+              ? Colors.transparent
+              : (ann.borderColorValue != null
+                  ? Color(ann.borderColorValue!)
+                  : Colors.grey.shade600);
       final Color? backgroundColor =
           ann.backgroundColorValue != null
               ? Color(ann.backgroundColorValue!)
@@ -308,30 +312,32 @@ class ChartAnnotationsManager {
         final double boundaryTopY = math.min(0.0, upwardAnchor);
         final double boundaryBottomY = math.max(chartBottomY, downwardAnchor);
 
-        final boundaryPaintTop =
-            Paint()
-              ..color = perAnnDashedColor.withAlpha((0.5 * 255).round())
-              ..strokeWidth = 2.0
-              ..style = PaintingStyle.stroke;
+        if (ann.isDashedLineVisible) {
+          final boundaryPaintTop =
+              Paint()
+                ..color = perAnnDashedColor.withAlpha((0.5 * 255).round())
+                ..strokeWidth = 2.0
+                ..style = PaintingStyle.stroke;
 
-        drawDashedLine(
-          canvas,
-          Offset(startXTop, boundaryTopY),
-          Offset(startXTop, boundaryBottomY),
-          boundaryPaintTop,
-          dashWidth: dashWidth,
-          dashSpace: dashSpace,
-        );
-        if (ann.endTimeIndex != null) {
-          final double endXTop = _boundaryX(ann.endTimeIndex! + 1);
           drawDashedLine(
             canvas,
-            Offset(endXTop, boundaryTopY),
-            Offset(endXTop, boundaryBottomY),
+            Offset(startXTop, boundaryTopY),
+            Offset(startXTop, boundaryBottomY),
             boundaryPaintTop,
             dashWidth: dashWidth,
             dashSpace: dashSpace,
           );
+          if (ann.endTimeIndex != null) {
+            final double endXTop = _boundaryX(ann.endTimeIndex! + 1);
+            drawDashedLine(
+              canvas,
+              Offset(endXTop, boundaryTopY),
+              Offset(endXTop, boundaryBottomY),
+              boundaryPaintTop,
+              dashWidth: dashWidth,
+              dashSpace: dashSpace,
+            );
+          }
         }
 
         _commentBoxDrawData.add(
@@ -344,7 +350,7 @@ class ChartAnnotationsManager {
           ),
         );
 
-        if (arrowRect != null) {
+        if (ann.isArrowVisible && arrowRect != null) {
           drawArrow(canvas, arrowRect, color: perAnnArrowColor);
         }
 
@@ -357,7 +363,7 @@ class ChartAnnotationsManager {
         final double movedCenterX = commentRect.center.dx;
         final bool movedInX =
             (movedCenterX - originalCommentCenterX).abs() > 1.0;
-        if (movedInX) {
+        if (ann.isArrowVisible && movedInX) {
           final double dashedX = originalCommentCenterX;
           final bool useHorizontal = ann.arrowHorizontal != false;
           final double anchorY =
@@ -536,36 +542,38 @@ class ChartAnnotationsManager {
 
       debugPrint('左境界線: x=$startX, y1=0, y2=$boundaryEndY');
 
-      // 境界線の色を設定
-      final boundaryPaint =
-          Paint()
-            ..color = perAnnDashedColor.withAlpha((0.5 * 255).round())
-            ..strokeWidth = 2.0
-            ..style = PaintingStyle.stroke;
+      if (ann.isDashedLineVisible) {
+        // 境界線の色を設定
+        final boundaryPaint =
+            Paint()
+              ..color = perAnnDashedColor.withAlpha((0.5 * 255).round())
+              ..strokeWidth = 2.0
+              ..style = PaintingStyle.stroke;
 
-      // 垂直の破線を描画
-      drawDashedLine(
-        canvas,
-        Offset(startX, 0),
-        Offset(startX, boundaryEndY),
-        boundaryPaint,
-        dashWidth: dashWidth,
-        dashSpace: dashSpace,
-      );
-
-      // 範囲コメントの右側の垂直線
-      if (ann.endTimeIndex != null) {
-        final double endX = _boundaryX(ann.endTimeIndex! + 1);
-        debugPrint('右境界線: x=$endX, y1=0, y2=$boundaryEndY');
-
+        // 垂直の破線を描画
         drawDashedLine(
           canvas,
-          Offset(endX, 0),
-          Offset(endX, boundaryEndY),
+          Offset(startX, 0),
+          Offset(startX, boundaryEndY),
           boundaryPaint,
           dashWidth: dashWidth,
           dashSpace: dashSpace,
         );
+
+        // 範囲コメントの右側の垂直線
+        if (ann.endTimeIndex != null) {
+          final double endX = _boundaryX(ann.endTimeIndex! + 1);
+          debugPrint('右境界線: x=$endX, y1=0, y2=$boundaryEndY');
+
+          drawDashedLine(
+            canvas,
+            Offset(endX, 0),
+            Offset(endX, boundaryEndY),
+            boundaryPaint,
+            dashWidth: dashWidth,
+            dashSpace: dashSpace,
+          );
+        }
       }
 
       // コメントボックスは最後にまとめて描画するため記録のみ行う
@@ -580,7 +588,7 @@ class ChartAnnotationsManager {
       );
 
       // 矢印の描画
-      if (arrowRect != null) {
+      if (ann.isArrowVisible && arrowRect != null) {
         drawArrow(canvas, arrowRect, color: perAnnArrowColor);
       }
 
@@ -593,7 +601,7 @@ class ChartAnnotationsManager {
               : _boundaryX(ann.startTimeIndex);
       final double movedCenterX = commentRect.center.dx;
       final bool movedInX = (movedCenterX - originalCommentCenterX).abs() > 1.0;
-      if (movedInX) {
+      if (ann.isArrowVisible && movedInX) {
         final double dashedX = originalCommentCenterX;
         // 水平ON時はコメントボックス中心Yへ完全追従（チャート外でも追従）
         // 水平OFF時は既存仕様（arrowTipY/arrowTipRowIndex なければ boundaryEndY）

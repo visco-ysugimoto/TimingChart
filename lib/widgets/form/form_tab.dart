@@ -1853,6 +1853,81 @@ class FormTabState extends State<FormTab>
     });
   }
 
+  /// 結合などで増えた信号名を、既存入力を消さずに空きスロットへ割り当てる
+  void mergeIncomingSignalNames(List<SignalData> signals) {
+    if (signals.isEmpty) return;
+
+    final existingMaps = FormTabControllerMapper.buildExistingControllerMaps(
+      inputControllers: widget.inputControllers,
+      outputControllers: widget.outputControllers,
+      hwTriggerControllers: widget.hwTriggerControllers,
+      plcEipOutputControllers: widget.plcEipOutputControllers,
+      plcEipInputControllers: widget.plcEipInputControllers,
+    );
+    final existingInputMap = existingMaps['input']!;
+    final existingOutputMap = existingMaps['output']!;
+    final existingHwTriggerMap = existingMaps['hwTrigger']!;
+    final existingPlcMap = existingMaps['plc']!;
+    final existingPlcInputMap = existingMaps['plcInput']!;
+    final existingNames = <String>{
+      ...existingInputMap.keys,
+      ...existingOutputMap.keys,
+      ...existingHwTriggerMap.keys,
+      ...existingPlcMap.keys,
+      ...existingPlcInputMap.keys,
+    };
+
+    for (final signal in signals) {
+      if (signal.name.trim().isEmpty || existingNames.contains(signal.name)) {
+        continue;
+      }
+      if (FormTabControllerMapper.shouldSkipChartToControllerAssignment(
+        formState: formState,
+        name: signal.name,
+      )) {
+        continue;
+      }
+
+      switch (signal.signalType) {
+        case SignalType.input:
+        case SignalType.control:
+        case SignalType.group:
+        case SignalType.task:
+          FormTabControllerMapper.assignInputSignal(
+            formState: formState,
+            name: signal.name,
+            existingInputMap: existingInputMap,
+            existingPlcInputMap: existingPlcInputMap,
+            inputControllers: widget.inputControllers,
+            plcEipInputControllers: widget.plcEipInputControllers,
+            contactInputWaitingName: SignalNames.contactInputWaiting,
+            contactInputWaitingIndex32:
+                FormTabConstants.contactInputWaitingIndex32,
+          );
+          break;
+        case SignalType.output:
+          FormTabControllerMapper.assignOutputSignal(
+            formState: formState,
+            name: signal.name,
+            existingOutputMap: existingOutputMap,
+            existingPlcMap: existingPlcMap,
+            outputControllers: widget.outputControllers,
+            reservedOutputStart: FormTabConstants.reservedOutputStart,
+            selectOutputIndex: _selectOutputIndex,
+          );
+          break;
+        case SignalType.hwTrigger:
+          FormTabControllerMapper.assignHwTriggerSignal(
+            name: signal.name,
+            existingHwTriggerMap: existingHwTriggerMap,
+            hwTriggerControllers: widget.hwTriggerControllers,
+          );
+          break;
+      }
+      existingNames.add(signal.name);
+    }
+  }
+
   List<String> getRowModes() => _rowModes.map((e) => e.name).toList();
 
   // CODE_OPTION / Command Option の波形を生成する

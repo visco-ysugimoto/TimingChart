@@ -19,6 +19,17 @@ import 'dart:convert';
 
 import 'web_download.dart' as web;
 
+/// JSON 設定ファイルの読み込み結果
+class AppConfigPickResult {
+  final AppConfig? config;
+  final String fileName;
+
+  const AppConfigPickResult({
+    this.config,
+    required this.fileName,
+  });
+}
+
 /// ファイル操作ユーティリティクラス
 class FileUtils {
   /// 拡張子が無ければ付与する（`ext` は `.json` のようにドット付き）
@@ -204,6 +215,12 @@ class FileUtils {
 
   /// JSONファイルからアプリケーション設定をインポート
   static Future<AppConfig?> importAppConfig() async {
+    final picked = await pickAppConfigFile();
+    return picked?.config;
+  }
+
+  /// JSONファイルを選び、設定とファイル名を返す（キャンセル時は null）
+  static Future<AppConfigPickResult?> pickAppConfigFile() async {
     try {
       final result = await FilePicker.pickFiles(
         type: FileType.custom,
@@ -213,30 +230,42 @@ class FileUtils {
       );
 
       if (result == null || result.files.isEmpty) {
-        return null; // ユーザーがキャンセルした場合
+        return null;
       }
 
       final picked = result.files.first;
+      final fileName = _displayFileName(picked.name, picked.path);
       final bytes = await _readPlatformFileBytes(picked);
-      if (bytes == null) return null;
+      if (bytes == null) {
+        return AppConfigPickResult(fileName: fileName);
+      }
       final jsonString = utf8.decode(bytes);
 
-      // JSONからAppConfigを生成
       try {
-        // まず従来形式(AppConfig JSON)を試す
-        return AppConfig.fromJsonString(jsonString);
+        return AppConfigPickResult(
+          config: AppConfig.fromJsonString(jsonString),
+          fileName: fileName,
+        );
       } catch (_) {
-        // 失敗したら WaveDrom 形式を試す
         try {
-          return WaveDromConverter.fromWaveDromJson(jsonString);
+          return AppConfigPickResult(
+            config: WaveDromConverter.fromWaveDromJson(jsonString),
+            fileName: fileName,
+          );
         } catch (_) {
-          return null;
+          return AppConfigPickResult(fileName: fileName);
         }
       }
     } catch (e) {
       debugPrint('Error importing app config: $e');
-      return null;
+      return AppConfigPickResult(fileName: '');
     }
+  }
+
+  static String _displayFileName(String name, String? path) {
+    if (name.isNotEmpty) return name;
+    if (path == null || path.isEmpty) return '';
+    return p.basename(path);
   }
 
   /// AppConfig を WaveDrom JSON としてエクスポート
@@ -688,9 +717,7 @@ class FileUtils {
           final int startCol = waveStartCol + start;
           final int endCol = waveStartCol + end;
 
-          final bool borderVisible =
-              ann.borderColorValue == null ||
-              ((ann.borderColorValue! >> 24) & 0xFF) > 0;
+          final bool borderVisible = ann.isBorderVisible;
           final excel.ExcelColor borderColor = toExcelColorFromInt(
             ann.borderColorValue,
           );
@@ -762,52 +789,56 @@ class FileUtils {
           }
 
           // 境界の破線を近似的に描画（コメント上下領域の縦マーカー）
-          final boundaryStyle = excel.CellStyle(
-            leftBorder: excel.Border(
-              borderStyle: excel.BorderStyle.Dashed,
-              borderColorHex: dashedColor,
-            ),
-          );
-          for (int r = topBaseRow;
-              r <= bottomBaseRow + maxTracksPerPlacement * rowSpanPerTrack;
-              r++) {
-            final markerStart = sheet.cell(
-              excel.CellIndex.indexByColumnRow(columnIndex: startCol, rowIndex: r),
+          if (ann.isDashedLineVisible) {
+            final boundaryStyle = excel.CellStyle(
+              leftBorder: excel.Border(
+                borderStyle: excel.BorderStyle.Dashed,
+                borderColorHex: dashedColor,
+              ),
             );
-            final markerStartStyle = markerStart.cellStyle ?? excel.CellStyle();
-            markerStartStyle.leftBorder = boundaryStyle.leftBorder;
-            markerStart.cellStyle = markerStartStyle;
-
-            if (ann.endTimeIndex != null) {
-              final markerEnd = sheet.cell(
-                excel.CellIndex.indexByColumnRow(columnIndex: endCol, rowIndex: r),
+            for (int r = topBaseRow;
+                r <= bottomBaseRow + maxTracksPerPlacement * rowSpanPerTrack;
+                r++) {
+              final markerStart = sheet.cell(
+                excel.CellIndex.indexByColumnRow(columnIndex: startCol, rowIndex: r),
               );
-              final markerEndStyle = markerEnd.cellStyle ?? excel.CellStyle();
-              markerEndStyle.leftBorder = boundaryStyle.leftBorder;
-              markerEnd.cellStyle = markerEndStyle;
+              final markerStartStyle = markerStart.cellStyle ?? excel.CellStyle();
+              markerStartStyle.leftBorder = boundaryStyle.leftBorder;
+              markerStart.cellStyle = markerStartStyle;
+
+              if (ann.endTimeIndex != null) {
+                final markerEnd = sheet.cell(
+                  excel.CellIndex.indexByColumnRow(columnIndex: endCol, rowIndex: r),
+                );
+                final markerEndStyle = markerEnd.cellStyle ?? excel.CellStyle();
+                markerEndStyle.leftBorder = boundaryStyle.leftBorder;
+                markerEnd.cellStyle = markerEndStyle;
+              }
             }
           }
 
           // 矢印はセル表現で近似（横矢印/縦矢印）
-          final String arrowSymbol = (ann.arrowHorizontal ?? false)
-              ? (isTop ? '→' : '←')
-              : (isTop ? '▼' : '▲');
-          final int arrowRow = row + 1;
-          final int arrowCol = startCol;
-          final arrowCell = sheet.cell(
-            excel.CellIndex.indexByColumnRow(columnIndex: arrowCol, rowIndex: arrowRow),
-          );
-          arrowCell.value = excel.TextCellValue(arrowSymbol);
-          final arrowStyle = arrowCell.cellStyle ?? excel.CellStyle();
-          arrowStyle.horizontalAlignment = excel.HorizontalAlign.Center;
-          arrowStyle.verticalAlignment = excel.VerticalAlign.Center;
-          if (ann.arrowColorValue != null) {
-            arrowStyle.fontColor = toExcelColorFromInt(ann.arrowColorValue);
+          if (ann.isArrowVisible) {
+            final String arrowSymbol = (ann.arrowHorizontal ?? false)
+                ? (isTop ? '→' : '←')
+                : (isTop ? '▼' : '▲');
+            final int arrowRow = row + 1;
+            final int arrowCol = startCol;
+            final arrowCell = sheet.cell(
+              excel.CellIndex.indexByColumnRow(columnIndex: arrowCol, rowIndex: arrowRow),
+            );
+            arrowCell.value = excel.TextCellValue(arrowSymbol);
+            final arrowStyle = arrowCell.cellStyle ?? excel.CellStyle();
+            arrowStyle.horizontalAlignment = excel.HorizontalAlign.Center;
+            arrowStyle.verticalAlignment = excel.VerticalAlign.Center;
+            if (ann.arrowColorValue != null) {
+              arrowStyle.fontColor = toExcelColorFromInt(ann.arrowColorValue);
+            }
+            arrowCell.cellStyle = arrowStyle;
+            sheet.setRowHeight(arrowRow, 16);
           }
-          arrowCell.cellStyle = arrowStyle;
 
           sheet.setRowHeight(row, 22);
-          sheet.setRowHeight(arrowRow, 16);
         }
       }
 
@@ -874,6 +905,15 @@ class FileUtils {
         annotationsSheet
             .cell(excel.CellIndex.indexByColumnRow(columnIndex: 19, rowIndex: 0))
             .value = excel.TextCellValue('Text Color');
+        annotationsSheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 20, rowIndex: 0))
+            .value = excel.TextCellValue('Show Border');
+        annotationsSheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 21, rowIndex: 0))
+            .value = excel.TextCellValue('Show Dashed Line');
+        annotationsSheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 22, rowIndex: 0))
+            .value = excel.TextCellValue('Show Arrow');
 
         for (int i = 0; i < chartAnnotations.length; i++) {
           final ann = chartAnnotations[i];
@@ -1100,6 +1140,37 @@ class FileUtils {
                 )
                 .value = excel.TextCellValue(ann.placement!);
           }
+
+          annotationsSheet
+              .cell(
+                excel.CellIndex.indexByColumnRow(
+                  columnIndex: 20,
+                  rowIndex: rowIndex,
+                ),
+              )
+              .value = excel.TextCellValue(
+            ann.isBorderVisible ? 'true' : 'false',
+          );
+          annotationsSheet
+              .cell(
+                excel.CellIndex.indexByColumnRow(
+                  columnIndex: 21,
+                  rowIndex: rowIndex,
+                ),
+              )
+              .value = excel.TextCellValue(
+            ann.isDashedLineVisible ? 'true' : 'false',
+          );
+          annotationsSheet
+              .cell(
+                excel.CellIndex.indexByColumnRow(
+                  columnIndex: 22,
+                  rowIndex: rowIndex,
+                ),
+              )
+              .value = excel.TextCellValue(
+            ann.isArrowVisible ? 'true' : 'false',
+          );
         }
       }
 

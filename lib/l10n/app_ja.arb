@@ -76,5 +76,17 @@
   "export_failed_jpeg": "JPEGのエクスポートに失敗しました",
   "export_success_xlsx": "XLSXをエクスポートしました",
   "export_failed_xlsx": "XLSXのエクスポートに失敗しました",
-  "import_success_config": "設定をインポートしました"
+  "import_success_config": "設定をインポートしました",
+  "drawer_concat_chart": "チャートを末尾に結合...",
+  "concat_time_unit_title": "時間単位が異なります",
+  "concat_time_unit_message": "現在のチャートと結合するチャートの時間単位（ステップ / ms）が異なります。現在の単位のまま結合しますか？",
+  "concat_unmatched_title": "一致しない信号があります",
+  "concat_unmatched_message": "結合するチャートにだけ存在する信号です。0埋めして行を追加するか、これらの信号を無視できます。",
+  "concat_unmatched_add": "0埋めして追加",
+  "concat_unmatched_drop": "追加しない",
+  "concat_continue": "結合する",
+  "concat_failed_empty": "結合するチャートに信号がありません",
+  "concat_failed_load": "チャートファイルの読み込みに失敗しました",
+  "concat_success": "チャートを末尾に結合しました",
+  "concat_join_default": "結合チャート"
 }

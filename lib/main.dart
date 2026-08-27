@@ -37,6 +37,10 @@ import 'widgets/common/version_info_dialog.dart';
 import 'services/ziq_import_service.dart';
 import 'services/chart_update_service.dart';
 import 'services/export_service.dart';
+import 'services/chart_concat_service.dart';
+import 'widgets/chart/chart_concat_dialogs.dart';
+import 'widgets/form/form_tab_controller_mapper.dart';
+import 'widgets/form/form_tab_rules.dart';
 
 /// ZIQインポートテストモードの有効/無効を制御する環境変数
 const bool kZiqImportTest = bool.fromEnvironment(
@@ -906,6 +910,8 @@ class _TimingChartGeneratorHomePageState
       SnackBar(
         content: Text(success ? successMessage : failureMessage),
         duration: const Duration(seconds: 3),
+        persist: false,
+        showCloseIcon: true,
         action:
             success && savedPath != null && !kIsWeb
                 ? SnackBarAction(
@@ -1035,6 +1041,245 @@ class _TimingChartGeneratorHomePageState
         duration: const Duration(seconds: 2),
       ),
     );
+  }
+
+  /// 別チャートの JSON を現在のチャート末尾へ結合します
+  Future<void> _concatChartToTail() async {
+    final s = S.of(context);
+    final picked = await FileUtils.pickAppConfigFile();
+    if (!mounted) return;
+    if (picked == null) return;
+    if (picked.config == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(s.concat_failed_load)),
+      );
+      return;
+    }
+
+    final incoming = picked.config!;
+    if (incoming.signals.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(s.concat_failed_empty)),
+      );
+      return;
+    }
+
+    final nameToValues = _snapshotNameToValues();
+    final currentSignals =
+        _chartSignals.map((signal) {
+          final stored = nameToValues[signal.name];
+          return stored != null ? signal.copyWith(values: stored) : signal;
+        }).toList();
+    final currentAnnotations =
+        _timingChartKey.currentState?.getAnnotations() ??
+        List<TimingChartAnnotation>.from(_chartController.annotations);
+    final currentOmissions =
+        _timingChartKey.currentState?.getOmissionTimeIndices() ??
+        List<int>.from(_chartController.omissionTimeIndices);
+    final settings = Provider.of<SettingsNotifier>(context, listen: false);
+    final currentDurations =
+        (_chartController.stepDurationsMs.isNotEmpty)
+            ? _chartController.stepDurationsMs
+            : settings.stepDurationsMs;
+
+    final preview = ChartConcatService.preview(
+      currentSignals: currentSignals,
+      incomingSignals: incoming.signals,
+      currentTimeUnitIsMs: settings.timeUnitIsMs,
+      incomingTimeUnitIsMs: incoming.timeUnitIsMs,
+    );
+
+    if (preview.timeUnitMismatch) {
+      final proceed = await ChartConcatDialogs.confirmTimeUnitMismatch(context);
+      if (!mounted || !proceed) return;
+    }
+
+    var policy = UnmatchedIncomingPolicy.padAndAdd;
+    if (preview.currentLength > 0 && preview.incomingOnlyNames.isNotEmpty) {
+      final chosen = await ChartConcatDialogs.chooseUnmatchedPolicy(
+        context: context,
+        incomingOnlyNames: preview.incomingOnlyNames,
+      );
+      if (!mounted || chosen == null) return;
+      policy = chosen;
+    }
+
+    final joinLabel = _stripFileExtension(picked.fileName);
+    final result = ChartConcatService.concat(
+      currentSignals: currentSignals,
+      currentAnnotations: currentAnnotations,
+      currentOmissions: currentOmissions,
+      currentStepDurationsMs: currentDurations,
+      currentMsPerStep: settings.msPerStep,
+      currentTimeUnitIsMs: settings.timeUnitIsMs,
+      incoming: incoming,
+      unmatchedPolicy: policy,
+      joinLabel: joinLabel.isEmpty ? s.concat_join_default : joinLabel,
+    );
+
+    if (policy == UnmatchedIncomingPolicy.padAndAdd) {
+      _expandFormSlotsForConcat(result.signals);
+      await SchedulerBinding.instance.endOfFrame;
+      if (!mounted) return;
+      _formTabKey.currentState?.mergeIncomingSignalNames(result.signals);
+    }
+
+    final form = _formTabKey.currentState;
+    final valuesByName = <String, List<int>>{
+      for (final signal in result.signals) signal.name: List<int>.from(signal.values),
+    };
+    form?.registerExternalSignalValues(valuesByName);
+    form?.setChartDataOnly(
+      result.signals.map((signal) => List<int>.from(signal.values)).toList(),
+    );
+    form?.refreshSignalDataList();
+
+    final names = result.signals.map((signal) => signal.name).toList();
+    final values = result.signals.map((signal) => List<int>.from(signal.values)).toList();
+    final durationsToApply =
+        settings.timeUnitIsMs
+            ? result.stepDurationsMs
+            : List<double>.from(_chartController.stepDurationsMs);
+
+    _chartController.applyFullState(
+      signals: values,
+      signalNames: names,
+      annotations: result.annotations,
+      omissionTimeIndices: result.omissionIndices,
+      stepDurationsMs: durationsToApply,
+    );
+    if (settings.timeUnitIsMs) {
+      settings.setStepDurationsMs(result.stepDurationsMs);
+    }
+
+    setState(() {
+      _chartSignals = result.signals;
+      _chartPortNumbers = _portNumbersForSignals(result.signals);
+      _chartShowIoNumbers =
+          result.signals.map((signal) => signal.showIoNumber).toList();
+      _chartIoSources =
+          result.signals
+              .map((signal) => _detectIoSourceFor(signal.name, signal.signalType))
+              .toList();
+      _chartAnnotations = result.annotations;
+    });
+
+    _chartController.requestGridRecompute();
+    if (_tabController.index != 1) {
+      _tabController.animateTo(1);
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(s.concat_success)),
+    );
+  }
+
+  String _stripFileExtension(String fileName) {
+    final base = fileName.replaceAll('\\', '/').split('/').last.trim();
+    if (base.isEmpty) return '';
+    final dot = base.lastIndexOf('.');
+    if (dot <= 0) return base;
+    return base.substring(0, dot);
+  }
+
+  int _nextPortOption(int needed) {
+    for (final option in FormTabRules.portOptions) {
+      if (option >= needed) return option;
+    }
+    return FormTabRules.portOptions.last;
+  }
+
+  int _emptyControllerCount(List<TextEditingController> controllers) {
+    return controllers.where((c) => c.text.trim().isEmpty).length;
+  }
+
+  void _expandFormSlotsForConcat(List<SignalData> mergedSignals) {
+    final currentNames = _chartSignals.map((s) => s.name).toSet();
+    currentNames.addAll(
+      [
+        ..._inputControllers,
+        ..._plcEipInputControllers,
+        ..._outputControllers,
+        ..._plcEipOutputControllers,
+        ..._hwTriggerControllers,
+      ].map((c) => c.text).where((name) => name.trim().isNotEmpty),
+    );
+
+    bool isInputType(SignalData signal) =>
+        signal.signalType == SignalType.input ||
+        signal.signalType == SignalType.control ||
+        signal.signalType == SignalType.group ||
+        signal.signalType == SignalType.task;
+
+    final unmatchedInputs =
+        mergedSignals.where((signal) {
+          if (currentNames.contains(signal.name)) return false;
+          if (FormTabControllerMapper.shouldSkipChartToControllerAssignment(
+            formState: _formState,
+            name: signal.name,
+          )) {
+            return false;
+          }
+          return isInputType(signal);
+        }).length;
+    final unmatchedOutputs =
+        mergedSignals.where((signal) {
+          if (currentNames.contains(signal.name)) return false;
+          return signal.signalType == SignalType.output;
+        }).length;
+    final unmatchedHw =
+        mergedSignals.where((signal) {
+          if (currentNames.contains(signal.name)) return false;
+          return signal.signalType == SignalType.hwTrigger;
+        }).length;
+
+    final neededInput = _nextPortOption(
+      _formState.inputCount +
+          math.max(0, unmatchedInputs - _emptyControllerCount(_inputControllers)),
+    );
+    final neededOutput = _nextPortOption(
+      _formState.outputCount +
+          math.max(
+            0,
+            unmatchedOutputs - _emptyControllerCount(_outputControllers),
+          ),
+    );
+    if (neededInput > _formState.inputCount) {
+      _formNotifier.update(ioPort: neededInput, inputCount: neededInput);
+      _controllersNotifier.setInputCount(neededInput);
+    }
+    if (neededOutput > _formState.outputCount) {
+      _formNotifier.update(outputCount: neededOutput);
+      _controllersNotifier.setOutputCount(neededOutput);
+    }
+    if (unmatchedHw > _emptyControllerCount(_hwTriggerControllers) &&
+        _formState.hwPort == 0 &&
+        _formState.camera > 0) {
+      _formNotifier.update(hwPort: _formState.camera);
+      _updateHwTriggerControllers(_formState.camera);
+    }
+  }
+
+  List<int> _portNumbersForSignals(List<SignalData> signals) {
+    final existingByName = <String, int>{};
+    for (int i = 0; i < _chartSignals.length && i < _chartPortNumbers.length; i++) {
+      existingByName[_chartSignals[i].name] = _chartPortNumbers[i];
+    }
+
+    final form = _formTabKey.currentState;
+    final formByName = <String, int>{};
+    if (form != null) {
+      final names = form.generateSignalNames();
+      final ports = form.generatePortNumbers();
+      for (int i = 0; i < names.length && i < ports.length; i++) {
+        formByName[names[i]] = ports[i];
+      }
+    }
+
+    return signals
+        .map((signal) => existingByName[signal.name] ?? formByName[signal.name] ?? 0)
+        .toList();
   }
 
   /// チャートをJPEG画像としてエクスポートします
@@ -1282,6 +1527,15 @@ class _TimingChartGeneratorHomePageState
               onTap: () {
                 Navigator.pop(context);
                 _importConfig();
+              },
+            ),
+
+            ListTile(
+              leading: Icon(Icons.add_to_photos_outlined),
+              title: Text(s.drawer_concat_chart),
+              onTap: () {
+                Navigator.pop(context);
+                _concatChartToTail();
               },
             ),
 
@@ -1743,6 +1997,9 @@ class _TimingChartGeneratorHomePageState
                 plcEipMode: _plcEipOption,
                 onSignalsChanged: _handleChartSignalsChanged,
                 onSignalShowIoNumberChanged: _handleSignalShowIoNumberChanged,
+                onAnnotationsChanged: (anns) {
+                  _chartAnnotations = List.from(anns);
+                },
                 showIoNumbersPerSignal: _chartShowIoNumbers,
               ),
             ],

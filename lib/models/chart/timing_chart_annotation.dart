@@ -1,3 +1,43 @@
+/// コメント本文の一部に付ける色範囲。`start` は inclusive、`end` は exclusive。
+class CommentColorSpan {
+  final int start;
+  final int end;
+  final int colorValue;
+
+  const CommentColorSpan({
+    required this.start,
+    required this.end,
+    required this.colorValue,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'start': start,
+      'end': end,
+      'color': colorValue,
+    };
+  }
+
+  static CommentColorSpan? fromJson(Map<String, dynamic> json) {
+    final int? start = (json['start'] as num?)?.toInt();
+    final int? end = (json['end'] as num?)?.toInt();
+    final int? color = (json['color'] as num?)?.toInt();
+    if (start == null || end == null || color == null) return null;
+    return CommentColorSpan(start: start, end: end, colorValue: color);
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is CommentColorSpan &&
+        start == other.start &&
+        end == other.end &&
+        colorValue == other.colorValue;
+  }
+
+  @override
+  int get hashCode => Object.hash(start, end, colorValue);
+}
+
 class TimingChartAnnotation {
   final String id;
   final int startTimeIndex;
@@ -30,6 +70,12 @@ class TimingChartAnnotation {
   final int? dashedLineColorValue;
   // 矢印の色（ARGB int）。nullの場合は描画側のデフォルト値を使う。
   final int? arrowColorValue;
+  // 枠線の表示。null は表示（既定）。
+  final bool? showBorder;
+  // 時刻を指す破線の表示。null は表示（既定）。
+  final bool? showDashedLine;
+  // 範囲矢印・接続矢印の表示。null は表示（既定）。
+  final bool? showArrow;
   // テキストの折り返し幅（px）。nullの場合は描画側のデフォルト値（120）を使う。
   final double? maxWidth;
   // テキストの最大行数。nullまたは0以下の場合は無制限扱い。
@@ -38,6 +84,8 @@ class TimingChartAnnotation {
   final bool? ellipsisEnabled;
   // コメントボックスの配置位置。'top'=チャート上部、null/'bottom'=チャート下部（既定）。
   final String? placement;
+  // 本文の一部に付ける色。null または空なら全体が textColorValue。
+  final List<CommentColorSpan>? colorSpans;
 
   const TimingChartAnnotation({
     required this.id,
@@ -56,10 +104,14 @@ class TimingChartAnnotation {
     this.textColorValue,
     this.dashedLineColorValue,
     this.arrowColorValue,
+    this.showBorder,
+    this.showDashedLine,
+    this.showArrow,
     this.maxWidth,
     this.maxLines,
     this.ellipsisEnabled,
     this.placement,
+    this.colorSpans,
   });
 
   TimingChartAnnotation copyWith({
@@ -79,10 +131,14 @@ class TimingChartAnnotation {
     int? textColorValue,
     int? dashedLineColorValue,
     int? arrowColorValue,
+    bool? showBorder,
+    bool? showDashedLine,
+    bool? showArrow,
     double? maxWidth,
     int? maxLines,
     bool? ellipsisEnabled,
     String? placement,
+    List<CommentColorSpan>? colorSpans,
   }) {
     return TimingChartAnnotation(
       id: id ?? this.id,
@@ -102,10 +158,14 @@ class TimingChartAnnotation {
       textColorValue: textColorValue ?? this.textColorValue,
       dashedLineColorValue: dashedLineColorValue ?? this.dashedLineColorValue,
       arrowColorValue: arrowColorValue ?? this.arrowColorValue,
+      showBorder: showBorder ?? this.showBorder,
+      showDashedLine: showDashedLine ?? this.showDashedLine,
+      showArrow: showArrow ?? this.showArrow,
       maxWidth: maxWidth ?? this.maxWidth,
       maxLines: maxLines ?? this.maxLines,
       ellipsisEnabled: ellipsisEnabled ?? this.ellipsisEnabled,
       placement: placement ?? this.placement,
+      colorSpans: colorSpans ?? this.colorSpans,
     );
   }
 
@@ -130,10 +190,15 @@ class TimingChartAnnotation {
       if (dashedLineColorValue != null)
         'dashedLineColorValue': dashedLineColorValue,
       if (arrowColorValue != null) 'arrowColorValue': arrowColorValue,
+      if (showBorder != null) 'showBorder': showBorder,
+      if (showDashedLine != null) 'showDashedLine': showDashedLine,
+      if (showArrow != null) 'showArrow': showArrow,
       if (maxWidth != null) 'maxWidth': maxWidth,
       if (maxLines != null) 'maxLines': maxLines,
       if (ellipsisEnabled != null) 'ellipsisEnabled': ellipsisEnabled,
       if (placement != null) 'placement': placement,
+      if (colorSpans != null && colorSpans!.isNotEmpty)
+        'colorSpans': colorSpans!.map((s) => s.toJson()).toList(),
     };
   }
 
@@ -156,10 +221,43 @@ class TimingChartAnnotation {
       textColorValue: (json['textColorValue'] as num?)?.toInt(),
       dashedLineColorValue: (json['dashedLineColorValue'] as num?)?.toInt(),
       arrowColorValue: (json['arrowColorValue'] as num?)?.toInt(),
+      showBorder: json['showBorder'] as bool?,
+      showDashedLine: json['showDashedLine'] as bool?,
+      showArrow: json['showArrow'] as bool?,
       maxWidth: (json['maxWidth'] as num?)?.toDouble(),
       maxLines: (json['maxLines'] as num?)?.toInt(),
       ellipsisEnabled: json['ellipsisEnabled'] as bool?,
       placement: json['placement']?.toString(),
+      colorSpans: _colorSpansFromJson(json['colorSpans']),
     );
   }
+
+  static List<CommentColorSpan>? _colorSpansFromJson(dynamic raw) {
+    if (raw is! List) return null;
+    final List<CommentColorSpan> spans = [];
+    for (final item in raw) {
+      if (item is! Map) continue;
+      final CommentColorSpan? span = CommentColorSpan.fromJson(
+        Map<String, dynamic>.from(item),
+      );
+      if (span != null) spans.add(span);
+    }
+    return spans.isEmpty ? null : spans;
+  }
+
+  /// 枠線を描画するかどうか。未設定は表示。透明色は非表示扱い。
+  bool get isBorderVisible {
+    if (showBorder == false) return false;
+    if (borderColorValue != null &&
+        ((borderColorValue! >> 24) & 0xFF) == 0) {
+      return false;
+    }
+    return true;
+  }
+
+  /// 時刻を指す破線を描画するかどうか。未設定は表示。
+  bool get isDashedLineVisible => showDashedLine != false;
+
+  /// 範囲矢印・接続矢印を描画するかどうか。未設定は表示。
+  bool get isArrowVisible => showArrow != false;
 }

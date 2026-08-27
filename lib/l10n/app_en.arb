@@ -249,5 +249,53 @@
   "import_success_config": "Configuration imported",
   "@import_success_config": {
       "description": "SnackBar after config import success"
+  },
+  "drawer_concat_chart": "Append chart to the end...",
+  "@drawer_concat_chart": {
+      "description": "Drawer item to concatenate another chart file"
+  },
+  "concat_time_unit_title": "Time units differ",
+  "@concat_time_unit_title": {
+      "description": "Dialog title when concatenating charts with different time units"
+  },
+  "concat_time_unit_message": "The current chart and the selected chart use different time units (steps / ms). Append using the current unit?",
+  "@concat_time_unit_message": {
+      "description": "Dialog body for time unit mismatch"
+  },
+  "concat_unmatched_title": "Unmatched signals",
+  "@concat_unmatched_title": {
+      "description": "Dialog title when incoming chart has extra signals"
+  },
+  "concat_unmatched_message": "These signals exist only in the appended chart. Add them as new rows (padded with 0) or ignore them.",
+  "@concat_unmatched_message": {
+      "description": "Dialog body listing unmatched incoming signals"
+  },
+  "concat_unmatched_add": "Add with 0 padding",
+  "@concat_unmatched_add": {
+      "description": "Dialog action: add unmatched incoming signals"
+  },
+  "concat_unmatched_drop": "Do not add",
+  "@concat_unmatched_drop": {
+      "description": "Dialog action: drop unmatched incoming signals"
+  },
+  "concat_continue": "Append",
+  "@concat_continue": {
+      "description": "Dialog action to continue concatenation"
+  },
+  "concat_failed_empty": "The selected chart has no signals",
+  "@concat_failed_empty": {
+      "description": "SnackBar when incoming chart is empty"
+  },
+  "concat_failed_load": "Failed to load the chart file",
+  "@concat_failed_load": {
+      "description": "SnackBar when concat file parse fails"
+  },
+  "concat_success": "Appended the chart to the end",
+  "@concat_success": {
+      "description": "SnackBar after successful chart concatenation"
+  },
+  "concat_join_default": "Appended chart",
+  "@concat_join_default": {
+      "description": "Default join annotation label"
   }
 }

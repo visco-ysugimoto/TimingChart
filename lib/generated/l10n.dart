@@ -887,6 +887,26 @@ class S {
     );
   }
 
+  /// `Selection color`
+  String get comment_selection_color {
+    return Intl.message(
+      'Selection color',
+      name: 'comment_selection_color',
+      desc: 'Button to apply color to the selected comment text',
+      args: [],
+    );
+  }
+
+  /// `Clear color`
+  String get comment_clear_selection_color {
+    return Intl.message(
+      'Clear color',
+      name: 'comment_clear_selection_color',
+      desc: 'Button to remove partial color from the selected comment text',
+      args: [],
+    );
+  }
+
   /// `Selected:`
   String get color_picker_selected {
     return Intl.message(
@@ -1003,6 +1023,36 @@ class S {
       'Arrow color',
       name: 'comment_properties_arrow_color',
       desc: 'Label for arrow color',
+      args: [],
+    );
+  }
+
+  /// `Show border`
+  String get comment_properties_show_border {
+    return Intl.message(
+      'Show border',
+      name: 'comment_properties_show_border',
+      desc: 'Switch to show or hide the comment box border',
+      args: [],
+    );
+  }
+
+  /// `Show dashed line`
+  String get comment_properties_show_dashed {
+    return Intl.message(
+      'Show dashed line',
+      name: 'comment_properties_show_dashed',
+      desc: 'Switch to show or hide the time marker dashed line',
+      args: [],
+    );
+  }
+
+  /// `Show arrow`
+  String get comment_properties_show_arrow {
+    return Intl.message(
+      'Show arrow',
+      name: 'comment_properties_show_arrow',
+      desc: 'Switch to show or hide the comment arrow',
       args: [],
     );
   }
@@ -1213,6 +1263,126 @@ class S {
       'Configuration imported',
       name: 'import_success_config',
       desc: 'SnackBar after config import success',
+      args: [],
+    );
+  }
+
+  /// `Append chart to the end...`
+  String get drawer_concat_chart {
+    return Intl.message(
+      'Append chart to the end...',
+      name: 'drawer_concat_chart',
+      desc: 'Drawer item to concatenate another chart file',
+      args: [],
+    );
+  }
+
+  /// `Time units differ`
+  String get concat_time_unit_title {
+    return Intl.message(
+      'Time units differ',
+      name: 'concat_time_unit_title',
+      desc: 'Dialog title when concatenating charts with different time units',
+      args: [],
+    );
+  }
+
+  /// `The current chart and the selected chart use different time units (steps / ms). Append using the current unit?`
+  String get concat_time_unit_message {
+    return Intl.message(
+      'The current chart and the selected chart use different time units (steps / ms). Append using the current unit?',
+      name: 'concat_time_unit_message',
+      desc: 'Dialog body for time unit mismatch',
+      args: [],
+    );
+  }
+
+  /// `Unmatched signals`
+  String get concat_unmatched_title {
+    return Intl.message(
+      'Unmatched signals',
+      name: 'concat_unmatched_title',
+      desc: 'Dialog title when incoming chart has extra signals',
+      args: [],
+    );
+  }
+
+  /// `These signals exist only in the appended chart. Add them as new rows (padded with 0) or ignore them.`
+  String get concat_unmatched_message {
+    return Intl.message(
+      'These signals exist only in the appended chart. Add them as new rows (padded with 0) or ignore them.',
+      name: 'concat_unmatched_message',
+      desc: 'Dialog body listing unmatched incoming signals',
+      args: [],
+    );
+  }
+
+  /// `Add with 0 padding`
+  String get concat_unmatched_add {
+    return Intl.message(
+      'Add with 0 padding',
+      name: 'concat_unmatched_add',
+      desc: 'Dialog action: add unmatched incoming signals',
+      args: [],
+    );
+  }
+
+  /// `Do not add`
+  String get concat_unmatched_drop {
+    return Intl.message(
+      'Do not add',
+      name: 'concat_unmatched_drop',
+      desc: 'Dialog action: drop unmatched incoming signals',
+      args: [],
+    );
+  }
+
+  /// `Append`
+  String get concat_continue {
+    return Intl.message(
+      'Append',
+      name: 'concat_continue',
+      desc: 'Dialog action to continue concatenation',
+      args: [],
+    );
+  }
+
+  /// `The selected chart has no signals`
+  String get concat_failed_empty {
+    return Intl.message(
+      'The selected chart has no signals',
+      name: 'concat_failed_empty',
+      desc: 'SnackBar when incoming chart is empty',
+      args: [],
+    );
+  }
+
+  /// `Failed to load the chart file`
+  String get concat_failed_load {
+    return Intl.message(
+      'Failed to load the chart file',
+      name: 'concat_failed_load',
+      desc: 'SnackBar when concat file parse fails',
+      args: [],
+    );
+  }
+
+  /// `Appended the chart to the end`
+  String get concat_success {
+    return Intl.message(
+      'Appended the chart to the end',
+      name: 'concat_success',
+      desc: 'SnackBar after successful chart concatenation',
+      args: [],
+    );
+  }
+
+  /// `Appended chart`
+  String get concat_join_default {
+    return Intl.message(
+      'Appended chart',
+      name: 'concat_join_default',
+      desc: 'Default join annotation label',
       args: [],
     );
   }

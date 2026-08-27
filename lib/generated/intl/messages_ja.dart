@@ -41,6 +41,9 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "comment_add_title": MessageLookupByLibrary.simpleMessage("コメントを追加"),
     "comment_arrow_color": MessageLookupByLibrary.simpleMessage("コメント矢印の色"),
+    "comment_clear_selection_color": MessageLookupByLibrary.simpleMessage(
+      "色を戻す",
+    ),
     "comment_dashed_color": MessageLookupByLibrary.simpleMessage("コメント破線の色"),
     "comment_edit_title": MessageLookupByLibrary.simpleMessage("コメントを編集"),
     "comment_input_hint": MessageLookupByLibrary.simpleMessage("コメントを入力"),
@@ -52,7 +55,7 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "comment_properties_bold": MessageLookupByLibrary.simpleMessage("太字"),
     "comment_properties_border_color": MessageLookupByLibrary.simpleMessage(
-      "罫線の色",
+      "枠線の色",
     ),
     "comment_properties_dashed_color": MessageLookupByLibrary.simpleMessage(
       "破線の色",
@@ -68,6 +71,15 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "comment_properties_max_lines_unlimited":
         MessageLookupByLibrary.simpleMessage("無制限"),
+    "comment_properties_show_arrow": MessageLookupByLibrary.simpleMessage(
+      "矢印を表示",
+    ),
+    "comment_properties_show_border": MessageLookupByLibrary.simpleMessage(
+      "枠線を表示",
+    ),
+    "comment_properties_show_dashed": MessageLookupByLibrary.simpleMessage(
+      "破線を表示",
+    ),
     "comment_properties_text_color": MessageLookupByLibrary.simpleMessage(
       "文字色",
     ),
@@ -77,10 +89,34 @@ class MessageLookup extends MessageLookupByLibrary {
     "comment_properties_wrap_width": MessageLookupByLibrary.simpleMessage(
       "折り返し幅",
     ),
+    "comment_selection_color": MessageLookupByLibrary.simpleMessage("選択範囲の色"),
     "common_cancel": MessageLookupByLibrary.simpleMessage("キャンセル"),
     "common_change": MessageLookupByLibrary.simpleMessage("変更"),
     "common_default": MessageLookupByLibrary.simpleMessage("デフォルト"),
     "common_ok": MessageLookupByLibrary.simpleMessage("OK"),
+    "concat_continue": MessageLookupByLibrary.simpleMessage("結合する"),
+    "concat_failed_empty": MessageLookupByLibrary.simpleMessage(
+      "結合するチャートに信号がありません",
+    ),
+    "concat_failed_load": MessageLookupByLibrary.simpleMessage(
+      "チャートファイルの読み込みに失敗しました",
+    ),
+    "concat_join_default": MessageLookupByLibrary.simpleMessage("結合チャート"),
+    "concat_success": MessageLookupByLibrary.simpleMessage("チャートを末尾に結合しました"),
+    "concat_time_unit_message": MessageLookupByLibrary.simpleMessage(
+      "現在のチャートと結合するチャートの時間単位（ステップ / ms）が異なります。現在の単位のまま結合しますか？",
+    ),
+    "concat_time_unit_title": MessageLookupByLibrary.simpleMessage(
+      "時間単位が異なります",
+    ),
+    "concat_unmatched_add": MessageLookupByLibrary.simpleMessage("0埋めして追加"),
+    "concat_unmatched_drop": MessageLookupByLibrary.simpleMessage("追加しない"),
+    "concat_unmatched_message": MessageLookupByLibrary.simpleMessage(
+      "結合するチャートにだけ存在する信号です。0埋めして行を追加するか、これらの信号を無視できます。",
+    ),
+    "concat_unmatched_title": MessageLookupByLibrary.simpleMessage(
+      "一致しない信号があります",
+    ),
     "createTemplateButton": MessageLookupByLibrary.simpleMessage("テンプレートを作成"),
     "ctx_add_comment": MessageLookupByLibrary.simpleMessage("コメントを追加"),
     "ctx_arrow_horizontal_off_to_on": MessageLookupByLibrary.simpleMessage(
@@ -113,6 +149,9 @@ class MessageLookup extends MessageLookupByLibrary {
     "default_chart_length": MessageLookupByLibrary.simpleMessage("デフォルトのチャート長"),
     "default_export_folder": MessageLookupByLibrary.simpleMessage(
       "デフォルトのエクスポートフォルダー",
+    ),
+    "drawer_concat_chart": MessageLookupByLibrary.simpleMessage(
+      "チャートを末尾に結合...",
     ),
     "drawer_export": MessageLookupByLibrary.simpleMessage("エクスポート"),
     "drawer_export_chart_jpeg": MessageLookupByLibrary.simpleMessage(

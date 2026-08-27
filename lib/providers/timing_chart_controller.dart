@@ -199,6 +199,25 @@ class TimingChartController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 結合など複数フィールドを「1操作」として更新する
+  void applyFullState({
+    required List<List<int>> signals,
+    required List<String> signalNames,
+    required List<TimingChartAnnotation> annotations,
+    required List<int> omissionTimeIndices,
+    required List<double> stepDurationsMs,
+  }) {
+    if (!_isUndoRedoOperation) {
+      _saveSnapshot();
+    }
+    _signals = signals.map((e) => List<int>.from(e)).toList();
+    _signalNames = List<String>.from(signalNames);
+    _annotations = List<TimingChartAnnotation>.from(annotations);
+    _omissionTimeIndices = List<int>.from(omissionTimeIndices);
+    _stepDurationsMs = List<double>.from(stepDurationsMs);
+    notifyListeners();
+  }
+
   /// 信号が等しいかどうかを判定
   bool _areSignalsEqual(List<List<int>> a, List<List<int>> b) {
     if (a.length != b.length) return false;

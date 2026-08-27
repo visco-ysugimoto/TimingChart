@@ -45,6 +45,9 @@ class MessageLookup extends MessageLookupByLibrary {
     "comment_arrow_color": MessageLookupByLibrary.simpleMessage(
       "Comment arrow color",
     ),
+    "comment_clear_selection_color": MessageLookupByLibrary.simpleMessage(
+      "Clear color",
+    ),
     "comment_dashed_color": MessageLookupByLibrary.simpleMessage(
       "Comment dashed color",
     ),
@@ -74,6 +77,15 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "comment_properties_max_lines_unlimited":
         MessageLookupByLibrary.simpleMessage("Unlimited"),
+    "comment_properties_show_arrow": MessageLookupByLibrary.simpleMessage(
+      "Show arrow",
+    ),
+    "comment_properties_show_border": MessageLookupByLibrary.simpleMessage(
+      "Show border",
+    ),
+    "comment_properties_show_dashed": MessageLookupByLibrary.simpleMessage(
+      "Show dashed line",
+    ),
     "comment_properties_text_color": MessageLookupByLibrary.simpleMessage(
       "Text color",
     ),
@@ -83,10 +95,42 @@ class MessageLookup extends MessageLookupByLibrary {
     "comment_properties_wrap_width": MessageLookupByLibrary.simpleMessage(
       "Wrap width",
     ),
+    "comment_selection_color": MessageLookupByLibrary.simpleMessage(
+      "Selection color",
+    ),
     "common_cancel": MessageLookupByLibrary.simpleMessage("Cancel"),
     "common_change": MessageLookupByLibrary.simpleMessage("Change"),
     "common_default": MessageLookupByLibrary.simpleMessage("Default"),
     "common_ok": MessageLookupByLibrary.simpleMessage("OK"),
+    "concat_continue": MessageLookupByLibrary.simpleMessage("Append"),
+    "concat_failed_empty": MessageLookupByLibrary.simpleMessage(
+      "The selected chart has no signals",
+    ),
+    "concat_failed_load": MessageLookupByLibrary.simpleMessage(
+      "Failed to load the chart file",
+    ),
+    "concat_join_default": MessageLookupByLibrary.simpleMessage(
+      "Appended chart",
+    ),
+    "concat_success": MessageLookupByLibrary.simpleMessage(
+      "Appended the chart to the end",
+    ),
+    "concat_time_unit_message": MessageLookupByLibrary.simpleMessage(
+      "The current chart and the selected chart use different time units (steps / ms). Append using the current unit?",
+    ),
+    "concat_time_unit_title": MessageLookupByLibrary.simpleMessage(
+      "Time units differ",
+    ),
+    "concat_unmatched_add": MessageLookupByLibrary.simpleMessage(
+      "Add with 0 padding",
+    ),
+    "concat_unmatched_drop": MessageLookupByLibrary.simpleMessage("Do not add"),
+    "concat_unmatched_message": MessageLookupByLibrary.simpleMessage(
+      "These signals exist only in the appended chart. Add them as new rows (padded with 0) or ignore them.",
+    ),
+    "concat_unmatched_title": MessageLookupByLibrary.simpleMessage(
+      "Unmatched signals",
+    ),
     "createTemplateButton": MessageLookupByLibrary.simpleMessage(
       "Create Template",
     ),
@@ -139,6 +183,9 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "default_export_folder": MessageLookupByLibrary.simpleMessage(
       "Default export folder",
+    ),
+    "drawer_concat_chart": MessageLookupByLibrary.simpleMessage(
+      "Append chart to the end...",
     ),
     "drawer_export": MessageLookupByLibrary.simpleMessage("Export"),
     "drawer_export_chart_jpeg": MessageLookupByLibrary.simpleMessage(
