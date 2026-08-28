@@ -1443,7 +1443,9 @@ class _TimingChartGeneratorHomePageState
   }
 
   void _showGlobalHelpDialog(BuildContext context) {
-    final int initialTab = _tabController.index.clamp(0, 1);
+    // ヘルプは [はじめに, 入力フォーム, タイミングチャート] の 3 タブ。
+    // アプリの Form/Chart タブに合わせて 1 または 2 を開く。
+    final int initialTab = _tabController.index.clamp(0, 1) + 1;
     showDialog(
       context: context,
       builder: (_) => GlobalHelpDialog(initialTabIndex: initialTab),

@@ -61,12 +61,15 @@ class _GlobalHelpDialogState extends State<GlobalHelpDialog> {
         width: _isMaximized ? dialogW : dialogW.clamp(320, 1100),
         height: _isMaximized ? dialogH : dialogH.clamp(280, 900),
         child: DefaultTabController(
-          length: 2,
-          initialIndex: widget.initialTabIndex.clamp(0, 1),
+          length: 3,
+          initialIndex: widget.initialTabIndex.clamp(0, 2),
           child: Column(
             children: [
               TabBar(
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
                 tabs: [
+                  Tab(text: _overviewTabLabel(context)),
                   Tab(text: s.formTabTitle),
                   Tab(text: s.chartTabTitle),
                 ],
@@ -75,6 +78,7 @@ class _GlobalHelpDialogState extends State<GlobalHelpDialog> {
               const Expanded(
                 child: TabBarView(
                   children: [
+                    _HelpMarkdownTab(kind: _HelpKind.overview),
                     _HelpMarkdownTab(kind: _HelpKind.form),
                     _HelpMarkdownTab(kind: _HelpKind.chart),
                   ],
@@ -94,7 +98,12 @@ class _GlobalHelpDialogState extends State<GlobalHelpDialog> {
   }
 }
 
-enum _HelpKind { form, chart }
+enum _HelpKind { overview, form, chart }
+
+String _overviewTabLabel(BuildContext context) {
+  final lang = Localizations.localeOf(context).languageCode;
+  return lang == 'ja' ? 'はじめに' : 'Overview';
+}
 
 class _HelpMarkdownTab extends StatefulWidget {
   final _HelpKind kind;
@@ -125,7 +134,11 @@ class _HelpMarkdownTabState extends State<_HelpMarkdownTab> {
     final locale = Provider.of<LocaleNotifier>(context, listen: false).locale;
     final lang = locale.languageCode.toLowerCase();
 
-    final String fileName = widget.kind == _HelpKind.form ? 'form.md' : 'chart.md';
+    final String fileName = switch (widget.kind) {
+      _HelpKind.overview => 'overview.md',
+      _HelpKind.form => 'form.md',
+      _HelpKind.chart => 'chart.md',
+    };
     final String primaryPath = 'assets/help/$lang/$fileName';
     final String fallbackPath = 'assets/help/en/$fileName';
 
@@ -201,7 +214,21 @@ MarkdownStyleSheet _helpMarkdownStyle(BuildContext context) {
   final theme = Theme.of(context);
   final base = MarkdownStyleSheet.fromTheme(theme);
   final borderColor = theme.dividerColor;
+  final quoteColor = theme.colorScheme.primary.withValues(alpha: 0.12);
   return base.copyWith(
+    h1Padding: const EdgeInsets.only(bottom: 12),
+    h2Padding: const EdgeInsets.only(top: 20, bottom: 8),
+    h3Padding: const EdgeInsets.only(top: 14, bottom: 6),
+    pPadding: const EdgeInsets.only(bottom: 8),
+    listIndent: 20,
+    blockquotePadding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+    blockquoteDecoration: BoxDecoration(
+      color: quoteColor,
+      borderRadius: BorderRadius.circular(8),
+      border: Border(
+        left: BorderSide(color: theme.colorScheme.primary, width: 4),
+      ),
+    ),
     tablePadding: const EdgeInsets.only(bottom: 16),
     tableBorder: TableBorder.all(color: borderColor),
     tableHeadAlign: TextAlign.left,
