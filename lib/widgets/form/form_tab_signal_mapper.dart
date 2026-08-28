@@ -23,6 +23,7 @@ class FormTabSignalMapper {
   static String hwKey(int index) => 'hw:$index';
   static String dioOutputKey(int index) => 'dio-output:$index';
   static String plcOutputKey(int index) => 'plc-output:$index';
+  static String auxKey(int index) => 'aux:$index';
 
   // --- フォールバック名 ---
   // NOTE: インポート/表示名ゆれ（Input1 / Input 1 / PLI1 等）を吸収するための候補群です。
@@ -146,6 +147,7 @@ class FormTabSignalMapper {
     required List<TextEditingController> hwTriggerControllers,
     required List<TextEditingController> outputControllers,
     required List<TextEditingController> plcEipOutputControllers,
+    List<TextEditingController> auxiliaryControllers = const [],
   }) {
     for (final entry in externalValues.entries) {
       final values = List<int>.from(entry.value);
@@ -174,6 +176,11 @@ class FormTabSignalMapper {
       for (int i = 0; i < plcEipOutputControllers.length; i++) {
         if (plcEipOutputControllers[i].text == name) {
           prevPortValues[plcOutputKey(i)] = values;
+        }
+      }
+      for (int i = 0; i < auxiliaryControllers.length; i++) {
+        if (auxiliaryControllers[i].text == name) {
+          prevPortValues[auxKey(i)] = values;
         }
       }
     }
@@ -284,6 +291,51 @@ class FormTabSignalMapper {
     }
 
     return hwTriggerSignalMap;
+  }
+
+  /// IO に紐づかない補助信号マップを構築
+  ///
+  /// - 空ラベルは除外する
+  /// - [occupiedNames] と衝突する名前、および補助信号同士の重複は先頭のみ採用
+  static Map<int, SignalData> buildAuxiliarySignalMap({
+    required List<TextEditingController> auxiliaryControllers,
+    required List<bool> auxiliaryVisibility,
+    required Set<String> occupiedNames,
+    required Map<String, List<int>> prevPortValues,
+    required Map<String, List<int>> prevValueMap,
+    required int defaultWaveLength,
+    Map<String, int?> prevColorByName = const {},
+    List<int?> auxiliaryColors = const [],
+  }) {
+    final Map<int, SignalData> auxiliarySignalMap = {};
+    final usedNames = <String>{};
+
+    for (int i = 0; i < auxiliaryControllers.length; i++) {
+      final String name = auxiliaryControllers[i].text.trim();
+      if (name.isEmpty) continue;
+      if (occupiedNames.contains(name) || usedNames.contains(name)) continue;
+
+      usedNames.add(name);
+      final List<int> values = resolveSignalValues(
+        prevPortValues: prevPortValues,
+        prevValueMap: prevValueMap,
+        primaryKey: auxKey(i),
+        name: name,
+        defaultWaveLength: defaultWaveLength,
+      );
+      auxiliarySignalMap[i] = SignalData(
+        name: name,
+        signalType: SignalType.auxiliary,
+        values: values,
+        isVisible:
+            i < auxiliaryVisibility.length ? auxiliaryVisibility[i] : true,
+        showIoNumber: false,
+        colorArgb: prevColorByName[name] ??
+            (i < auxiliaryColors.length ? auxiliaryColors[i] : null),
+      );
+    }
+
+    return auxiliarySignalMap;
   }
 
   /// 出力信号マップを構築
@@ -397,6 +449,7 @@ class FormTabSignalMapper {
     required Map<int, SignalData> inputSignalMap,
     required Map<int, SignalData> outputSignalMap,
     required Map<int, SignalData> hwTriggerSignalMap,
+    Map<int, SignalData> auxiliarySignalMap = const <int, SignalData>{},
   }) {
     final Map<String, List<int>> newPortValues = {};
 
@@ -419,6 +472,9 @@ class FormTabSignalMapper {
         newPortValues[plcOutputKey(plcIndex)] = List<int>.from(entry.value.values);
       }
     }
+    for (final entry in auxiliarySignalMap.entries) {
+      newPortValues[auxKey(entry.key)] = List<int>.from(entry.value.values);
+    }
 
     return newPortValues;
   }
@@ -434,6 +490,7 @@ class FormTabSignalMapper {
     required Map<int, SignalData> inputSignalMap,
     required Map<int, SignalData> outputSignalMap,
     required Map<int, SignalData> hwTriggerSignalMap,
+    Map<int, SignalData> auxiliarySignalMap = const <int, SignalData>{},
     required List<String> prevOrder,
   }) {
     final List<SignalData> list = [];
@@ -471,6 +528,11 @@ class FormTabSignalMapper {
           ..sort();
     for (final k in extraKeys) {
       list.add(outputSignalMap[k]!);
+    }
+
+    final List<int> auxKeys = auxiliarySignalMap.keys.toList()..sort();
+    for (final k in auxKeys) {
+      list.add(auxiliarySignalMap[k]!);
     }
 
     if (prevOrder.isNotEmpty) {

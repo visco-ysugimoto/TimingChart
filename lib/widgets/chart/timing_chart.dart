@@ -103,6 +103,15 @@ class TimingChart extends StatefulWidget {
   final void Function(int originalIndex, bool showIoNumber)?
   onSignalShowIoNumberChanged;
 
+  /// 補助信号のラベル名・色が変更されたときに呼び出されるコールバック
+  ///
+  /// [colorArgb] が null のときはタイプ既定色に戻す
+  final void Function(int originalIndex, String name, int? colorArgb)?
+  onAuxiliaryAppearanceChanged;
+
+  /// 各信号の個別波形色（ARGB）。null はタイプ既定色
+  final List<int?> signalColorArgb;
+
   /// アノテーションが変更されたときに呼び出されるコールバック
   final void Function(List<TimingChartAnnotation> annotations)?
   onAnnotationsChanged;
@@ -123,7 +132,9 @@ class TimingChart extends StatefulWidget {
     this.plcEipMode = 'None',
     this.onSignalsChanged,
     this.onSignalShowIoNumberChanged,
+    this.onAuxiliaryAppearanceChanged,
     this.onAnnotationsChanged,
+    this.signalColorArgb = const [],
   });
 
   @override
@@ -848,6 +859,15 @@ class TimingChartState extends State<TimingChart>
   /// チャート上の信号編集が許可されているかどうか
   bool get _canEditChartSignals => !_isChartEditLocked;
 
+  /// 指定表示行でラベルのプロパティ編集が可能かどうか
+  bool _canEditSignalLabelForVisibleRow(int visibleRow) {
+    if (visibleRow < 0 || visibleRow >= _visibleIndexes.length) return false;
+    if (_canConfigureIoNumberForVisibleRow(visibleRow)) return true;
+    final int originalRow = _visibleIndexes[visibleRow];
+    if (originalRow >= widget.signalTypes.length) return false;
+    return widget.signalTypes[originalRow] == SignalType.auxiliary;
+  }
+
   /// 指定表示行で IO 番号の個別表示設定が可能かどうか
   bool _canConfigureIoNumberForVisibleRow(int visibleRow) {
     if (visibleRow < 0 || visibleRow >= _visibleIndexes.length) return false;
@@ -1158,6 +1178,7 @@ class TimingChartState extends State<TimingChart>
     required Color initial,
     bool allowTransparent = false,
     bool includeWhite = false,
+    List<Color> extraPresets = const [],
   }) async {
     Color selected = initial;
     final List<Color> presets = [
@@ -1170,6 +1191,7 @@ class TimingChartState extends State<TimingChart>
       Colors.blue,
       Colors.purple,
       Colors.brown,
+      ...extraPresets,
     ];
 
     Widget buildColorPreview(Color color, {double size = 18}) {
@@ -1288,12 +1310,158 @@ class TimingChartState extends State<TimingChart>
     return showDialog<Color>(context: context, builder: dialogBuilder);
   }
 
-  /// 信号ラベルの IO 番号表示を編集します
+  /// 補助信号のラベル名と色を編集します
+  Future<void> _editAuxiliaryLabelProperties(int originalRow) async {
+    final s = S.of(context);
+    final String currentName = originalRow < _idSignalNames.length
+        ? _idSignalNames[originalRow]
+        : '';
+    final int? currentColor = originalRow < widget.signalColorArgb.length
+        ? widget.signalColorArgb[originalRow]
+        : null;
+    final Color defaultColor =
+        Provider.of<SettingsNotifier>(context, listen: false)
+            .signalColors[SignalType.auxiliary] ??
+        Colors.orange;
+
+    final nameController = TextEditingController(text: currentName);
+    int? selectedColor = currentColor;
+    String? errorText;
+
+    final bool prevCanRequest = _focusNode.canRequestFocus;
+    _focusNode.canRequestFocus = false;
+    FocusScope.of(context).unfocus();
+
+    final result = await showDialog<(String, int?)>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setLocalState) {
+            final Color preview = Color(
+              selectedColor ?? defaultColor.toARGB32(),
+            );
+            return AlertDialog(
+              title: Text(s.signal_label_properties_title),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      labelText: s.signal_label_properties_name,
+                      errorText: errorText,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(s.signal_label_properties_color),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      InkWell(
+                        onTap: () async {
+                          final picked = await _showBorderColorPickerDialog(
+                            ctx,
+                            title: s.signal_label_properties_color,
+                            initial: preview,
+                            includeWhite: true,
+                            extraPresets: const [
+                              Colors.cyan,
+                              Colors.teal,
+                              Colors.pink,
+                              Colors.amber,
+                              Colors.indigo,
+                            ],
+                          );
+                          if (picked != null) {
+                            setLocalState(
+                              () => selectedColor = picked.toARGB32(),
+                            );
+                          }
+                        },
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: preview,
+                            border: Border.all(color: Colors.black26),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      TextButton(
+                        onPressed: () =>
+                            setLocalState(() => selectedColor = null),
+                        child: Text(s.common_default),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text(s.common_cancel),
+                ),
+                TextButton(
+                  onPressed: () {
+                    final name = nameController.text.trim();
+                    if (name.isEmpty) {
+                      setLocalState(
+                        () => errorText = s.signal_label_properties_name_empty,
+                      );
+                      return;
+                    }
+                    final bool duplicate = _idSignalNames.asMap().entries.any(
+                      (entry) =>
+                          entry.key != originalRow &&
+                          entry.value.trim() == name,
+                    );
+                    if (duplicate) {
+                      setLocalState(
+                        () => errorText =
+                            s.signal_label_properties_name_duplicate,
+                      );
+                      return;
+                    }
+                    Navigator.pop(ctx, (name, selectedColor));
+                  },
+                  child: Text(s.common_ok),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    nameController.dispose();
+    _focusNode.canRequestFocus = prevCanRequest;
+    if (mounted) _focusNode.requestFocus();
+
+    if (result == null) return;
+    widget.onAuxiliaryAppearanceChanged?.call(
+      originalRow,
+      result.$1,
+      result.$2,
+    );
+  }
+
+  /// 信号ラベルのプロパティを編集します
   void _editSignalLabelProperties(int visibleRow) async {
     if (visibleRow < 0 || visibleRow >= _visibleIndexes.length) return;
-    if (!_canConfigureIoNumberForVisibleRow(visibleRow)) return;
+    if (!_canEditSignalLabelForVisibleRow(visibleRow)) return;
 
     final int originalRow = _visibleIndexes[visibleRow];
+    if (originalRow < widget.signalTypes.length &&
+        widget.signalTypes[originalRow] == SignalType.auxiliary) {
+      await _editAuxiliaryLabelProperties(originalRow);
+      return;
+    }
+    if (!_canConfigureIoNumberForVisibleRow(visibleRow)) return;
+
     bool showIoNumber = originalRow < widget.showIoNumbersPerSignal.length
         ? widget.showIoNumbersPerSignal[originalRow]
         : true;
@@ -2350,6 +2518,10 @@ class TimingChartState extends State<TimingChart>
       for (final i in layoutData.visibleIndexes)
         _effectiveShowIoForOriginalRow(i),
     ];
+    final visibleWaveColors = [
+      for (final i in layoutData.visibleIndexes)
+        (i < widget.signalColorArgb.length) ? widget.signalColorArgb[i] : null,
+    ];
 
     final bool lockScroll =
         isEditingMode || _draggingAnnotationId != null || _isModifierPressed;
@@ -2507,6 +2679,7 @@ class TimingChartState extends State<TimingChart>
                               signalColors: Provider.of<SettingsNotifier>(
                                 context,
                               ).signalColors,
+                              waveColorArgb: visibleWaveColors,
                               onCommentAreaMeasured: _onCommentAreaMeasured,
                               onTopCommentAreaMeasured:
                                   _onTopCommentAreaMeasured,
@@ -2573,6 +2746,7 @@ class TimingChartState extends State<TimingChart>
                             backgroundColor: Theme.of(
                               context,
                             ).scaffoldBackgroundColor,
+                            waveColorArgb: visibleWaveColors,
                             labelWidth: labelWidth,
                             chartMarginLeft: chartMarginLeft,
                             cellHeight: layoutData.cellHeight,

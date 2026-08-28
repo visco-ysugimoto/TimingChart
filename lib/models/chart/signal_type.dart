@@ -1,1 +1,1 @@
-enum SignalType { input, output, hwTrigger, control, group, task }
+enum SignalType { input, output, hwTrigger, control, group, task, auxiliary }

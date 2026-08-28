@@ -21,12 +21,14 @@ class FormTabControllerMapper {
     required List<TextEditingController> hwTriggerControllers,
     required List<TextEditingController> plcEipOutputControllers,
     required List<TextEditingController> plcEipInputControllers,
+    List<TextEditingController> auxiliaryControllers = const [],
   }) {
     final Map<String, int> existingInputMap = {};
     final Map<String, int> existingOutputMap = {};
     final Map<String, int> existingHwTriggerMap = {};
     final Map<String, int> existingPlcMap = {};
     final Map<String, int> existingPlcInputMap = {};
+    final Map<String, int> existingAuxiliaryMap = {};
 
     for (int i = 0; i < inputControllers.length; i++) {
       if (inputControllers[i].text.isNotEmpty) {
@@ -53,6 +55,11 @@ class FormTabControllerMapper {
         existingPlcInputMap[plcEipInputControllers[i].text] = i;
       }
     }
+    for (int i = 0; i < auxiliaryControllers.length; i++) {
+      if (auxiliaryControllers[i].text.isNotEmpty) {
+        existingAuxiliaryMap[auxiliaryControllers[i].text] = i;
+      }
+    }
 
     return {
       'input': existingInputMap,
@@ -60,6 +67,7 @@ class FormTabControllerMapper {
       'hwTrigger': existingHwTriggerMap,
       'plc': existingPlcMap,
       'plcInput': existingPlcInputMap,
+      'auxiliary': existingAuxiliaryMap,
     };
   }
 
@@ -268,6 +276,25 @@ class FormTabControllerMapper {
     }
     if (targetIndex >= 0 && targetIndex < hwTriggerControllers.length) {
       hwTriggerControllers[targetIndex].text = name;
+    }
+  }
+
+  static void assignAuxiliarySignal({
+    required String name,
+    required Map<String, int> existingAuxiliaryMap,
+    required List<TextEditingController> auxiliaryControllers,
+    required VoidCallback onNeedAdditionalSlot,
+  }) {
+    int targetIndex = existingAuxiliaryMap[name] ?? -1;
+    if (targetIndex == -1) {
+      targetIndex = findFirstEmptyIndex(auxiliaryControllers);
+    }
+    if (targetIndex == -1) {
+      onNeedAdditionalSlot();
+      targetIndex = auxiliaryControllers.length - 1;
+    }
+    if (targetIndex >= 0 && targetIndex < auxiliaryControllers.length) {
+      auxiliaryControllers[targetIndex].text = name;
     }
   }
 }

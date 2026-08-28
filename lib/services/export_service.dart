@@ -53,6 +53,7 @@ class ExportService {
     required List<TextEditingController> inputControllers,
     required List<TextEditingController> outputControllers,
     required List<TextEditingController> hwTriggerControllers,
+    List<TextEditingController> auxiliaryControllers = const [],
     required bool timeUnitIsMs,
     required double msPerStep,
     required List<double> stepDurationsMs,
@@ -64,6 +65,7 @@ class ExportService {
     List<bool> inputVisibility = [];
     List<bool> outputVisibility = [];
     List<bool> hwTriggerVisibility = [];
+    List<bool> auxiliaryVisibility = [];
     List<String> rowModes = [];
 
     if (formTabState != null) {
@@ -72,6 +74,7 @@ class ExportService {
       inputVisibility = formTabState.getInputVisibility();
       outputVisibility = formTabState.getOutputVisibility();
       hwTriggerVisibility = formTabState.getHwTriggerVisibility();
+      auxiliaryVisibility = formTabState.getAuxiliaryVisibility();
       rowModes = formTabState.getRowModes();
     }
 
@@ -98,9 +101,11 @@ class ExportService {
       inputControllers: inputControllers,
       outputControllers: outputControllers,
       hwTriggerControllers: hwTriggerControllers,
+      auxiliaryControllers: auxiliaryControllers,
       inputVisibility: inputVisibility,
       outputVisibility: outputVisibility,
       hwTriggerVisibility: hwTriggerVisibility,
+      auxiliaryVisibility: auxiliaryVisibility,
       rowModes: rowModes,
       annotations: chartAnnotations,
       omissionIndices: timingChartState?.getOmissionTimeIndices() ?? const [],
@@ -189,6 +194,7 @@ class ExportService {
     required List<TextEditingController> inputControllers,
     required List<TextEditingController> outputControllers,
     required List<TextEditingController> hwTriggerControllers,
+    List<TextEditingController> auxiliaryControllers = const [],
     required bool timeUnitIsMs,
     required double msPerStep,
     required List<double> stepDurationsMs,
@@ -233,6 +239,7 @@ class ExportService {
       inputControllers: inputControllers,
       outputControllers: outputControllers,
       hwTriggerControllers: hwTriggerControllers,
+      auxiliaryControllers: auxiliaryControllers,
       timeUnitIsMs: timeUnitIsMs,
       msPerStep: msPerStep,
       stepDurationsMs: stepDurationsMs,

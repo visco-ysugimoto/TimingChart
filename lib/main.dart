@@ -428,6 +428,8 @@ class _TimingChartGeneratorHomePageState
       _controllersNotifier.plcEipOutputControllers;
   List<TextEditingController> get _hwTriggerControllers =>
       _controllersNotifier.hwTriggerControllers;
+  List<TextEditingController> get _auxiliaryControllers =>
+      _controllersNotifier.auxiliaryControllers;
 
   Map<String, List<int>> _snapshotNameToValues() {
     final chart = _timingChartKey.currentState;
@@ -597,6 +599,30 @@ class _TimingChartGeneratorHomePageState
       _chartShowIoNumbers =
           _chartSignals.map((signal) => signal.showIoNumber).toList();
     });
+  }
+
+  void _handleAuxiliaryAppearanceChanged(
+    int originalIndex,
+    String name,
+    int? colorArgb,
+  ) {
+    if (originalIndex < 0 || originalIndex >= _chartSignals.length) return;
+    final String oldName = _chartSignals[originalIndex].name;
+    setState(() {
+      _chartSignals[originalIndex] = _chartSignals[originalIndex].copyWith(
+        name: name,
+        colorArgb: colorArgb,
+        clearColorArgb: colorArgb == null,
+      );
+    });
+    _formTabKey.currentState?.applyAuxiliaryAppearance(
+      oldName: oldName,
+      newName: name,
+      colorArgb: colorArgb,
+    );
+    final names = _chartSignals.map((s) => s.name).toList();
+    _timingChartKey.currentState?.updateSignalNames(names);
+    _chartController.setSignalNames(names);
   }
 
   /// PLC/EIPオプションに基づいてデフォルトの入力名を生成します
@@ -777,6 +803,7 @@ class _TimingChartGeneratorHomePageState
     _controllersNotifier.setInputCount(32);
     _controllersNotifier.setOutputCount(32);
     _controllersNotifier.setHwTriggerCount(0);
+    _controllersNotifier.setAuxiliaryCount(0);
   }
 
   /// PLC/EIPオプションに基づいてIOチャネルソースを解決します
@@ -944,6 +971,7 @@ class _TimingChartGeneratorHomePageState
       inputControllers: _inputControllers,
       outputControllers: _outputControllers,
       hwTriggerControllers: _hwTriggerControllers,
+      auxiliaryControllers: _auxiliaryControllers,
       timeUnitIsMs:
           Provider.of<SettingsNotifier>(context, listen: false).timeUnitIsMs,
       msPerStep:
@@ -983,6 +1011,7 @@ class _TimingChartGeneratorHomePageState
     _controllersNotifier.setInputCount(config.formState.inputCount);
     _controllersNotifier.setOutputCount(config.formState.outputCount);
     _updateHwTriggerControllers(config.formState.hwPort);
+    _controllersNotifier.setAuxiliaryCount(config.auxiliaryNames.length);
 
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
     settings.timeUnitIsMs = config.timeUnitIsMs;
@@ -1013,6 +1042,14 @@ class _TimingChartGeneratorHomePageState
       i++
     ) {
       _hwTriggerControllers[i].text = config.hwTriggerNames[i];
+    }
+
+    for (
+      int i = 0;
+      i < config.auxiliaryNames.length && i < _auxiliaryControllers.length;
+      i++
+    ) {
+      _auxiliaryControllers[i].text = config.auxiliaryNames[i];
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1203,6 +1240,7 @@ class _TimingChartGeneratorHomePageState
         ..._outputControllers,
         ..._plcEipOutputControllers,
         ..._hwTriggerControllers,
+        ..._auxiliaryControllers,
       ].map((c) => c.text).where((name) => name.trim().isNotEmpty),
     );
 
@@ -1258,6 +1296,20 @@ class _TimingChartGeneratorHomePageState
         _formState.camera > 0) {
       _formNotifier.update(hwPort: _formState.camera);
       _updateHwTriggerControllers(_formState.camera);
+    }
+
+    final unmatchedAux = mergedSignals.where((signal) {
+      if (currentNames.contains(signal.name)) return false;
+      return signal.signalType == SignalType.auxiliary;
+    }).length;
+    final extraAux = math.max(
+      0,
+      unmatchedAux - _emptyControllerCount(_auxiliaryControllers),
+    );
+    if (extraAux > 0) {
+      _controllersNotifier.setAuxiliaryCount(
+        _auxiliaryControllers.length + extraAux,
+      );
     }
   }
 
@@ -1457,20 +1509,12 @@ class _TimingChartGeneratorHomePageState
 
   /// ウィジェットの破棄処理を行います
   ///
-  /// タブコントローラーとすべてのテキストコントローラーを破棄します。
+  /// タブコントローラーを破棄します。TextEditingController は
+  /// FormControllersNotifier が所有するため、こちらでは破棄しません。
   @override
   void dispose() {
     _tabController.removeListener(_handleTabChange);
     _tabController.dispose();
-    for (var controller in _inputControllers) {
-      controller.dispose();
-    }
-    for (var controller in _outputControllers) {
-      controller.dispose();
-    }
-    for (var controller in _hwTriggerControllers) {
-      controller.dispose();
-    }
     super.dispose();
   }
 
@@ -1886,6 +1930,7 @@ class _TimingChartGeneratorHomePageState
                 outputControllers: _outputControllers,
                 plcEipOutputControllers: _plcEipOutputControllers,
                 hwTriggerControllers: _hwTriggerControllers,
+                auxiliaryControllers: _auxiliaryControllers,
                 controllersNotifier: _controllersNotifier,
                 onTriggerOptionChanged: (String? newValue) {
                   if (newValue != null) {
@@ -1997,10 +2042,12 @@ class _TimingChartGeneratorHomePageState
                 plcEipMode: _plcEipOption,
                 onSignalsChanged: _handleChartSignalsChanged,
                 onSignalShowIoNumberChanged: _handleSignalShowIoNumberChanged,
+                onAuxiliaryAppearanceChanged: _handleAuxiliaryAppearanceChanged,
                 onAnnotationsChanged: (anns) {
                   _chartAnnotations = List.from(anns);
                 },
                 showIoNumbersPerSignal: _chartShowIoNumbers,
+                signalColorArgb: _chartSignals.map((s) => s.colorArgb).toList(),
               ),
             ],
           ),

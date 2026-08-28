@@ -547,6 +547,9 @@ class FileUtils {
             case SignalType.task:
               typeLabel = 'Task';
               break;
+            case SignalType.auxiliary:
+              typeLabel = 'Auxiliary';
+              break;
           }
           final String typePortText = port > 0 ? '$typeLabel$port' : typeLabel;
 
@@ -586,8 +589,9 @@ class FileUtils {
           final signal = chartSignals[signalIndex];
           final List<int> values = signal.values;
           final int rowIndex = chartRowStart + signalIndex * 2;
-          final Color signalColor =
-              signalColors?[signal.signalType] ?? Colors.black;
+          final Color signalColor = signal.colorArgb != null
+              ? Color(signal.colorArgb!)
+              : (signalColors?[signal.signalType] ?? Colors.black);
           final excel.ExcelColor excelSignalColor = excel.ExcelColor.fromHexString(
             signalColor.toARGB32().toRadixString(16).padLeft(8, '0').toUpperCase(),
           );

@@ -21,11 +21,13 @@ class AppConfig {
   final List<String> inputNames;
   final List<String> outputNames;
   final List<String> hwTriggerNames;
+  final List<String> auxiliaryNames;
 
   // 表示/非表示状態
   final List<bool> inputVisibility;
   final List<bool> outputVisibility;
   final List<bool> hwTriggerVisibility;
+  final List<bool> auxiliaryVisibility;
 
   // 行モード (none / simultaneous など)
   final List<String> rowModes;
@@ -46,9 +48,11 @@ class AppConfig {
     required this.inputNames,
     required this.outputNames,
     required this.hwTriggerNames,
+    this.auxiliaryNames = const [],
     required this.inputVisibility,
     required this.outputVisibility,
     required this.hwTriggerVisibility,
+    this.auxiliaryVisibility = const [],
     required this.rowModes,
     this.annotations = const [],
     this.omissionIndices = const [],
@@ -72,9 +76,11 @@ class AppConfig {
     required List<TextEditingController> inputControllers,
     required List<TextEditingController> outputControllers,
     required List<TextEditingController> hwTriggerControllers,
+    List<TextEditingController> auxiliaryControllers = const [],
     required List<bool> inputVisibility,
     required List<bool> outputVisibility,
     required List<bool> hwTriggerVisibility,
+    List<bool> auxiliaryVisibility = const [],
     required List<String> rowModes,
     List<TimingChartAnnotation> annotations = const [],
     List<int> omissionIndices = const [],
@@ -89,9 +95,11 @@ class AppConfig {
       inputNames: _extractTextValues(inputControllers),
       outputNames: _extractTextValues(outputControllers),
       hwTriggerNames: _extractTextValues(hwTriggerControllers),
+      auxiliaryNames: _extractTextValues(auxiliaryControllers),
       inputVisibility: inputVisibility,
       outputVisibility: outputVisibility,
       hwTriggerVisibility: hwTriggerVisibility,
+      auxiliaryVisibility: auxiliaryVisibility,
       rowModes: rowModes,
       annotations: annotations,
       omissionIndices: omissionIndices,
@@ -121,6 +129,7 @@ class AppConfig {
                   'values': signal.values,
                   'isVisible': signal.isVisible,
                   'showIoNumber': signal.showIoNumber,
+                  if (signal.colorArgb != null) 'color': signal.colorArgb,
                 },
               )
               .toList(),
@@ -131,9 +140,11 @@ class AppConfig {
       'inputNames': inputNames,
       'outputNames': outputNames,
       'hwTriggerNames': hwTriggerNames,
+      'auxiliaryNames': auxiliaryNames,
       'inputVisibility': inputVisibility,
       'outputVisibility': outputVisibility,
       'hwTriggerVisibility': hwTriggerVisibility,
+      'auxiliaryVisibility': auxiliaryVisibility,
       'rowModes': rowModes,
       'annotations': annotations.map((a) => a.toJson()).toList(),
       'omissionIndices': omissionIndices,
@@ -166,6 +177,7 @@ class AppConfig {
                 values: (signalJson['values'] as List).cast<int>(),
                 isVisible: signalJson['isVisible'] ?? true,
                 showIoNumber: signalJson['showIoNumber'] ?? true,
+                colorArgb: (signalJson['color'] as num?)?.toInt(),
               ),
             )
             .toList();
@@ -196,9 +208,13 @@ class AppConfig {
       inputNames: (json['inputNames'] as List).cast<String>(),
       outputNames: (json['outputNames'] as List).cast<String>(),
       hwTriggerNames: (json['hwTriggerNames'] as List).cast<String>(),
+      auxiliaryNames:
+          (json['auxiliaryNames'] as List?)?.cast<String>() ?? const [],
       inputVisibility: (json['inputVisibility'] as List).cast<bool>(),
       outputVisibility: (json['outputVisibility'] as List).cast<bool>(),
       hwTriggerVisibility: (json['hwTriggerVisibility'] as List).cast<bool>(),
+      auxiliaryVisibility:
+          (json['auxiliaryVisibility'] as List?)?.cast<bool>() ?? const [],
       rowModes: (json['rowModes'] as List?)?.cast<String>() ?? const [],
       annotations:
           ((json['annotations'] ?? []) as List)
@@ -244,6 +260,13 @@ class AppConfig {
   /// 新しいTextEditingControllerのリストを生成
   List<TextEditingController> createHwTriggerControllers() {
     return hwTriggerNames
+        .map((name) => TextEditingController(text: name))
+        .toList();
+  }
+
+  /// 新しいTextEditingControllerのリストを生成
+  List<TextEditingController> createAuxiliaryControllers() {
+    return auxiliaryNames
         .map((name) => TextEditingController(text: name))
         .toList();
   }

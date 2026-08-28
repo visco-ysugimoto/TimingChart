@@ -6,7 +6,8 @@ class FormControllersNotifier extends ChangeNotifier {
       _plcEipInputControllers = <TextEditingController>[],
       _outputControllers = <TextEditingController>[],
       _plcEipOutputControllers = <TextEditingController>[],
-      _hwTriggerControllers = <TextEditingController>[];
+      _hwTriggerControllers = <TextEditingController>[],
+      _auxiliaryControllers = <TextEditingController>[];
 
   List<TextEditingController> _inputControllers;
   List<TextEditingController> _outputControllers;
@@ -15,6 +16,7 @@ class FormControllersNotifier extends ChangeNotifier {
   List<TextEditingController> _hwTriggerControllers;
   // PLC/EIP 用の入力コントローラ（DIOとは別管理）
   List<TextEditingController> _plcEipInputControllers;
+  List<TextEditingController> _auxiliaryControllers;
 
   List<TextEditingController> get inputControllers => _inputControllers;
   List<TextEditingController> get outputControllers => _outputControllers;
@@ -23,6 +25,8 @@ class FormControllersNotifier extends ChangeNotifier {
   List<TextEditingController> get hwTriggerControllers => _hwTriggerControllers;
   List<TextEditingController> get plcEipInputControllers =>
       _plcEipInputControllers;
+  List<TextEditingController> get auxiliaryControllers =>
+      _auxiliaryControllers;
 
   void initialize({
     required int inputCount,
@@ -34,6 +38,7 @@ class FormControllersNotifier extends ChangeNotifier {
     _disposeControllers(_outputControllers);
     _disposeControllers(_plcEipOutputControllers);
     _disposeControllers(_hwTriggerControllers);
+    _disposeControllers(_auxiliaryControllers);
 
     _inputControllers = List.generate(
       inputCount,
@@ -55,6 +60,7 @@ class FormControllersNotifier extends ChangeNotifier {
       hwTriggerCount,
       (_) => TextEditingController(),
     );
+    _auxiliaryControllers = <TextEditingController>[];
   }
 
   void setInputCount(int count) {
@@ -71,6 +77,20 @@ class FormControllersNotifier extends ChangeNotifier {
     _resizeControllers(_hwTriggerControllers, count);
   }
 
+  void setAuxiliaryCount(int count) {
+    _resizeControllers(_auxiliaryControllers, count);
+  }
+
+  void addAuxiliary() {
+    _auxiliaryControllers.add(TextEditingController());
+  }
+
+  void removeAuxiliaryAt(int index) {
+    if (index < 0 || index >= _auxiliaryControllers.length) return;
+    _auxiliaryControllers[index].dispose();
+    _auxiliaryControllers.removeAt(index);
+  }
+
   void clearAllTexts() {
     for (final controller in _inputControllers) {
       controller.clear();
@@ -85,6 +105,9 @@ class FormControllersNotifier extends ChangeNotifier {
       controller.clear();
     }
     for (final controller in _hwTriggerControllers) {
+      controller.clear();
+    }
+    for (final controller in _auxiliaryControllers) {
       controller.clear();
     }
   }
@@ -115,6 +138,10 @@ class FormControllersNotifier extends ChangeNotifier {
 
   void setHwTriggerTexts(List<String> values) {
     _assignTexts(_hwTriggerControllers, values.asMap());
+  }
+
+  void setAuxiliaryTexts(List<String> values) {
+    _assignTexts(_auxiliaryControllers, values.asMap());
   }
 
   void setInputText(int index, String value) {
@@ -192,6 +219,7 @@ class FormControllersNotifier extends ChangeNotifier {
     _disposeControllers(_outputControllers);
     _disposeControllers(_plcEipOutputControllers);
     _disposeControllers(_hwTriggerControllers);
+    _disposeControllers(_auxiliaryControllers);
     super.dispose();
   }
 }

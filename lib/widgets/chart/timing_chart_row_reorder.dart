@@ -48,6 +48,13 @@ extension _TimingChartRowReorderExt on TimingChartState {
         widget.ioSources[dstIdx] = tmpSource;
       }
 
+      if (widget.signalColorArgb.length > srcIdx &&
+          widget.signalColorArgb.length > dstIdx) {
+        final tmpColor = widget.signalColorArgb[srcIdx];
+        widget.signalColorArgb[srcIdx] = widget.signalColorArgb[dstIdx];
+        widget.signalColorArgb[dstIdx] = tmpColor;
+      }
+
       final tmpId = _idSignalNames[srcIdx];
       _idSignalNames[srcIdx] = _idSignalNames[dstIdx];
       _idSignalNames[dstIdx] = tmpId;

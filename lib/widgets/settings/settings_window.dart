@@ -281,6 +281,23 @@ class _SettingsWindowState extends State<SettingsWindow> {
                 if (c != null) settings.setSignalColor(SignalType.hwTrigger, c);
               },
             ),
+            ListTile(
+              leading: Container(
+                width: 24,
+                height: 24,
+                color: settings.signalColors[SignalType.auxiliary],
+              ),
+              title: Text(s.auxiliary_signal_color),
+              onTap: () async {
+                final c = await _pickColor(
+                  context,
+                  settings.signalColors[SignalType.auxiliary]!,
+                );
+                if (c != null) {
+                  settings.setSignalColor(SignalType.auxiliary, c);
+                }
+              },
+            ),
             TextButton(
               onPressed: settings.resetSignalColors,
               child: Text(s.reset_default_colors),

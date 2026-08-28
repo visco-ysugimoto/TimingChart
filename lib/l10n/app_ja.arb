@@ -53,6 +53,7 @@
   "input_signal_color": "Input 信号色",
   "output_signal_color": "Output 信号色",
   "hw_trigger_signal_color": "HW Trigger 信号色",
+  "auxiliary_signal_color": "Auxiliary 信号色",
   "reset_default_colors": "デフォルト色に戻す",
   "comment_dashed_color": "コメント破線色",
   "comment_arrow_color": "コメント矢印色",

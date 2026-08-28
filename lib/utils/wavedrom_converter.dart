@@ -111,9 +111,11 @@ class WaveDromConverter {
             inputNames: config.inputNames,
             outputNames: config.outputNames,
             hwTriggerNames: config.hwTriggerNames,
+            auxiliaryNames: config.auxiliaryNames,
             inputVisibility: config.inputVisibility,
             outputVisibility: config.outputVisibility,
             hwTriggerVisibility: config.hwTriggerVisibility,
+            auxiliaryVisibility: config.auxiliaryVisibility,
             rowModes: config.rowModes,
             annotations: annList,
             omissionIndices: omitList,
@@ -146,9 +148,11 @@ class WaveDromConverter {
           inputNames: config.inputNames,
           outputNames: config.outputNames,
           hwTriggerNames: config.hwTriggerNames,
+          auxiliaryNames: config.auxiliaryNames,
           inputVisibility: config.inputVisibility,
           outputVisibility: config.outputVisibility,
           hwTriggerVisibility: config.hwTriggerVisibility,
+          auxiliaryVisibility: config.auxiliaryVisibility,
           rowModes: config.rowModes,
           annotations: annList2,
           omissionIndices: omitList2,
@@ -193,6 +197,8 @@ class WaveDromConverter {
       'inputNames': config.inputNames,
       'outputNames': config.outputNames,
       'hwTriggerNames': config.hwTriggerNames,
+      'auxiliaryNames': config.auxiliaryNames,
+      'auxiliaryVisibility': config.auxiliaryVisibility,
       'cameraTable':
           config.tableData
               .map((row) => row.map((cell) => cell.index).toList())
@@ -267,6 +273,11 @@ class WaveDromConverter {
       cfg['hwTriggerNames'] as List<dynamic>?,
       hwPort,
     );
+    final auxiliaryNames =
+        (cfg['auxiliaryNames'] as List<dynamic>?)
+            ?.map((e) => e?.toString() ?? '')
+            .toList() ??
+        <String>[];
 
     // --- Visibility ---
     List<bool> _visFromNames(List<String> names) =>
@@ -275,6 +286,13 @@ class WaveDromConverter {
     final inputVisibility = _visFromNames(inputNames);
     final outputVisibility = _visFromNames(outputNames);
     final hwTriggerVisibility = _visFromNames(hwTriggerNames);
+    final auxiliaryVisibilityFromCfg =
+        (cfg['auxiliaryVisibility'] as List<dynamic>?)
+            ?.map((e) => e == true)
+            .toList();
+    final auxiliaryVisibility =
+        auxiliaryVisibilityFromCfg ??
+        auxiliaryNames.map((n) => n.isNotEmpty).toList();
 
     // --- RowModes ---
     final List<String> rowModes =
@@ -439,6 +457,8 @@ class WaveDromConverter {
 
     final List<SignalData> signals = [];
     int sigIdx = 0;
+    final auxiliaryNameSet =
+        auxiliaryNames.where((n) => n.isNotEmpty).toSet();
     for (final s in effectiveSignalList) {
       if (s is Map<String, dynamic>) {
         final name = s['name']?.toString() ?? '';
@@ -453,6 +473,9 @@ class WaveDromConverter {
         } else {
           type = SignalType.output;
         }
+        if (auxiliaryNameSet.contains(name)) {
+          type = SignalType.auxiliary;
+        }
 
         signals.add(
           SignalData(
@@ -460,6 +483,7 @@ class WaveDromConverter {
             signalType: type,
             values: values,
             isVisible: name.toString().isNotEmpty,
+            showIoNumber: type != SignalType.auxiliary,
           ),
         );
         sigIdx++;
@@ -482,9 +506,11 @@ class WaveDromConverter {
       inputNames: inputNames,
       outputNames: outputNames,
       hwTriggerNames: hwTriggerNames,
+      auxiliaryNames: auxiliaryNames,
       inputVisibility: inputVisibility,
       outputVisibility: outputVisibility,
       hwTriggerVisibility: hwTriggerVisibility,
+      auxiliaryVisibility: auxiliaryVisibility,
       rowModes: rowModes,
       annotations: annotations,
       omissionIndices: omissionIndices,

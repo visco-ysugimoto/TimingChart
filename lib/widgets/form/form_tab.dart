@@ -32,6 +32,7 @@ import '../../models/form/camera_table_types.dart';
 import 'input_section.dart';
 import 'output_section.dart';
 import 'hw_trigger_section.dart';
+import 'auxiliary_section.dart';
 import '../common/custom_dropdown.dart';
 // import '../../common_padding.dart';
 import '../../providers/form_state_notifier.dart';
@@ -65,6 +66,9 @@ class FormTab extends StatefulWidget {
 
   /// HW Trigger 信号名
   final List<TextEditingController> hwTriggerControllers;
+
+  /// IO に紐づかない補助信号名
+  final List<TextEditingController> auxiliaryControllers;
   final FormControllersNotifier controllersNotifier;
   final ValueChanged<String?> onTriggerOptionChanged;
   final ValueChanged<String?> onPlcEipOptionChanged;
@@ -103,6 +107,7 @@ class FormTab extends StatefulWidget {
     required this.outputControllers,
     required this.plcEipOutputControllers,
     required this.hwTriggerControllers,
+    required this.auxiliaryControllers,
     required this.controllersNotifier,
     required this.onTriggerOptionChanged,
     required this.onPlcEipOptionChanged,
@@ -172,6 +177,8 @@ class FormTabState extends State<FormTab>
   List<bool> _inputVisibility = [];
   List<bool> _outputVisibility = [];
   List<bool> _hwTriggerVisibility = [];
+  List<bool> _auxiliaryVisibility = [];
+  List<int?> _auxiliaryColors = [];
 
   // Provider からフォーム状態を取得するゲッター
   TimingFormState get formState => context.read<FormStateNotifier>().state;
@@ -287,6 +294,24 @@ class FormTabState extends State<FormTab>
 
   // 外部から呼び出して信号データリストを更新する
   void refreshSignalDataList() {
+    _updateSignalDataList();
+  }
+
+  /// チャート側で補助信号の名前・色を変えたときにフォームへ反映する
+  void applyAuxiliaryAppearance({
+    required String oldName,
+    required String newName,
+    int? colorArgb,
+  }) {
+    _ensureAuxiliaryMetaLength();
+    final int index = widget.auxiliaryControllers.indexWhere(
+      (controller) => controller.text.trim() == oldName,
+    );
+    if (index < 0) return;
+    if (newName != oldName) {
+      widget.auxiliaryControllers[index].text = newName;
+    }
+    _auxiliaryColors[index] = colorArgb;
     _updateSignalDataList();
   }
 
@@ -512,6 +537,23 @@ class FormTabState extends State<FormTab>
       }
     }
 
+    for (int i = 0; i < widget.auxiliaryControllers.length; i++) {
+      if (widget.auxiliaryControllers[i].text.isNotEmpty) {
+        _signalDataList.add(
+          SignalData(
+            name: widget.auxiliaryControllers[i].text,
+            signalType: SignalType.auxiliary,
+            values: List.filled(FormTabConstants.defaultWaveLength, 0),
+            isVisible: i < _auxiliaryVisibility.length
+                ? _auxiliaryVisibility[i]
+                : true,
+            showIoNumber: false,
+            colorArgb: i < _auxiliaryColors.length ? _auxiliaryColors[i] : null,
+          ),
+        );
+      }
+    }
+
     if (formState.triggerOption == TriggerOptions.code) {
       final exists = _signalDataList.any(
         (s) => s.name == SignalNames.codeOption,
@@ -555,6 +597,14 @@ class FormTabState extends State<FormTab>
       _inputVisibility = List.generate(formState.inputCount, (_) => true);
       _outputVisibility = List.generate(formState.outputCount, (_) => true);
       _hwTriggerVisibility = List.generate(formState.hwPort, (_) => true);
+      if (_auxiliaryVisibility.length != widget.auxiliaryControllers.length) {
+        _auxiliaryVisibility = List.generate(
+          widget.auxiliaryControllers.length,
+          (i) =>
+              i < _auxiliaryVisibility.length ? _auxiliaryVisibility[i] : true,
+        );
+      }
+      _ensureAuxiliaryMetaLength();
     });
   }
 
@@ -665,6 +715,11 @@ class FormTabState extends State<FormTab>
             _hwTriggerVisibility[index] = !_hwTriggerVisibility[index];
           }
           break;
+        case SignalType.auxiliary:
+          if (index < _auxiliaryVisibility.length) {
+            _auxiliaryVisibility[index] = !_auxiliaryVisibility[index];
+          }
+          break;
         default:
           break;
       }
@@ -684,6 +739,11 @@ class FormTabState extends State<FormTab>
         case SignalType.hwTrigger:
           if (index < widget.hwTriggerControllers.length) {
             targetName = widget.hwTriggerControllers[index].text;
+          }
+          break;
+        case SignalType.auxiliary:
+          if (index < widget.auxiliaryControllers.length) {
+            targetName = widget.auxiliaryControllers[index].text;
           }
           break;
         default:
@@ -765,6 +825,7 @@ class FormTabState extends State<FormTab>
           hwTriggerControllers: widget.hwTriggerControllers,
           outputControllers: widget.outputControllers,
           plcEipOutputControllers: widget.plcEipOutputControllers,
+          auxiliaryControllers: widget.auxiliaryControllers,
         );
         _externalSignalValues.clear();
       }
@@ -823,12 +884,34 @@ class FormTabState extends State<FormTab>
         defaultWaveLength: defaultWaveLength,
       );
 
+      final occupiedNames = <String>{
+        ...inputSignalMap.values.map((s) => s.name),
+        ...hwTriggerSignalMap.values.map((s) => s.name),
+        ...outputSignalMap.values.map((s) => s.name),
+      };
+      _ensureAuxiliaryMetaLength();
+      final prevColorByName = <String, int?>{
+        for (final sig in _signalDataList)
+          if (sig.colorArgb != null) sig.name: sig.colorArgb,
+      };
+      final auxiliarySignalMap = FormTabSignalMapper.buildAuxiliarySignalMap(
+        auxiliaryControllers: widget.auxiliaryControllers,
+        auxiliaryVisibility: _auxiliaryVisibility,
+        occupiedNames: occupiedNames,
+        prevPortValues: prevPortValues,
+        prevValueMap: prevValueMap,
+        defaultWaveLength: defaultWaveLength,
+        prevColorByName: prevColorByName,
+        auxiliaryColors: _auxiliaryColors,
+      );
+
       final Map<String, List<int>> newPortValues =
           FormTabSignalMapper.buildPortValues(
             formState: formState,
             inputSignalMap: inputSignalMap,
             outputSignalMap: outputSignalMap,
             hwTriggerSignalMap: hwTriggerSignalMap,
+            auxiliarySignalMap: auxiliarySignalMap,
           );
 
       // チャートデータを生成
@@ -846,6 +929,7 @@ class FormTabState extends State<FormTab>
         inputSignalMap: inputSignalMap,
         outputSignalMap: outputSignalMap,
         hwTriggerSignalMap: hwTriggerSignalMap,
+        auxiliarySignalMap: auxiliarySignalMap,
         prevOrder: prevOrder,
       );
 
@@ -1256,10 +1340,15 @@ class FormTabState extends State<FormTab>
       return true;
     }
     return hasNamedSignal(
-      widget.hwTriggerControllers,
-      fs.hwPort,
-      visibility: _hwTriggerVisibility,
-    );
+          widget.hwTriggerControllers,
+          fs.hwPort,
+          visibility: _hwTriggerVisibility,
+        ) ||
+        hasNamedSignal(
+          widget.auxiliaryControllers,
+          widget.auxiliaryControllers.length,
+          visibility: _auxiliaryVisibility,
+        );
   }
 
   List<TextEditingController> get _signalControllers => [
@@ -1268,6 +1357,7 @@ class FormTabState extends State<FormTab>
     ...widget.outputControllers,
     ...widget.plcEipOutputControllers,
     ...widget.hwTriggerControllers,
+    ...widget.auxiliaryControllers,
   ];
 
   // Template 信号データの更新
@@ -1407,6 +1497,16 @@ class FormTabState extends State<FormTab>
           .where((sig) => sig.name != 'ACQ_TRIGGER_WAITING')
           .toList();
     }
+
+    final int waveLength = filteredSignals.isNotEmpty
+        ? filteredSignals
+            .map((s) => s.values.length)
+            .fold(requiredSampleLength, math.max)
+        : requiredSampleLength;
+    filteredSignals = [
+      ...filteredSignals,
+      ..._collectAuxiliarySignalsForTemplate(waveLength),
+    ];
 
     updateSignalDataFromChartData(
       filteredSignals.map((e) => e.values).toList(),
@@ -1618,6 +1718,29 @@ class FormTabState extends State<FormTab>
         }
       }
 
+      for (int i = 0; i < widget.auxiliaryControllers.length; i++) {
+        if (widget.auxiliaryControllers[i].text.isEmpty) continue;
+        List<int> values;
+        if (dataIndex < _actualChartData.length) {
+          values = List.from(_actualChartData[dataIndex]);
+          dataIndex++;
+        } else {
+          values = List.filled(FormTabConstants.defaultWaveLength, 0);
+        }
+        result.add(
+          SignalData(
+            name: widget.auxiliaryControllers[i].text,
+            signalType: SignalType.auxiliary,
+            values: values,
+            isVisible: i < _auxiliaryVisibility.length
+                ? _auxiliaryVisibility[i]
+                : true,
+            showIoNumber: false,
+            colorArgb: i < _auxiliaryColors.length ? _auxiliaryColors[i] : null,
+          ),
+        );
+      }
+
       if (result.isNotEmpty) {
         return result;
       }
@@ -1642,6 +1765,92 @@ class FormTabState extends State<FormTab>
 
   List<bool> getHwTriggerVisibility() {
     return _hwTriggerVisibility;
+  }
+
+  List<bool> getAuxiliaryVisibility() {
+    return _auxiliaryVisibility;
+  }
+
+  List<int> _fitWaveToLength(List<int> values, int length) {
+    if (values.length == length) return List<int>.from(values);
+    if (values.length > length) return values.sublist(0, length);
+    return [...values, ...List.filled(length - values.length, 0)];
+  }
+
+  List<SignalData> _collectAuxiliarySignalsForTemplate(int waveLength) {
+    final result = <SignalData>[];
+    final seen = <String>{};
+    for (final signal in _signalDataList) {
+      if (signal.signalType != SignalType.auxiliary) continue;
+      final name = signal.name.trim();
+      if (name.isEmpty || seen.contains(name)) continue;
+      seen.add(name);
+      result.add(
+        signal.copyWith(
+          values: _fitWaveToLength(signal.values, waveLength),
+          showIoNumber: false,
+        ),
+      );
+    }
+    for (int i = 0; i < widget.auxiliaryControllers.length; i++) {
+      final name = widget.auxiliaryControllers[i].text.trim();
+      if (name.isEmpty || seen.contains(name)) continue;
+      seen.add(name);
+      result.add(
+        SignalData(
+          name: name,
+          signalType: SignalType.auxiliary,
+          values: List.filled(waveLength, 0),
+          isVisible:
+              i < _auxiliaryVisibility.length ? _auxiliaryVisibility[i] : true,
+          showIoNumber: false,
+          colorArgb: i < _auxiliaryColors.length ? _auxiliaryColors[i] : null,
+        ),
+      );
+    }
+    return result;
+  }
+
+  void _addAuxiliarySignal() {
+    widget.controllersNotifier.addAuxiliary();
+    setState(() {
+      _auxiliaryVisibility.add(true);
+      _auxiliaryColors.add(null);
+    });
+  }
+
+  void _removeAuxiliarySignal(int index) {
+    widget.controllersNotifier.removeAuxiliaryAt(index);
+    setState(() {
+      if (index < _auxiliaryVisibility.length) {
+        _auxiliaryVisibility.removeAt(index);
+      }
+      if (index < _auxiliaryColors.length) {
+        _auxiliaryColors.removeAt(index);
+      }
+    });
+  }
+
+  void _ensureAuxiliarySlot() {
+    widget.controllersNotifier.addAuxiliary();
+    _auxiliaryVisibility.add(true);
+    _auxiliaryColors.add(null);
+  }
+
+  void _ensureAuxiliaryMetaLength() {
+    final int count = widget.auxiliaryControllers.length;
+    while (_auxiliaryVisibility.length < count) {
+      _auxiliaryVisibility.add(true);
+    }
+    if (_auxiliaryVisibility.length > count) {
+      _auxiliaryVisibility.removeRange(count, _auxiliaryVisibility.length);
+    }
+    while (_auxiliaryColors.length < count) {
+      _auxiliaryColors.add(null);
+    }
+    if (_auxiliaryColors.length > count) {
+      _auxiliaryColors.removeRange(count, _auxiliaryColors.length);
+    }
   }
 
   // AppConfig から設定を復元する
@@ -1680,6 +1889,34 @@ class FormTabState extends State<FormTab>
       if (config.hwTriggerVisibility.length == _hwTriggerVisibility.length) {
         _hwTriggerVisibility = List.from(config.hwTriggerVisibility);
       }
+
+      widget.controllersNotifier.setAuxiliaryCount(config.auxiliaryNames.length);
+      widget.controllersNotifier.setAuxiliaryTexts(config.auxiliaryNames);
+      if (config.auxiliaryVisibility.length ==
+          widget.auxiliaryControllers.length) {
+        _auxiliaryVisibility = List.from(config.auxiliaryVisibility);
+      } else {
+        _auxiliaryVisibility = List.generate(
+          widget.auxiliaryControllers.length,
+          (i) =>
+              i < config.auxiliaryVisibility.length
+                  ? config.auxiliaryVisibility[i]
+                  : true,
+        );
+      }
+      _auxiliaryColors = List<int?>.generate(
+        widget.auxiliaryControllers.length,
+        (i) {
+          final name = widget.auxiliaryControllers[i].text.trim();
+          for (final signal in config.signals) {
+            if (signal.signalType == SignalType.auxiliary &&
+                signal.name == name) {
+              return signal.colorArgb;
+            }
+          }
+          return null;
+        },
+      );
 
       _signalDataList = List.from(config.signals);
 
@@ -1779,12 +2016,14 @@ class FormTabState extends State<FormTab>
         hwTriggerControllers: widget.hwTriggerControllers,
         plcEipOutputControllers: widget.plcEipOutputControllers,
         plcEipInputControllers: widget.plcEipInputControllers,
+        auxiliaryControllers: widget.auxiliaryControllers,
       );
       final existingInputMap = existingMaps['input']!;
       final existingOutputMap = existingMaps['output']!;
       final existingHwTriggerMap = existingMaps['hwTrigger']!;
       final existingPlcMap = existingMaps['plc']!;
       final existingPlcInputMap = existingMaps['plcInput']!;
+      final existingAuxiliaryMap = existingMaps['auxiliary']!;
 
       // すべてのコントローラーをクリア
       FormTabControllerMapper.clearAllControllers(
@@ -1831,14 +2070,32 @@ class FormTabState extends State<FormTab>
             existingHwTriggerMap: existingHwTriggerMap,
             hwTriggerControllers: widget.hwTriggerControllers,
           );
+        } else if (type == SignalType.auxiliary) {
+          FormTabControllerMapper.assignAuxiliarySignal(
+            name: name,
+            existingAuxiliaryMap: existingAuxiliaryMap,
+            auxiliaryControllers: widget.auxiliaryControllers,
+            onNeedAdditionalSlot: _ensureAuxiliarySlot,
+          );
         }
 
+        int? colorArgb;
+        if (type == SignalType.auxiliary) {
+          final idx = widget.auxiliaryControllers.indexWhere(
+            (c) => c.text == name,
+          );
+          if (idx >= 0 && idx < _auxiliaryColors.length) {
+            colorArgb = _auxiliaryColors[idx];
+          }
+        }
         newSignalList.add(
           SignalData(
             name: name,
             signalType: type,
             values: values,
             isVisible: true,
+            showIoNumber: type != SignalType.auxiliary,
+            colorArgb: colorArgb,
           ),
         );
       }
@@ -1857,24 +2114,32 @@ class FormTabState extends State<FormTab>
   void mergeIncomingSignalNames(List<SignalData> signals) {
     if (signals.isEmpty) return;
 
+    while (_auxiliaryVisibility.length < widget.auxiliaryControllers.length) {
+      _auxiliaryVisibility.add(true);
+    }
+    _ensureAuxiliaryMetaLength();
+
     final existingMaps = FormTabControllerMapper.buildExistingControllerMaps(
       inputControllers: widget.inputControllers,
       outputControllers: widget.outputControllers,
       hwTriggerControllers: widget.hwTriggerControllers,
       plcEipOutputControllers: widget.plcEipOutputControllers,
       plcEipInputControllers: widget.plcEipInputControllers,
+      auxiliaryControllers: widget.auxiliaryControllers,
     );
     final existingInputMap = existingMaps['input']!;
     final existingOutputMap = existingMaps['output']!;
     final existingHwTriggerMap = existingMaps['hwTrigger']!;
     final existingPlcMap = existingMaps['plc']!;
     final existingPlcInputMap = existingMaps['plcInput']!;
+    final existingAuxiliaryMap = existingMaps['auxiliary']!;
     final existingNames = <String>{
       ...existingInputMap.keys,
       ...existingOutputMap.keys,
       ...existingHwTriggerMap.keys,
       ...existingPlcMap.keys,
       ...existingPlcInputMap.keys,
+      ...existingAuxiliaryMap.keys,
     };
 
     for (final signal in signals) {
@@ -1922,6 +2187,21 @@ class FormTabState extends State<FormTab>
             existingHwTriggerMap: existingHwTriggerMap,
             hwTriggerControllers: widget.hwTriggerControllers,
           );
+          break;
+        case SignalType.auxiliary:
+          FormTabControllerMapper.assignAuxiliarySignal(
+            name: signal.name,
+            existingAuxiliaryMap: existingAuxiliaryMap,
+            auxiliaryControllers: widget.auxiliaryControllers,
+            onNeedAdditionalSlot: _ensureAuxiliarySlot,
+          );
+          _ensureAuxiliaryMetaLength();
+          final auxIndex = widget.auxiliaryControllers.indexWhere(
+            (controller) => controller.text == signal.name,
+          );
+          if (auxIndex >= 0) {
+            _auxiliaryColors[auxIndex] = signal.colorArgb;
+          }
           break;
       }
       existingNames.add(signal.name);
@@ -2154,10 +2434,14 @@ class FormTabState extends State<FormTab>
             outputControllers: widget.outputControllers,
             plcEipOutputControllers: widget.plcEipOutputControllers,
             hwTriggerControllers: widget.hwTriggerControllers,
+            auxiliaryControllers: widget.auxiliaryControllers,
             inputVisibility: _inputVisibility,
             outputVisibility: _outputVisibility,
             hwTriggerVisibility: _hwTriggerVisibility,
+            auxiliaryVisibility: _auxiliaryVisibility,
             onToggleVisibility: _toggleSignalVisibility,
+            onAddAuxiliary: _addAuxiliarySignal,
+            onRemoveAuxiliary: _removeAuxiliarySignal,
             headerStyles: headerStyles,
             addRowButtonStyle: buttonStyles.addRow,
             removeRowButtonStyle: buttonStyles.removeRow,
@@ -2531,11 +2815,15 @@ class _FormTabBodySection extends StatelessWidget {
   final List<TextEditingController> outputControllers;
   final List<TextEditingController> plcEipOutputControllers;
   final List<TextEditingController> hwTriggerControllers;
+  final List<TextEditingController> auxiliaryControllers;
 
   final List<bool> inputVisibility;
   final List<bool> outputVisibility;
   final List<bool> hwTriggerVisibility;
+  final List<bool> auxiliaryVisibility;
   final void Function(int index, SignalType type) onToggleVisibility;
+  final VoidCallback onAddAuxiliary;
+  final ValueChanged<int> onRemoveAuxiliary;
 
   final _FormTabHeaderStyles headerStyles;
 
@@ -2564,10 +2852,14 @@ class _FormTabBodySection extends StatelessWidget {
     required this.outputControllers,
     required this.plcEipOutputControllers,
     required this.hwTriggerControllers,
+    required this.auxiliaryControllers,
     required this.inputVisibility,
     required this.outputVisibility,
     required this.hwTriggerVisibility,
+    required this.auxiliaryVisibility,
     required this.onToggleVisibility,
+    required this.onAddAuxiliary,
+    required this.onRemoveAuxiliary,
     required this.headerStyles,
     required this.addRowButtonStyle,
     required this.removeRowButtonStyle,
@@ -2705,12 +2997,15 @@ class _FormTabBodySection extends StatelessWidget {
                         ),
                       ),
                       Expanded(
-                        child: formState.hwPort > 0
-                            ? SingleChildScrollView(
-                                padding: const EdgeInsets.only(
-                                  bottom: _signalsScrollBottomPadding,
-                                ),
-                                child: HwTriggerSection(
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.only(
+                            bottom: _signalsScrollBottomPadding,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (formState.hwPort > 0)
+                                HwTriggerSection(
                                   controllers: hwTriggerControllers,
                                   count: formState.hwPort,
                                   visibilityList: hwTriggerVisibility,
@@ -2719,17 +3014,44 @@ class _FormTabBodySection extends StatelessWidget {
                                         index,
                                         SignalType.hwTrigger,
                                       ),
-                                ),
-                              )
-                            : const Center(
-                                child: Padding(
+                                )
+                              else
+                                const Padding(
                                   padding: EdgeInsets.symmetric(vertical: 16.0),
                                   child: Text(
                                     "HW Trigger Ports are not available.",
                                     style: TextStyle(color: Colors.grey),
                                   ),
                                 ),
+                              const SizedBox(height: 12),
+                              _SignalHeader(
+                                title: 'Auxiliary Signals',
+                                decoration: headerStyles.headerDecoration,
+                                padding: headerStyles.headerPadding,
+                                height: headerStyles.headerHeight,
                               ),
+                              const SizedBox(height: 8),
+                              AuxiliarySection(
+                                controllers: auxiliaryControllers,
+                                visibilityList: auxiliaryVisibility,
+                                excludeControllers: [
+                                  ...inputControllers,
+                                  ...plcEipInputControllers,
+                                  ...outputControllers,
+                                  ...plcEipOutputControllers,
+                                  ...hwTriggerControllers,
+                                ],
+                                onAdd: onAddAuxiliary,
+                                onRemove: onRemoveAuxiliary,
+                                onVisibilityChanged: (index) =>
+                                    onToggleVisibility(
+                                      index,
+                                      SignalType.auxiliary,
+                                    ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -2754,23 +3076,27 @@ class _FormTabBodySection extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed: onAddRow,
-                      icon: const Icon(Icons.add),
-                      label: const Text('Add Row'),
-                      style: addRowButtonStyle,
-                    ),
-                    const SizedBox(width: 16),
-                    ElevatedButton.icon(
-                      onPressed: rowCount > 1 ? onRemoveRow : null,
-                      icon: const Icon(Icons.remove),
-                      label: const Text('Remove Row'),
-                      style: removeRowButtonStyle,
-                    ),
-                  ],
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Wrap(
+                    spacing: 16,
+                    runSpacing: 8,
+                    alignment: WrapAlignment.end,
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: onAddRow,
+                        icon: const Icon(Icons.add),
+                        label: const Text('Add Row'),
+                        style: addRowButtonStyle,
+                      ),
+                      ElevatedButton.icon(
+                        onPressed: rowCount > 1 ? onRemoveRow : null,
+                        icon: const Icon(Icons.remove),
+                        label: const Text('Remove Row'),
+                        style: removeRowButtonStyle,
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Expanded(

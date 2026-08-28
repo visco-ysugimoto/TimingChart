@@ -24,6 +24,7 @@ class MessageLookup extends MessageLookupByLibrary {
   static Map<String, Function> _notInlinedMessages(_) => <String, Function>{
     "accent_color": MessageLookupByLibrary.simpleMessage("アクセントカラー"),
     "appTitle": MessageLookupByLibrary.simpleMessage("タイミングチャートジェネレータ"),
+    "auxiliary_signal_color": MessageLookupByLibrary.simpleMessage("補助信号の色"),
     "cameraLabel": MessageLookupByLibrary.simpleMessage("カメラ総数"),
     "chartNameLabel": MessageLookupByLibrary.simpleMessage("チャート名"),
     "chartTabTitle": MessageLookupByLibrary.simpleMessage("タイミングチャート"),
@@ -246,6 +247,17 @@ class MessageLookup extends MessageLookupByLibrary {
     "show_io_numbers": MessageLookupByLibrary.simpleMessage("IO 番号を表示"),
     "signal_label_properties_global_io_off":
         MessageLookupByLibrary.simpleMessage("設定の「IO番号を表示」がオフのため変更できません"),
+    "signal_label_properties_name": MessageLookupByLibrary.simpleMessage(
+      "ラベル名",
+    ),
+    "signal_label_properties_color": MessageLookupByLibrary.simpleMessage(
+      "色",
+    ),
+    "signal_label_properties_name_empty": MessageLookupByLibrary.simpleMessage(
+      "ラベル名を入力してください",
+    ),
+    "signal_label_properties_name_duplicate":
+        MessageLookupByLibrary.simpleMessage("この名前は既に使われています"),
     "signal_label_properties_show_io_number":
         MessageLookupByLibrary.simpleMessage("IO番号を表示"),
     "signal_label_properties_title": MessageLookupByLibrary.simpleMessage(

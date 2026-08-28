@@ -47,6 +47,7 @@ class _StepTimingChartPainter extends CustomPainter {
     required this.omissionFillColor,
     required this.arrowColor,
     required this.signalColors,
+    this.waveColorArgb = const [],
     required this.showBottomUnitLabels,
     required this.onCommentAreaMeasured,
     required this.onTopCommentAreaMeasured,
@@ -97,6 +98,7 @@ class _StepTimingChartPainter extends CustomPainter {
       signalTypes: signalTypes,
       showAllSignalTypes: showAllSignalTypes,
       signalColors: signalColors,
+      waveColorArgb: waveColorArgb,
       timeUnitIsMs: timeUnitIsMs,
       msPerStep: msPerStep,
       stepDurationsMs: stepDurationsMs,
@@ -133,6 +135,7 @@ class _StepTimingChartPainter extends CustomPainter {
   final List<double> stepDurationsMs;
   final int? activeStepIndex;
   final Map<SignalType, Color> signalColors;
+  final List<int?> waveColorArgb;
 
   // Colors
   final Color labelColor;
@@ -363,6 +366,7 @@ class _StepTimingChartPainter extends CustomPainter {
         omissionFillColor != oldDelegate.omissionFillColor ||
         arrowColor != oldDelegate.arrowColor ||
         !mapEquals(signalColors, oldDelegate.signalColors) ||
+        !listEquals(waveColorArgb, oldDelegate.waveColorArgb) ||
         selectedAnnotationId != oldDelegate.selectedAnnotationId ||
         draggingAnnotationId != oldDelegate.draggingAnnotationId ||
         !listEquals(highlightTimeIndices, oldDelegate.highlightTimeIndices) ||
@@ -397,6 +401,7 @@ class _LabelsOverlayPainter extends CustomPainter {
     required this.plcEipMode,
     required this.labelColor,
     required this.backgroundColor,
+    this.waveColorArgb = const [],
     required this.labelWidth,
     required this.chartMarginLeft,
     required this.cellHeight,
@@ -413,6 +418,7 @@ class _LabelsOverlayPainter extends CustomPainter {
   final String plcEipMode;
   final Color labelColor;
   final Color backgroundColor;
+  final List<int?> waveColorArgb;
   final double labelWidth;
   final double chartMarginLeft;
   final double cellHeight;
@@ -512,11 +518,16 @@ class _LabelsOverlayPainter extends CustomPainter {
         }
       }
 
+      final Color textColor = isHighlighted
+          ? Colors.orange
+          : (row < waveColorArgb.length && waveColorArgb[row] != null
+              ? Color(waveColorArgb[row]!)
+              : labelColor);
       final displayName = showIo ? '$prefix${signalNames[row]}' : signalNames[row];
       textPainter.text = TextSpan(
         text: displayName,
         style: TextStyle(
-          color: isHighlighted ? Colors.orange : labelColor,
+          color: textColor,
           fontSize: 14,
           fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal,
         ),
@@ -571,7 +582,8 @@ class _LabelsOverlayPainter extends CustomPainter {
         labelWidth != oldDelegate.labelWidth ||
         cellHeight != oldDelegate.cellHeight ||
         highlightStartRow != oldDelegate.highlightStartRow ||
-        highlightEndRow != oldDelegate.highlightEndRow;
+        highlightEndRow != oldDelegate.highlightEndRow ||
+        !listEquals(waveColorArgb, oldDelegate.waveColorArgb);
   }
 }
 

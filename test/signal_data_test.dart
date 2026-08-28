@@ -17,4 +17,21 @@ void main() {
     // 元のオブジェクトは不変であることも確認
     expect(original.isVisible, isTrue);
   });
+
+  test('copyWith は colorArgb を更新・クリアできる', () {
+    const original = SignalData(
+      name: 'NOTE',
+      signalType: SignalType.auxiliary,
+      values: [0, 1],
+      showIoNumber: false,
+      colorArgb: 0xFFFF9800,
+    );
+
+    final updated = original.copyWith(colorArgb: 0xFF2196F3);
+    expect(updated.colorArgb, 0xFF2196F3);
+    expect(original.colorArgb, 0xFFFF9800);
+
+    final cleared = original.copyWith(clearColorArgb: true);
+    expect(cleared.colorArgb, isNull);
+  });
 }

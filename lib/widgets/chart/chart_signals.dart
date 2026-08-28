@@ -12,6 +12,7 @@ class ChartSignalsManager {
   final List<SignalType> signalTypes;
   final bool showAllSignalTypes;
   final Map<SignalType, Color> signalColors;
+  final List<int?> waveColorArgb;
   // 非等間隔表示用
   final bool timeUnitIsMs;
   final double msPerStep;
@@ -28,10 +29,14 @@ class ChartSignalsManager {
     required this.msPerStep,
     required this.stepDurationsMs,
     this.showAllSignalTypes = false,
+    this.waveColorArgb = const [],
   });
 
-  /// 信号タイプに基づいて色を返す
-  Color _getColorForSignalType(SignalType type) {
+  /// 行ごとの個別色があればそれを、なければタイプ既定色を返す
+  Color _getColorForRow(int row, SignalType type) {
+    if (row >= 0 && row < waveColorArgb.length && waveColorArgb[row] != null) {
+      return Color(waveColorArgb[row]!);
+    }
     return signalColors[type] ?? Colors.grey;
   }
 
@@ -77,7 +82,7 @@ class ChartSignalsManager {
 
       paintLine =
           Paint()
-            ..color = _getColorForSignalType(currentSignalType)
+            ..color = _getColorForRow(row, currentSignalType)
             ..strokeWidth = 2;
 
       // 波形の描画
@@ -226,6 +231,8 @@ class ChartSignals extends StatelessWidget {
         return Colors.red;
       case SignalType.hwTrigger:
         return Colors.green;
+      case SignalType.auxiliary:
+        return Colors.orange;
       default:
         return Colors.grey;
     }
@@ -349,6 +356,8 @@ class ChartSignalsPainter extends CustomPainter {
         return Colors.red;
       case SignalType.hwTrigger:
         return Colors.green;
+      case SignalType.auxiliary:
+        return Colors.orange;
       default:
         return Colors.grey;
     }
@@ -359,7 +368,9 @@ class ChartSignalsPainter extends CustomPainter {
     try {
       for (int i = 0; i < signals.length; i++) {
         final signal = signals[i];
-        final signalColor = _getColorForSignalType(signal.signalType);
+        final signalColor = signal.colorArgb != null
+            ? Color(signal.colorArgb!)
+            : _getColorForSignalType(signal.signalType);
 
         // 信号の色を使用
         final highPaint =

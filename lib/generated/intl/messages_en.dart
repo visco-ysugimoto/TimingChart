@@ -24,6 +24,9 @@ class MessageLookup extends MessageLookupByLibrary {
   static Map<String, Function> _notInlinedMessages(_) => <String, Function>{
     "accent_color": MessageLookupByLibrary.simpleMessage("Accent color"),
     "appTitle": MessageLookupByLibrary.simpleMessage("Timing Chart Generator"),
+    "auxiliary_signal_color": MessageLookupByLibrary.simpleMessage(
+      "Auxiliary signal color",
+    ),
     "cameraLabel": MessageLookupByLibrary.simpleMessage("Total Camera"),
     "chartNameLabel": MessageLookupByLibrary.simpleMessage("Chart Name"),
     "chartTabTitle": MessageLookupByLibrary.simpleMessage("Timing Chart"),
@@ -298,6 +301,17 @@ class MessageLookup extends MessageLookupByLibrary {
         MessageLookupByLibrary.simpleMessage(
           "Disabled while global IO number display is off",
         ),
+    "signal_label_properties_name": MessageLookupByLibrary.simpleMessage(
+      "Label",
+    ),
+    "signal_label_properties_color": MessageLookupByLibrary.simpleMessage(
+      "Color",
+    ),
+    "signal_label_properties_name_empty": MessageLookupByLibrary.simpleMessage(
+      "Enter a label name",
+    ),
+    "signal_label_properties_name_duplicate":
+        MessageLookupByLibrary.simpleMessage("This name is already used"),
     "signal_label_properties_show_io_number":
         MessageLookupByLibrary.simpleMessage("Show IO number"),
     "signal_label_properties_title": MessageLookupByLibrary.simpleMessage(

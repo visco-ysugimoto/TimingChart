@@ -455,7 +455,7 @@ extension _TimingChartGesturesExt on TimingChartState {
       if (inLabelArea) {
         if (labelRow >= 0 &&
             labelRow < _visibleIndexes.length &&
-            _canConfigureIoNumberForVisibleRow(labelRow)) {
+            _canEditSignalLabelForVisibleRow(labelRow)) {
           menuLabelRow = labelRow;
           menuItems = [
             PopupMenuItem(

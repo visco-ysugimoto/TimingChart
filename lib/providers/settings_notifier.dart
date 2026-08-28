@@ -20,6 +20,7 @@ class SettingsNotifier extends ChangeNotifier {
   static const _kColorInput = 'color_input';
   static const _kColorOutput = 'color_output';
   static const _kColorHwTrigger = 'color_hwTrigger';
+  static const _kColorAuxiliary = 'color_auxiliary';
   static const _kCommentDashedColor = 'commentDashedColor';
   static const _kCommentArrowColor = 'commentArrowColor';
   static const _kOmissionLineColor = 'omissionLineColor';
@@ -66,6 +67,8 @@ class SettingsNotifier extends ChangeNotifier {
     if (co != null) _signalColors[SignalType.output] = Color(co);
     final ch = p.getInt(_kColorHwTrigger);
     if (ch != null) _signalColors[SignalType.hwTrigger] = Color(ch);
+    final ca = p.getInt(_kColorAuxiliary);
+    if (ca != null) _signalColors[SignalType.auxiliary] = Color(ca);
 
     final cDash = p.getInt(_kCommentDashedColor);
     if (cDash != null) _commentDashedColor = Color(cDash);
@@ -186,6 +189,7 @@ class SettingsNotifier extends ChangeNotifier {
     SignalType.input: Colors.blue,
     SignalType.output: Colors.red,
     SignalType.hwTrigger: Colors.green,
+    SignalType.auxiliary: Colors.orange,
   };
   Map<SignalType, Color> get signalColors => _signalColors;
   void setSignalColor(SignalType type, Color color) {
@@ -196,6 +200,8 @@ class SettingsNotifier extends ChangeNotifier {
       _prefs?.setInt(_kColorOutput, color.toARGB32());
     } else if (type == SignalType.hwTrigger) {
       _prefs?.setInt(_kColorHwTrigger, color.toARGB32());
+    } else if (type == SignalType.auxiliary) {
+      _prefs?.setInt(_kColorAuxiliary, color.toARGB32());
     }
     notifyListeners();
   }
@@ -204,9 +210,11 @@ class SettingsNotifier extends ChangeNotifier {
     _signalColors[SignalType.input] = Colors.blue;
     _signalColors[SignalType.output] = Colors.red;
     _signalColors[SignalType.hwTrigger] = Colors.green;
+    _signalColors[SignalType.auxiliary] = Colors.orange;
     _prefs?.setInt(_kColorInput, Colors.blue.toARGB32());
     _prefs?.setInt(_kColorOutput, Colors.red.toARGB32());
     _prefs?.setInt(_kColorHwTrigger, Colors.green.toARGB32());
+    _prefs?.setInt(_kColorAuxiliary, Colors.orange.toARGB32());
     notifyListeners();
   }
 

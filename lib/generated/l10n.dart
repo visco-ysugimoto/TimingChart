@@ -577,6 +577,16 @@ class S {
     );
   }
 
+  /// `Auxiliary signal color`
+  String get auxiliary_signal_color {
+    return Intl.message(
+      'Auxiliary signal color',
+      name: 'auxiliary_signal_color',
+      desc: 'Label for auxiliary signal color',
+      args: [],
+    );
+  }
+
   /// `Reset to default colors`
   String get reset_default_colors {
     return Intl.message(
@@ -1143,6 +1153,46 @@ class S {
       'Disabled while global IO number display is off',
       name: 'signal_label_properties_global_io_off',
       desc: 'Hint when global IO number display preference is off',
+      args: [],
+    );
+  }
+
+  /// `Label`
+  String get signal_label_properties_name {
+    return Intl.message(
+      'Label',
+      name: 'signal_label_properties_name',
+      desc: 'Text field label for signal name in properties dialog',
+      args: [],
+    );
+  }
+
+  /// `Color`
+  String get signal_label_properties_color {
+    return Intl.message(
+      'Color',
+      name: 'signal_label_properties_color',
+      desc: 'Color picker label for auxiliary signal color',
+      args: [],
+    );
+  }
+
+  /// `Enter a label name`
+  String get signal_label_properties_name_empty {
+    return Intl.message(
+      'Enter a label name',
+      name: 'signal_label_properties_name_empty',
+      desc: 'Validation error when auxiliary label is empty',
+      args: [],
+    );
+  }
+
+  /// `This name is already used`
+  String get signal_label_properties_name_duplicate {
+    return Intl.message(
+      'This name is already used',
+      name: 'signal_label_properties_name_duplicate',
+      desc: 'Validation error when auxiliary label duplicates another signal',
       args: [],
     );
   }

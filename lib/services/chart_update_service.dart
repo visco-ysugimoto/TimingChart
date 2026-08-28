@@ -64,6 +64,7 @@ class ChartUpdateService {
     // 新しい信号データを作成
     final List<SignalData> newChartSignals = [];
     final List<IoChannelSource> newChartSources = [];
+    int auxiliaryOrdinal = 0;
 
     for (int i = 0; i < signalNames.length; i++) {
       List<int> signalValues;
@@ -88,18 +89,31 @@ class ChartUpdateService {
         }
       }
 
+      final SignalType type =
+          i < signalTypes.length ? signalTypes[i] : SignalType.input;
+      final int? colorArgb = _existingColorArgb(
+        existingSignals: existingSignals,
+        name: signalNames[i],
+        type: type,
+        auxiliaryOrdinal: type == SignalType.auxiliary ? auxiliaryOrdinal : -1,
+      );
+      if (type == SignalType.auxiliary) {
+        auxiliaryOrdinal++;
+      }
+
       newChartSignals.add(
         SignalData(
           name: signalNames[i],
-          signalType: signalTypes[i],
+          signalType: type,
           values: signalValues,
           isVisible: true,
           showIoNumber: _existingShowIoByName(existingSignals, signalNames[i]),
+          colorArgb: colorArgb,
         ),
       );
       // IOソースの検出
       if (detectIoSource != null) {
-        newChartSources.add(detectIoSource(signalNames[i], signalTypes[i]));
+        newChartSources.add(detectIoSource(signalNames[i], type));
       } else if (ioSources.length > i) {
         newChartSources.add(ioSources[i]);
       } else {
@@ -236,6 +250,24 @@ class ChartUpdateService {
       if (signal.name == name) return signal.showIoNumber;
     }
     return true;
+  }
+
+  static int? _existingColorArgb({
+    required List<SignalData> existingSignals,
+    required String name,
+    required SignalType type,
+    required int auxiliaryOrdinal,
+  }) {
+    for (final signal in existingSignals) {
+      if (signal.name == name) return signal.colorArgb;
+    }
+    if (type == SignalType.auxiliary && auxiliaryOrdinal >= 0) {
+      final aux = existingSignals
+          .where((signal) => signal.signalType == SignalType.auxiliary)
+          .toList();
+      if (auxiliaryOrdinal < aux.length) return aux[auxiliaryOrdinal].colorArgb;
+    }
+    return null;
   }
 
   /// 既存波形とフォーム波形の長さを調整する
