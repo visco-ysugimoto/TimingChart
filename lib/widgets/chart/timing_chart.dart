@@ -333,17 +333,16 @@ class TimingChartState extends State<TimingChart>
 
   /// チャート上部のコメント領域に必要な高さを計算します
   double _calculateTopCommentAreaHeight() {
-    // 上部に配置されたコメントが無ければ 0
-    final bool hasTop = annotations.any((a) => a.placement == 'top');
-    if (!hasTop) {
-      _measuredTopCommentAreaHeight = null;
-      return 0.0;
-    }
-    // 実測値があれば優先
+    // 実測値があれば placement に関係なく使う。
+    // 下部コメントを上へ大きく動かした場合も、上部余白が消えないようにする。
     if (_measuredTopCommentAreaHeight != null &&
         _measuredTopCommentAreaHeight!.isFinite &&
         _measuredTopCommentAreaHeight! > 0) {
       return math.min(_measuredTopCommentAreaHeight!, _maxTopCommentAreaHeight);
+    }
+    final bool hasTop = annotations.any((a) => a.placement == 'top');
+    if (!hasTop) {
+      return 0.0;
     }
     // 初回など実測前は件数ベースで概算
     final int topCount = annotations.where((a) => a.placement == 'top').length;
@@ -1541,7 +1540,7 @@ class TimingChartState extends State<TimingChart>
       showBorder: true,
       showDashedLine: true,
       showArrow: true,
-      maxWidth: 120.0,
+      maxWidth: 600.0,
       maxLines: 0,
       ellipsisEnabled: true,
     );
@@ -2575,9 +2574,7 @@ class TimingChartState extends State<TimingChart>
                         controller: _vScrollController,
                         scrollDirection: Axis.vertical,
                         physics: verticalPhysics,
-                        clipBehavior: layoutData.needsVerticalScroll
-                            ? Clip.hardEdge
-                            : Clip.none,
+                        clipBehavior: Clip.hardEdge,
                         child: RepaintBoundary(
                           key: _repaintBoundaryKey,
                           child: CustomPaint(

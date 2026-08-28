@@ -76,7 +76,7 @@ class TimingChartAnnotation {
   final bool? showDashedLine;
   // 範囲矢印・接続矢印の表示。null は表示（既定）。
   final bool? showArrow;
-  // テキストの折り返し幅（px）。nullの場合は描画側のデフォルト値（120）を使う。
+  // テキストの折り返し幅（px）。nullの場合は描画側のデフォルト値（600）を使う。
   final double? maxWidth;
   // テキストの最大行数。nullまたは0以下の場合は無制限扱い。
   final int? maxLines;

@@ -125,7 +125,7 @@ class ChartAnnotationsManager {
       final double effMaxWidth =
           (ann.maxWidth != null && ann.maxWidth!.isFinite)
               ? ann.maxWidth!.clamp(40.0, 600.0)
-              : 120.0;
+              : 600.0;
       // maxLines が null または 0 以下の場合は無制限（行数制限なし）
       final int? effMaxLines =
           (ann.maxLines != null && ann.maxLines! > 0) ? ann.maxLines : null;
@@ -244,6 +244,12 @@ class ChartAnnotationsManager {
         const double topClipPadding = 8.0;
         const double minTopLeftY =
             -(maxTopCommentAreaHeight - topClipPadding);
+        if (commentRect.top < minTopLeftY) {
+          commentRect = commentRect.translate(
+            0,
+            minTopLeftY - commentRect.top,
+          );
+        }
         if (draggingAnnotationId != ann.id) {
           int topAttempts = 0;
           while (placedTopCommentRects.any((r) => r.overlaps(commentRect)) &&
@@ -458,6 +464,14 @@ class ChartAnnotationsManager {
         commentRect = commentRect.shift(
           Offset(ann.offsetX ?? 0, ann.offsetY ?? 0),
         );
+      }
+
+      const double maxTopCommentAreaHeight = 100.0;
+      const double topClipPadding = 8.0;
+      const double minTopLeftY =
+          -(maxTopCommentAreaHeight - topClipPadding);
+      if (commentRect.top < minTopLeftY) {
+        commentRect = commentRect.translate(0, minTopLeftY - commentRect.top);
       }
 
       int attempts = 0;

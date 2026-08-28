@@ -593,6 +593,19 @@ extension _TimingChartGesturesExt on TimingChartState {
     }
   }
 
+  /// 上部クリップ内にコメントボックス全体が収まる最小の top（チャートローカルY）
+  double _minAllowedCommentTop(double boxHeight) {
+    const double topPadding = 8.0;
+    const double maxTop = TimingChartState._maxTopCommentAreaHeight;
+    final double minTopFlush = -(maxTop - topPadding);
+    if (boxHeight <= 0) return minTopFlush;
+    final double minTopFullBox = -(maxTop - topPadding - boxHeight);
+    if (minTopFullBox <= 0 && minTopFullBox > minTopFlush) {
+      return minTopFullBox;
+    }
+    return minTopFlush;
+  }
+
   /// ドラッグ中の上部余白プレビュー（ペインター計測と同じ +8px パディング）
   double _computeDragPreviewTopExtent({
     required String? draggingId,
@@ -650,7 +663,8 @@ extension _TimingChartGesturesExt on TimingChartState {
 
     const double topPadding = 8.0;
     const double maxTop = TimingChartState._maxTopCommentAreaHeight;
-    final double minAllowedTop = -(maxTop - topPadding);
+    final double boxHeight = _draggingBoxSize!.height;
+    final double minAllowedTop = _minAllowedCommentTop(boxHeight);
 
     final hScroll =
         _hScrollController.hasClients ? _hScrollController.offset : 0.0;
@@ -662,7 +676,6 @@ extension _TimingChartGesturesExt on TimingChartState {
           (currentChartX - _draggingStartFingerChartX!),
       _draggingInitialBoxTopLeft!.dy + fingerDeltaY,
     );
-    final double boxHeight = _draggingBoxSize!.height;
 
     if (proposedTopLeft.dy < minAllowedTop) {
       proposedTopLeft = Offset(proposedTopLeft.dx, minAllowedTop);
@@ -684,7 +697,7 @@ extension _TimingChartGesturesExt on TimingChartState {
     }
 
     final String newPlacement =
-        (proposedTopLeft.dy + boxHeight / 2) < 0 ? 'top' : 'bottom';
+        proposedTopLeft.dy < 0 ? 'top' : 'bottom';
 
     final annIndex = annotations.indexWhere(
       (a) => a.id == _draggingAnnotationId,
