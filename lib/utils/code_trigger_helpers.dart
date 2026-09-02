@@ -45,6 +45,14 @@ class CodeTriggerHelpers {
     return false;
   }
 
+  /// いずれかの信号名が Code Trigger ビットか
+  static bool containsCodeBitName(Iterable<String> names, int inputCount) {
+    for (final name in names) {
+      if (isCodeBitName(name.trim(), inputCount)) return true;
+    }
+    return false;
+  }
+
   /// Control/Group/Task 領域の 0-based index 一覧（ポート2以降）
   static List<int> codeBitIndices(int inputCount) {
     final indices = <int>[];

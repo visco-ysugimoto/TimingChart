@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../models/chart/signal_data.dart';
 import '../../models/chart/signal_type.dart';
 import '../../models/form/form_state.dart';
+import '../../utils/code_trigger_helpers.dart';
 import 'form_tab_constants.dart';
 
 /// `FormTab` の SignalData 再構築（マッピング）を担当するヘルパー。
@@ -196,6 +197,7 @@ class FormTabSignalMapper {
     required List<TextEditingController> plcEipInputControllers,
     required String plcEipOption,
     required List<bool> inputVisibility,
+    List<bool> plcEipInputVisibility = const [],
     required SignalType Function(int index, {bool isPlcEipChannel})
         inferSignalType,
     required bool Function(int index, {bool isPlcEipChannel}) inferVisibility,
@@ -218,11 +220,20 @@ class FormTabSignalMapper {
           defaultWaveLength: defaultWaveLength,
         );
 
+        final bool hiddenCodeBit = CodeTriggerHelpers.isCodeBitName(
+          name,
+          formState.inputCount,
+        );
+        final bool userVisible =
+            i < inputVisibility.length ? inputVisibility[i] : true;
         inputSignalMap[i] = SignalData(
           name: name,
           signalType: inferSignalType(i, isPlcEipChannel: false),
           values: values,
-          isVisible: inferVisibility(i, isPlcEipChannel: false),
+          isVisible:
+              !hiddenCodeBit &&
+              userVisible &&
+              inferVisibility(i, isPlcEipChannel: false),
         );
       }
     }
@@ -243,11 +254,21 @@ class FormTabSignalMapper {
             additionalNames: inputFallbackNames(i),
             defaultWaveLength: defaultWaveLength,
           );
+          final bool hiddenCodeBit = CodeTriggerHelpers.isCodeBitName(
+            name,
+            formState.inputCount,
+          );
+          final bool userVisible =
+              i < plcEipInputVisibility.length
+                  ? plcEipInputVisibility[i]
+                  : true;
           inputSignalMap[key] = SignalData(
             name: name,
             signalType: inferSignalType(i, isPlcEipChannel: true),
             values: values,
             isVisible:
+                !hiddenCodeBit &&
+                userVisible &&
                 inferVisibility(i, isPlcEipChannel: true),
           );
         }
@@ -348,6 +369,7 @@ class FormTabSignalMapper {
     required List<TextEditingController> plcEipOutputControllers,
     required String plcEipOption,
     required List<bool> outputVisibility,
+    List<bool> plcEipOutputVisibility = const [],
     required Map<String, List<int>> prevPortValues,
     required Map<String, List<int>> prevValueMap,
     required int defaultWaveLength,
@@ -430,7 +452,10 @@ class FormTabSignalMapper {
             name: label,
             signalType: SignalType.output,
             values: values,
-            isVisible: i < outputVisibility.length ? outputVisibility[i] : true,
+            isVisible:
+                i < plcEipOutputVisibility.length
+                    ? plcEipOutputVisibility[i]
+                    : true,
           );
         }
       }

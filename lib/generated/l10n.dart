@@ -387,6 +387,16 @@ class S {
     );
   }
 
+  /// `Export report (HTML)`
+  String get drawer_export_html {
+    return Intl.message(
+      'Export report (HTML)',
+      name: 'drawer_export_html',
+      desc: 'Drawer item: Export HTML report',
+      args: [],
+    );
+  }
+
   /// `Preferences`
   String get drawer_preferences {
     return Intl.message(
@@ -1303,6 +1313,26 @@ class S {
       'XLSX export failed',
       name: 'export_failed_xlsx',
       desc: 'SnackBar after XLSX export failure',
+      args: [],
+    );
+  }
+
+  /// `Exported HTML report successfully`
+  String get export_success_html {
+    return Intl.message(
+      'Exported HTML report successfully',
+      name: 'export_success_html',
+      desc: 'SnackBar after HTML report export success',
+      args: [],
+    );
+  }
+
+  /// `HTML report export failed`
+  String get export_failed_html {
+    return Intl.message(
+      'HTML report export failed',
+      name: 'export_failed_html',
+      desc: 'SnackBar after HTML report export failure',
       args: [],
     );
   }

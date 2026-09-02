@@ -194,6 +194,9 @@ class MessageLookup extends MessageLookupByLibrary {
     "drawer_export_chart_jpeg": MessageLookupByLibrary.simpleMessage(
       "Export chart image (JPEG)",
     ),
+    "drawer_export_html": MessageLookupByLibrary.simpleMessage(
+      "Export report (HTML)",
+    ),
     "drawer_export_xlsx": MessageLookupByLibrary.simpleMessage(
       "Export as XLSX",
     ),
@@ -203,6 +206,9 @@ class MessageLookup extends MessageLookupByLibrary {
       ".ziq selection was cancelled",
     ),
     "drawer_preferences": MessageLookupByLibrary.simpleMessage("Preferences"),
+    "export_failed_html": MessageLookupByLibrary.simpleMessage(
+      "HTML report export failed",
+    ),
     "export_failed_jpeg": MessageLookupByLibrary.simpleMessage(
       "JPEG export failed",
     ),
@@ -213,6 +219,9 @@ class MessageLookup extends MessageLookupByLibrary {
       "XLSX export failed",
     ),
     "export_open_folder": MessageLookupByLibrary.simpleMessage("Open folder"),
+    "export_success_html": MessageLookupByLibrary.simpleMessage(
+      "Exported HTML report successfully",
+    ),
     "export_success_jpeg": MessageLookupByLibrary.simpleMessage(
       "Exported JPEG successfully",
     ),
@@ -297,6 +306,9 @@ class MessageLookup extends MessageLookupByLibrary {
     "settings_title": MessageLookupByLibrary.simpleMessage("Preferences"),
     "show_grid_lines": MessageLookupByLibrary.simpleMessage("Show grid lines"),
     "show_io_numbers": MessageLookupByLibrary.simpleMessage("Show IO numbers"),
+    "signal_label_properties_color": MessageLookupByLibrary.simpleMessage(
+      "Color",
+    ),
     "signal_label_properties_global_io_off":
         MessageLookupByLibrary.simpleMessage(
           "Disabled while global IO number display is off",
@@ -304,14 +316,11 @@ class MessageLookup extends MessageLookupByLibrary {
     "signal_label_properties_name": MessageLookupByLibrary.simpleMessage(
       "Label",
     ),
-    "signal_label_properties_color": MessageLookupByLibrary.simpleMessage(
-      "Color",
-    ),
+    "signal_label_properties_name_duplicate":
+        MessageLookupByLibrary.simpleMessage("This name is already used"),
     "signal_label_properties_name_empty": MessageLookupByLibrary.simpleMessage(
       "Enter a label name",
     ),
-    "signal_label_properties_name_duplicate":
-        MessageLookupByLibrary.simpleMessage("This name is already used"),
     "signal_label_properties_show_io_number":
         MessageLookupByLibrary.simpleMessage("Show IO number"),
     "signal_label_properties_title": MessageLookupByLibrary.simpleMessage(

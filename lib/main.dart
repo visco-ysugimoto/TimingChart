@@ -37,6 +37,7 @@ import 'widgets/common/version_info_dialog.dart';
 import 'services/ziq_import_service.dart';
 import 'services/chart_update_service.dart';
 import 'services/export_service.dart';
+import 'services/report_export_service.dart';
 import 'services/chart_concat_service.dart';
 import 'widgets/chart/chart_concat_dialogs.dart';
 import 'widgets/form/form_tab_controller_mapper.dart';
@@ -1391,6 +1392,41 @@ class _TimingChartGeneratorHomePageState
     );
   }
 
+  /// 信号一覧・トリガー説明・チャート画像を HTML レポートとして書き出す
+  Future<void> _exportHtmlReport() async {
+    String? savedPath;
+    final latestAnnotations =
+        _timingChartKey.currentState?.getAnnotations() ??
+        List<TimingChartAnnotation>.from(_chartController.annotations);
+    _chartAnnotations = List<TimingChartAnnotation>.from(latestAnnotations);
+
+    final success = await ReportExportService.exportHtml(
+      context: context,
+      formState: _formState,
+      chartSignals: _chartSignals,
+      chartPortNumbers: _chartPortNumbers,
+      chartController: _chartController,
+      formTabState: _formTabKey.currentState,
+      timingChartState: _timingChartKey.currentState,
+      chartAnnotations: latestAnnotations,
+      inputNames: _inputControllers.map((c) => c.text).toList(),
+      plcEipInputNames: _plcEipInputControllers.map((c) => c.text).toList(),
+      outputNames: _outputControllers.map((c) => c.text).toList(),
+      plcEipOutputNames: _plcEipOutputControllers.map((c) => c.text).toList(),
+      chartIoSources: _chartIoSources,
+      onExported: (path) => savedPath = path,
+    );
+
+    if (!mounted) return;
+    final s = S.of(context);
+    _showExportResultSnackBar(
+      success: success,
+      successMessage: s.export_success_html,
+      failureMessage: s.export_failed_html,
+      savedPath: savedPath,
+    );
+  }
+
   /// バージョン情報を読み込みます
   ///
   /// assetsフォルダからVERSION.jsonファイルを読み込み、タイトルとバージョン番号を返します。
@@ -1850,6 +1886,14 @@ class _TimingChartGeneratorHomePageState
                 _exportXlsx();
               },
             ),
+            ListTile(
+              leading: Icon(Icons.description_outlined),
+              title: Text(s.drawer_export_html),
+              onTap: () {
+                Navigator.pop(context);
+                _exportHtmlReport();
+              },
+            ),
             Divider(),
 
             ListTile(
@@ -2037,7 +2081,7 @@ class _TimingChartGeneratorHomePageState
                 signalTypes: _chartSignals.map((s) => s.signalType).toList(),
                 controller: _chartController,
                 fitToScreen: true,
-                showAllSignalTypes: true,
+                showAllSignalTypes: false,
                 showIoNumbers: _showIoNumbers,
                 portNumbers: _chartPortNumbers,
                 ioSources: _chartIoSources,

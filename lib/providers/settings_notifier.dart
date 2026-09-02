@@ -49,10 +49,12 @@ class SettingsNotifier extends ChangeNotifier {
 
     // チャート
     _timeUnitIsMs = p.getBool(_kTimeUnitIsMs) ?? _timeUnitIsMs;
-    _msPerStep = p.getDouble(_kMsPerStep) ?? _msPerStep;
 
-    // stepDurationsMs はアプリ起動時に初期化する（前回の値を読み込まない）
-    // SharedPreferences からも削除して、常に空のリストから開始する
+    // msPerStep / stepDurationsMs はチャート固有の時間情報なので、
+    // アプリ起動時は初期化する（前回の値を読み込まない）。
+    // インポート時は JSON / ZIQ 側の値が setter 経由で反映される。
+    _msPerStep = 1.0;
+    _prefs?.remove(_kMsPerStep);
     _stepDurationsMs = [];
     _prefs?.remove(_kStepDurationsMs);
 

@@ -387,6 +387,41 @@ class FileUtils {
     }
   }
 
+  /// HTML レポートを保存する（保存ダイアログあり）
+  static Future<bool> exportHtml(
+    String html, {
+    String? customFileName,
+    ExportSaveOptions? saveOptions,
+  }) async {
+    try {
+      final now = DateTime.now();
+      final formattedDate =
+          '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}';
+      final defaultFileName = 'timing_chart_report_$formattedDate.html';
+      final fileName = customFileName ?? defaultFileName;
+      final bytes = Uint8List.fromList(utf8.encode(html));
+
+      if (kIsWeb) {
+        web.downloadBytes(bytes, fileName, mimeType: 'text/html');
+        return true;
+      }
+
+      final savedPath = await _saveBytesOnDesktop(
+        bytes: bytes,
+        fileName: fileName,
+        extensionWithDot: '.html',
+        allowedExtensions: ['html'],
+        dialogTitle: 'HTMLレポートの保存先を選択',
+        options: saveOptions,
+      );
+
+      return savedPath != null;
+    } catch (e) {
+      debugPrint('Error exporting HTML: $e');
+      return false;
+    }
+  }
+
   /// XLSX形式でIO情報とチャートデータをエクスポート
   static Future<bool> exportXlsx({
     required List<String> inputNames,

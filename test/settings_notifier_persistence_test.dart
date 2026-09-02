@@ -38,6 +38,26 @@ void main() {
     expect(second.darkMode, true);
     expect(second.exportFolder, 'MyFolder');
   });
+
+  test('msPerStep は起動時に 1.0 へ初期化し、同一セッションでは変更を保持する', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'msPerStep': 10.0,
+    });
+
+    final settings = SettingsNotifier();
+    await settings.initialized;
+
+    expect(settings.msPerStep, 1.0);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.containsKey('msPerStep'), isFalse);
+
+    settings.msPerStep = 5.0;
+    expect(settings.msPerStep, 5.0);
+
+    final restarted = SettingsNotifier();
+    await restarted.initialized;
+    expect(restarted.msPerStep, 1.0);
+  });
 }
 
 

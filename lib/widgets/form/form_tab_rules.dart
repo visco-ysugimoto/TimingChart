@@ -1,4 +1,5 @@
 import '../../models/chart/signal_type.dart';
+import '../../utils/code_trigger_helpers.dart';
 import 'form_tab_constants.dart';
 
 /// `FormTab` 周辺の「画面ルール（選択肢/判定）」を集約します。
@@ -99,6 +100,27 @@ class FormTabRules {
     }
     if (inputCount == FormTabConstants.standardInputPorts) {
       return index == 0 || index > FormTabConstants.codeTrigger16TaskEnd;
+    }
+    return true;
+  }
+
+  /// CODE_OPTION に畳む Control/Group/Task ビットはチャートへ出さない。
+  static bool shouldIncludeOnChart({
+    required bool isVisible,
+    required SignalType signalType,
+    required String name,
+    required String triggerOption,
+    required int inputCount,
+  }) {
+    if (!isVisible) return false;
+    if (signalType == SignalType.control ||
+        signalType == SignalType.group ||
+        signalType == SignalType.task) {
+      return false;
+    }
+    if (triggerOption == TriggerOptions.code &&
+        CodeTriggerHelpers.isCodeBitName(name, inputCount)) {
+      return false;
     }
     return true;
   }

@@ -1,6 +1,6 @@
 # Timing Chart
 
-This tab displays and edits the waveforms created from the form. Click or drag to change bits, and add comments or omission marks. Edits are stored in JSON / JPEG / XLSX exports.
+This tab displays and edits the waveforms created from the form. Click or drag to change bits, and add comments or omission marks. Edits are stored in JSON / JPEG / XLSX / HTML exports.
 
 > For large structural changes, regenerate with Template on the form, or edit only a selected range from the context menu.
 

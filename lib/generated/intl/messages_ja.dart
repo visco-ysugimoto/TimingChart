@@ -158,6 +158,9 @@ class MessageLookup extends MessageLookupByLibrary {
     "drawer_export_chart_jpeg": MessageLookupByLibrary.simpleMessage(
       "チャート画像をエクスポート (JPEG)",
     ),
+    "drawer_export_html": MessageLookupByLibrary.simpleMessage(
+      "レポートをエクスポート (HTML)",
+    ),
     "drawer_export_xlsx": MessageLookupByLibrary.simpleMessage(
       "XLSX としてエクスポート",
     ),
@@ -167,6 +170,9 @@ class MessageLookup extends MessageLookupByLibrary {
       ".ziq の選択はキャンセルされました",
     ),
     "drawer_preferences": MessageLookupByLibrary.simpleMessage("設定"),
+    "export_failed_html": MessageLookupByLibrary.simpleMessage(
+      "HTMLレポートのエクスポートに失敗しました",
+    ),
     "export_failed_jpeg": MessageLookupByLibrary.simpleMessage(
       "JPEGのエクスポートに失敗しました",
     ),
@@ -177,6 +183,9 @@ class MessageLookup extends MessageLookupByLibrary {
       "XLSXのエクスポートに失敗しました",
     ),
     "export_open_folder": MessageLookupByLibrary.simpleMessage("フォルダを開く"),
+    "export_success_html": MessageLookupByLibrary.simpleMessage(
+      "HTMLレポートをエクスポートしました",
+    ),
     "export_success_jpeg": MessageLookupByLibrary.simpleMessage(
       "JPEGをエクスポートしました",
     ),
@@ -245,19 +254,17 @@ class MessageLookup extends MessageLookupByLibrary {
     "settings_title": MessageLookupByLibrary.simpleMessage("設定"),
     "show_grid_lines": MessageLookupByLibrary.simpleMessage("グリッド線を表示"),
     "show_io_numbers": MessageLookupByLibrary.simpleMessage("IO 番号を表示"),
+    "signal_label_properties_color": MessageLookupByLibrary.simpleMessage("色"),
     "signal_label_properties_global_io_off":
         MessageLookupByLibrary.simpleMessage("設定の「IO番号を表示」がオフのため変更できません"),
     "signal_label_properties_name": MessageLookupByLibrary.simpleMessage(
       "ラベル名",
     ),
-    "signal_label_properties_color": MessageLookupByLibrary.simpleMessage(
-      "色",
-    ),
+    "signal_label_properties_name_duplicate":
+        MessageLookupByLibrary.simpleMessage("この名前は既に使われています"),
     "signal_label_properties_name_empty": MessageLookupByLibrary.simpleMessage(
       "ラベル名を入力してください",
     ),
-    "signal_label_properties_name_duplicate":
-        MessageLookupByLibrary.simpleMessage("この名前は既に使われています"),
     "signal_label_properties_show_io_number":
         MessageLookupByLibrary.simpleMessage("IO番号を表示"),
     "signal_label_properties_title": MessageLookupByLibrary.simpleMessage(

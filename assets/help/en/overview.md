@@ -1,6 +1,6 @@
 # Overview
 
-Timing Chart Generator builds **digital timing diagrams** from a form: inputs, outputs, hardware triggers, and camera capture order. You can edit the waveforms, add comments, and export JSON, JPEG, or XLSX.
+Timing Chart Generator builds **digital timing diagrams** from a form: inputs, outputs, hardware triggers, and camera capture order. You can edit the waveforms, add comments, and export JSON, JPEG, XLSX, or HTML.
 
 Open this help with the **?** icon in the app bar, or **Help** in the left menu. The page that matches the current tab is shown first.
 
@@ -27,7 +27,7 @@ Open this help with the **?** icon in the app bar, or **Help** in the left menu.
 | 2 | Click **Template** to create the initial waveforms (required the first time) |
 | 3 | Switch to **Timing Chart** and review or edit the diagram |
 | 4 | After changing names or counts, click **Update Chart** to apply them to the existing chart |
-| 5 | Export JSON, JPEG, or XLSX from the menu when you are done |
+| 5 | Export JSON, JPEG, XLSX, or HTML from the menu when you are done |
 
 > **Template** generates a new waveform from the form. **Update Chart** applies form changes while keeping as much of your manual chart edits as possible. Update Chart stays disabled until you have run Template or imported a file.
 
@@ -58,6 +58,7 @@ Open ≡ at the top left.
 | **Export** | Save the current settings, waveforms, and comments as JSON (for later editing) |
 | **Export chart image (JPEG)** | Save the visible chart as an image |
 | **Export as XLSX** | Excel workbook. Waveforms are drawn with **cell borders** |
+| **Export report (HTML)** | One HTML file with trigger mode, signal lists, camera configuration, and the chart image |
 
 After a successful save, **Open folder** on the snack bar reveals the output location.
 

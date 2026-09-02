@@ -89,6 +89,8 @@ flutter:
     # ヘルプ（Markdown）
     - assets/help/en/
     - assets/help/ja/
+    - assets/help/en/triggers/
+    - assets/help/ja/triggers/
     - assets/help/media/
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in

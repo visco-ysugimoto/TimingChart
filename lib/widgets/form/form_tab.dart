@@ -175,7 +175,9 @@ class FormTabState extends State<FormTab>
   // --- 画面状態（可視性） ---
   /// チェックボックスの状態（SignalData の isVisible と同期する）
   List<bool> _inputVisibility = [];
+  List<bool> _plcEipInputVisibility = [];
   List<bool> _outputVisibility = [];
+  List<bool> _plcEipOutputVisibility = [];
   List<bool> _hwTriggerVisibility = [];
   List<bool> _auxiliaryVisibility = [];
   List<int?> _auxiliaryColors = [];
@@ -276,6 +278,8 @@ class FormTabState extends State<FormTab>
   ) async {
     await widget.onTransferInputs(source, destination);
     if (!mounted) return;
+    _swapBoolLists(_inputVisibility, _plcEipInputVisibility);
+    _syncCodeTriggerChannelAfterInputTransfer();
     setState(() {
       _updateSignalDataList();
     });
@@ -287,9 +291,52 @@ class FormTabState extends State<FormTab>
   ) async {
     await widget.onTransferOutputs(source, destination);
     if (!mounted) return;
+    _swapBoolLists(_outputVisibility, _plcEipOutputVisibility);
     setState(() {
       _updateSignalDataList();
     });
+  }
+
+  void _swapBoolLists(List<bool> a, List<bool> b) {
+    final len = math.min(a.length, b.length);
+    for (var i = 0; i < len; i++) {
+      final tmp = a[i];
+      a[i] = b[i];
+      b[i] = tmp;
+    }
+  }
+
+  /// DI⇔PLI 後に、Code Trigger ビットがどちら側にあるかを FormState へ反映する。
+  void _syncCodeTriggerChannelAfterInputTransfer() {
+    final fs = formState;
+    if (fs.triggerOption != TriggerOptions.code) return;
+
+    final onPlc = CodeTriggerHelpers.containsCodeBitName(
+      widget.plcEipInputControllers.map((c) => c.text),
+      fs.inputCount,
+    );
+    final onDio = CodeTriggerHelpers.containsCodeBitName(
+      widget.inputControllers.map((c) => c.text),
+      fs.inputCount,
+    );
+
+    final bool codeOnPlc;
+    if (onPlc && !onDio) {
+      codeOnPlc = true;
+    } else if (onDio && !onPlc) {
+      codeOnPlc = false;
+    } else if (onPlc && onDio) {
+      codeOnPlc = true;
+    } else {
+      final plcTrigger =
+          widget.plcEipInputControllers.isNotEmpty &&
+          widget.plcEipInputControllers[0].text.trim() == SignalNames.trigger;
+      codeOnPlc = plcTrigger;
+    }
+
+    if (codeOnPlc != fs.codeTriggerOnPlcEip) {
+      context.read<FormStateNotifier>().update(codeTriggerOnPlcEip: codeOnPlc);
+    }
   }
 
   // 外部から呼び出して信号データリストを更新する
@@ -338,7 +385,14 @@ class FormTabState extends State<FormTab>
   void applyInputNamesForTriggerOption() {
     final fs = formState;
     if (fs.triggerOption == TriggerOptions.single) {
-      if (widget.inputControllers.isNotEmpty) {
+      if (widget.inputControllers.isEmpty) return;
+      final dio0 = widget.inputControllers[0].text.trim();
+      final plc0 =
+          widget.plcEipInputControllers.isNotEmpty
+              ? widget.plcEipInputControllers[0].text.trim()
+              : '';
+      // PLI へ移した TRIGGER を、更新のたびに DI へ書き戻さない
+      if (dio0.isEmpty && plc0 != SignalNames.trigger) {
         widget.controllersNotifier.setInputText(0, SignalNames.trigger);
       }
       return;
@@ -360,6 +414,11 @@ class FormTabState extends State<FormTab>
         }
       } else if (widget.inputControllers.isNotEmpty) {
         widget.controllersNotifier.setInputText(0, SignalNames.trigger);
+        if (widget.plcEipInputControllers.isNotEmpty &&
+            widget.plcEipInputControllers[0].text.trim() ==
+                SignalNames.trigger) {
+          widget.plcEipInputControllers[0].text = '';
+        }
       }
       _assignCodeTriggerInputNames(fs);
     }
@@ -374,11 +433,19 @@ class FormTabState extends State<FormTab>
     final plcControllers = widget.plcEipInputControllers;
     final bool onPlcEip = fs.codeTriggerOnPlcEip;
     final controllers = onPlcEip ? plcControllers : dioControllers;
+    final other = onPlcEip ? dioControllers : plcControllers;
 
     for (int i = 0; i < fs.inputCount && i < controllers.length; i++) {
       final newName = CodeTriggerHelpers.nameForIndex(i, fs.inputCount);
       if (newName != null && controllers[i].text != newName) {
         controllers[i].text = newName;
+      }
+    }
+
+    for (int i = 0; i < fs.inputCount && i < other.length; i++) {
+      final bitName = CodeTriggerHelpers.nameForIndex(i, fs.inputCount);
+      if (bitName != null && other[i].text == bitName) {
+        other[i].text = '';
       }
     }
   }
@@ -425,9 +492,11 @@ class FormTabState extends State<FormTab>
 
     if (_prevInputCount != -1 && _prevInputCount != fs.inputCount) {
       _updateVisibilityList(_inputVisibility, fs.inputCount);
+      _updateVisibilityList(_plcEipInputVisibility, fs.inputCount);
     }
     if (_prevOutputCount != -1 && _prevOutputCount != fs.outputCount) {
       _updateVisibilityList(_outputVisibility, fs.outputCount);
+      _updateVisibilityList(_plcEipOutputVisibility, fs.outputCount);
     }
     if (_prevHwPort != -1 && _prevHwPort != fs.hwPort) {
       _updateVisibilityList(_hwTriggerVisibility, fs.hwPort);
@@ -528,8 +597,8 @@ class FormTabState extends State<FormTab>
               name: label,
               signalType: SignalType.output,
               values: List.filled(FormTabConstants.defaultWaveLength, 0),
-              isVisible: i < _outputVisibility.length
-                  ? _outputVisibility[i]
+              isVisible: i < _plcEipOutputVisibility.length
+                  ? _plcEipOutputVisibility[i]
                   : true,
             ),
           );
@@ -595,7 +664,12 @@ class FormTabState extends State<FormTab>
   void _initializeSignalVisibility() {
     setState(() {
       _inputVisibility = List.generate(formState.inputCount, (_) => true);
+      _plcEipInputVisibility = List.generate(formState.inputCount, (_) => true);
       _outputVisibility = List.generate(formState.outputCount, (_) => true);
+      _plcEipOutputVisibility = List.generate(
+        formState.outputCount,
+        (_) => true,
+      );
       _hwTriggerVisibility = List.generate(formState.hwPort, (_) => true);
       if (_auxiliaryVisibility.length != widget.auxiliaryControllers.length) {
         _auxiliaryVisibility = List.generate(
@@ -705,10 +779,22 @@ class FormTabState extends State<FormTab>
     setState(() {
       switch (type) {
         case SignalType.input:
-          _inputVisibility[index] = !_inputVisibility[index];
+          final onPlc =
+              _plcEipOption != PlcEipOptions.none && _inputTabIndex == 1;
+          final vis =
+              onPlc ? _plcEipInputVisibility : _inputVisibility;
+          if (index < vis.length) {
+            vis[index] = !vis[index];
+          }
           break;
         case SignalType.output:
-          _outputVisibility[index] = !_outputVisibility[index];
+          final onPlc =
+              _plcEipOption != PlcEipOptions.none && _outputTabIndex == 1;
+          final vis =
+              onPlc ? _plcEipOutputVisibility : _outputVisibility;
+          if (index < vis.length) {
+            vis[index] = !vis[index];
+          }
           break;
         case SignalType.hwTrigger:
           if (index < _hwTriggerVisibility.length) {
@@ -727,13 +813,25 @@ class FormTabState extends State<FormTab>
       String? targetName;
       switch (type) {
         case SignalType.input:
-          if (index < widget.inputControllers.length) {
-            targetName = widget.inputControllers[index].text;
+          final onPlc =
+              _plcEipOption != PlcEipOptions.none && _inputTabIndex == 1;
+          final controllers =
+              onPlc
+                  ? widget.plcEipInputControllers
+                  : widget.inputControllers;
+          if (index < controllers.length) {
+            targetName = controllers[index].text;
           }
           break;
         case SignalType.output:
-          if (index < widget.outputControllers.length) {
-            targetName = widget.outputControllers[index].text;
+          final onPlc =
+              _plcEipOption != PlcEipOptions.none && _outputTabIndex == 1;
+          final controllers =
+              onPlc
+                  ? widget.plcEipOutputControllers
+                  : widget.outputControllers;
+          if (index < controllers.length) {
+            targetName = controllers[index].text;
           }
           break;
         case SignalType.hwTrigger:
@@ -847,6 +945,7 @@ class FormTabState extends State<FormTab>
         plcEipInputControllers: widget.plcEipInputControllers,
         plcEipOption: _plcEipOption,
         inputVisibility: _inputVisibility,
+        plcEipInputVisibility: _plcEipInputVisibility,
         inferSignalType: (index, {bool isPlcEipChannel = false}) =>
             _inferSignalType(
               formState,
@@ -879,6 +978,7 @@ class FormTabState extends State<FormTab>
         plcEipOutputControllers: widget.plcEipOutputControllers,
         plcEipOption: _plcEipOption,
         outputVisibility: _outputVisibility,
+        plcEipOutputVisibility: _plcEipOutputVisibility,
         prevPortValues: prevPortValues,
         prevValueMap: prevValueMap,
         defaultWaveLength: defaultWaveLength,
@@ -1010,11 +1110,21 @@ class FormTabState extends State<FormTab>
     return chartData;
   }
 
+  bool _includeOnChart(SignalData signal) {
+    return FormTabRules.shouldIncludeOnChart(
+      isVisible: signal.isVisible,
+      signalType: signal.signalType,
+      name: signal.name,
+      triggerOption: formState.triggerOption,
+      inputCount: formState.inputCount,
+    );
+  }
+
   // 信号名のリストを生成する
   List<String> generateSignalNames() {
     List<String> names = [];
     for (var signal in _signalDataList) {
-      if (signal.isVisible) {
+      if (_includeOnChart(signal)) {
         names.add(signal.name);
       }
     }
@@ -1025,7 +1135,7 @@ class FormTabState extends State<FormTab>
   List<SignalType> generateSignalTypes() {
     List<SignalType> types = [];
     for (var signal in _signalDataList) {
-      if (signal.isVisible) {
+      if (_includeOnChart(signal)) {
         types.add(signal.signalType);
       }
     }
@@ -1036,7 +1146,7 @@ class FormTabState extends State<FormTab>
   List<List<int>> generateFilteredChartData() {
     List<List<int>> filteredData = [];
     for (var signal in _signalDataList) {
-      if (signal.isVisible) {
+      if (_includeOnChart(signal)) {
         filteredData.add(List<int>.from(signal.values));
       }
     }
@@ -1048,7 +1158,7 @@ class FormTabState extends State<FormTab>
     List<int> ports = [];
 
     for (var signal in _signalDataList) {
-      if (!signal.isVisible) continue;
+      if (!_includeOnChart(signal)) continue;
 
       int idx;
       switch (signal.signalType) {
@@ -1104,7 +1214,7 @@ class FormTabState extends State<FormTab>
     List<IoChannelSource> sources = [];
 
     for (var signal in _signalDataList) {
-      if (!signal.isVisible) continue;
+      if (!_includeOnChart(signal)) continue;
 
       switch (signal.signalType) {
         case SignalType.input:
@@ -1214,17 +1324,21 @@ class FormTabState extends State<FormTab>
       );
     }
 
-    final visibleNameSet = _signalDataList
-        .where((s) => s.isVisible)
-        .map((s) => s.name)
-        .toSet();
+    final chartNameSet =
+        _signalDataList.where(_includeOnChart).map((s) => s.name).toSet();
 
     List<String> outNames = [];
     List<SignalType> outTypes = [];
     List<List<int>> outChartData = [];
 
     for (int i = 0; i < names.length; i++) {
-      if (visibleNameSet.contains(names[i])) {
+      if (chartNameSet.contains(names[i]) ||
+          names[i] == SignalNames.codeOption ||
+          names[i] == SignalNames.commandOption) {
+        if (formState.triggerOption == TriggerOptions.code &&
+            CodeTriggerHelpers.isCodeBitName(names[i], formState.inputCount)) {
+          continue;
+        }
         outNames.add(names[i]);
         outTypes.add(types[i]);
         outChartData.add(chartData[i]);
@@ -1335,7 +1449,7 @@ class FormTabState extends State<FormTab>
         hasNamedSignal(
           widget.plcEipOutputControllers,
           fs.outputCount,
-          visibility: _outputVisibility,
+          visibility: _plcEipOutputVisibility,
         )) {
       return true;
     }
@@ -1544,10 +1658,8 @@ class FormTabState extends State<FormTab>
       _updateSignalDataList();
     }
 
-    final visibleNameSet = _signalDataList
-        .where((s) => s.isVisible)
-        .map((s) => s.name)
-        .toSet();
+    final chartNameSet =
+        _signalDataList.where(_includeOnChart).map((s) => s.name).toSet();
 
     List<String> outNames = [];
     List<SignalType> outTypes = [];
@@ -1555,7 +1667,13 @@ class FormTabState extends State<FormTab>
     List<int> outPorts = [];
 
     for (int i = 0; i < names.length; i++) {
-      if (visibleNameSet.contains(names[i])) {
+      if (chartNameSet.contains(names[i]) ||
+          names[i] == SignalNames.codeOption ||
+          names[i] == SignalNames.commandOption) {
+        if (formState.triggerOption == TriggerOptions.code &&
+            CodeTriggerHelpers.isCodeBitName(names[i], formState.inputCount)) {
+          continue;
+        }
         outNames.add(names[i]);
         outTypes.add(types[i]);
         outValues.add(values[i]);
@@ -1697,8 +1815,8 @@ class FormTabState extends State<FormTab>
                 name: name,
                 signalType: SignalType.output,
                 values: List.from(_actualChartData[dataIndex]),
-                isVisible: i < _outputVisibility.length
-                    ? _outputVisibility[i]
+                isVisible: i < _plcEipOutputVisibility.length
+                    ? _plcEipOutputVisibility[i]
                     : true,
               ),
             );
@@ -1709,8 +1827,8 @@ class FormTabState extends State<FormTab>
                 name: name,
                 signalType: SignalType.output,
                 values: List.filled(FormTabConstants.defaultWaveLength, 0),
-                isVisible: i < _outputVisibility.length
-                    ? _outputVisibility[i]
+                isVisible: i < _plcEipOutputVisibility.length
+                    ? _plcEipOutputVisibility[i]
                     : true,
               ),
             );
@@ -2436,7 +2554,9 @@ class FormTabState extends State<FormTab>
             hwTriggerControllers: widget.hwTriggerControllers,
             auxiliaryControllers: widget.auxiliaryControllers,
             inputVisibility: _inputVisibility,
+            plcEipInputVisibility: _plcEipInputVisibility,
             outputVisibility: _outputVisibility,
+            plcEipOutputVisibility: _plcEipOutputVisibility,
             hwTriggerVisibility: _hwTriggerVisibility,
             auxiliaryVisibility: _auxiliaryVisibility,
             onToggleVisibility: _toggleSignalVisibility,
@@ -2818,7 +2938,9 @@ class _FormTabBodySection extends StatelessWidget {
   final List<TextEditingController> auxiliaryControllers;
 
   final List<bool> inputVisibility;
+  final List<bool> plcEipInputVisibility;
   final List<bool> outputVisibility;
+  final List<bool> plcEipOutputVisibility;
   final List<bool> hwTriggerVisibility;
   final List<bool> auxiliaryVisibility;
   final void Function(int index, SignalType type) onToggleVisibility;
@@ -2854,7 +2976,9 @@ class _FormTabBodySection extends StatelessWidget {
     required this.hwTriggerControllers,
     required this.auxiliaryControllers,
     required this.inputVisibility,
+    required this.plcEipInputVisibility,
     required this.outputVisibility,
+    required this.plcEipOutputVisibility,
     required this.hwTriggerVisibility,
     required this.auxiliaryVisibility,
     required this.onToggleVisibility,
@@ -2966,7 +3090,10 @@ class _FormTabBodySection extends StatelessWidget {
                                   ? inputControllers
                                   : plcEipInputControllers,
                               count: formState.inputCount,
-                              visibilityList: inputVisibility,
+                              visibilityList:
+                                  (!useTabs || inputTabIndex == 0)
+                                      ? inputVisibility
+                                      : plcEipInputVisibility,
                               onVisibilityChanged: (index) =>
                                   onToggleVisibility(index, SignalType.input),
                               triggerOption: formState.triggerOption,
@@ -2989,7 +3116,10 @@ class _FormTabBodySection extends StatelessWidget {
                                   ? outputControllers
                                   : plcEipOutputControllers,
                               count: formState.outputCount,
-                              visibilityList: outputVisibility,
+                              visibilityList:
+                                  (!useTabs || outputTabIndex == 0)
+                                      ? outputVisibility
+                                      : plcEipOutputVisibility,
                               onVisibilityChanged: (index) =>
                                   onToggleVisibility(index, SignalType.output),
                             ),
