@@ -1,6 +1,84 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
+/// デジタル信号1行分の波形パスを構築する。
+///
+/// 水平・垂直を個別の線分で描くと拡大時に角が欠けるため、
+/// 1本の連続パスとして組み立てる。
+Path buildDigitalWaveformPath({
+  required List<int> values,
+  required List<double> stepPositions,
+  required double xOrigin,
+  required double cellWidth,
+  required double yHigh,
+  required double yLow,
+}) {
+  final path = Path();
+  if (values.isEmpty || stepPositions.length < values.length + 1) {
+    return path;
+  }
+
+  double xAt(int index) => xOrigin + stepPositions[index] * cellWidth;
+  double yAt(int value) => value != 0 ? yHigh : yLow;
+
+  path.moveTo(xAt(0), yAt(values[0]));
+  for (int t = 0; t < values.length - 1; t++) {
+    path.lineTo(xAt(t + 1), yAt(values[t]));
+    if (values[t] != values[t + 1]) {
+      path.lineTo(xAt(t + 1), yAt(values[t + 1]));
+    }
+  }
+  path.lineTo(xAt(values.length), yAt(values.last));
+  return path;
+}
+
+/// [buildDigitalWaveformPath] と同じ形状の SVG path d 属性を返す。
+String buildDigitalWaveformSvgPathD({
+  required List<int> values,
+  required List<double> stepPositions,
+  required double xOrigin,
+  required double cellWidth,
+  required double yHigh,
+  required double yLow,
+  required String Function(double) formatCoord,
+}) {
+  if (values.isEmpty || stepPositions.length < values.length + 1) {
+    return '';
+  }
+
+  double xAt(int index) => xOrigin + stepPositions[index] * cellWidth;
+  double yAt(int value) => value != 0 ? yHigh : yLow;
+  final buffer = StringBuffer();
+
+  void move(double x, double y) =>
+      buffer.write('M ${formatCoord(x)} ${formatCoord(y)}');
+  void line(double x, double y) =>
+      buffer.write(' L ${formatCoord(x)} ${formatCoord(y)}');
+
+  move(xAt(0), yAt(values[0]));
+  for (int t = 0; t < values.length - 1; t++) {
+    line(xAt(t + 1), yAt(values[t]));
+    if (values[t] != values[t + 1]) {
+      line(xAt(t + 1), yAt(values[t + 1]));
+    }
+  }
+  line(xAt(values.length), yAt(values.last));
+  return buffer.toString();
+}
+
+/// 波形描画用のストローク [Paint] を返す。
+Paint createWaveformStrokePaint(
+  Color color, {
+  double strokeWidth = 2.0,
+}) {
+  return Paint()
+    ..color = color
+    ..strokeWidth = strokeWidth
+    ..style = PaintingStyle.stroke
+    ..strokeJoin = StrokeJoin.miter
+    ..strokeCap = StrokeCap.butt;
+}
+
 /// キャンバス上に破線を描画するユーティリティ関数
 void drawDashedLine(
   Canvas canvas,

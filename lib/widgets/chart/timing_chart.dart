@@ -21,6 +21,7 @@ import '../../providers/settings_notifier.dart';
 import 'package:provider/provider.dart'; // Provider用
 import '../../generated/l10n.dart';
 import '../../providers/timing_chart_controller.dart';
+import '../../services/chart_svg_export_data.dart';
 
 part 'timing_chart_types.dart';
 part 'timing_chart_auto_comments.dart';

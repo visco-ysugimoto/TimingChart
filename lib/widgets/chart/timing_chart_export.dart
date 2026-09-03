@@ -238,4 +238,85 @@ extension TimingChartExportExt on TimingChartState {
     if (boundary == null) return null;
     return boundary.toImage(pixelRatio: pixelRatio);
   }
+
+  /// HTML/SVG エクスポート用の描画パラメータを収集する。
+  ChartSvgExportData? buildChartSvgExportData() {
+    final logicalSize = _exportLogicalChartSize();
+    if (logicalSize == null) return null;
+
+    final settings = Provider.of<SettingsNotifier>(context, listen: false);
+    final brightness = Theme.of(context).brightness;
+    final isDark = brightness == Brightness.dark;
+    final visibleIndexes = _calculateVisibleIndexes();
+
+    final visibleSignalNames = [
+      for (final i in visibleIndexes) signalNames[i],
+    ];
+    final visibleSignals = [
+      for (final i in visibleIndexes)
+        if (i < signals.length) signals[i],
+    ];
+    final visibleSignalTypes = [
+      for (final i in visibleIndexes) widget.signalTypes[i],
+    ];
+    final visiblePortNumbers = [
+      for (final i in visibleIndexes)
+        (i < widget.portNumbers.length) ? widget.portNumbers[i] : 0,
+    ];
+    final visibleIoSources = [
+      for (final i in visibleIndexes)
+        (i < widget.ioSources.length)
+            ? widget.ioSources[i]
+            : IoChannelSource.unknown,
+    ];
+    final visibleShowIoPerRow = [
+      for (final i in visibleIndexes) _effectiveShowIoForOriginalRow(i),
+    ];
+    final visibleWaveColors = [
+      for (final i in visibleIndexes)
+        (i < widget.signalColorArgb.length) ? widget.signalColorArgb[i] : null,
+    ];
+
+    Color themeAware(Color color) {
+      if (isDark && color == Colors.black) return Colors.white;
+      return color;
+    }
+
+    return ChartSvgExportData(
+      signals: visibleSignals,
+      signalNames: visibleSignalNames,
+      signalTypes: visibleSignalTypes,
+      annotations: annotations,
+      cellWidth: _cellWidth,
+      cellHeight: _cellHeight,
+      labelWidth: labelWidth,
+      commentAreaHeight: _calculateCommentAreaHeight(),
+      topCommentAreaHeight: _topCommentAreaHeight,
+      chartMarginLeft: chartMarginLeft,
+      chartMarginTop: chartMarginTop,
+      totalWidth: logicalSize.width,
+      totalHeight: logicalSize.height,
+      highlightTimeIndices: List<int>.from(_highlightTimeIndices),
+      omissionTimeIndices: List<int>.from(_omissionTimeIndices),
+      showAllSignalTypes: widget.showAllSignalTypes,
+      showIoPerRow: visibleShowIoPerRow,
+      portNumbers: visiblePortNumbers,
+      ioSources: visibleIoSources,
+      plcEipMode: widget.plcEipMode,
+      timeUnitIsMs: settings.timeUnitIsMs,
+      msPerStep: settings.msPerStep,
+      stepDurationsMs: _durationsForLayout(settings),
+      showBottomUnitLabels: settings.showBottomUnitLabels,
+      labelColor: isDark ? Colors.white : Colors.black,
+      backgroundColor: isDark ? Colors.black : Colors.white,
+      dashedColor: themeAware(settings.commentDashedColor),
+      omissionColor: themeAware(settings.omissionLineColor),
+      omissionFillColor: isDark ? Colors.black : Colors.white,
+      arrowColor: themeAware(settings.commentArrowColor),
+      signalColors: Map<SignalType, Color>.from(settings.signalColors),
+      waveColorArgb: visibleWaveColors,
+      activeStepIndex:
+          (settings.timeUnitIsMs && _isEditingSteps) ? _activeStepIndex : null,
+    );
+  }
 }

@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
@@ -8,11 +6,9 @@ import 'package:provider/provider.dart';
 import '../models/chart/io_channel_source.dart';
 import '../models/chart/signal_data.dart';
 import '../models/chart/signal_type.dart';
-import '../models/chart/timing_chart_annotation.dart';
 import '../models/form/camera_table_types.dart';
 import '../models/form/form_state.dart';
 import '../providers/locale_notifier.dart';
-import '../providers/settings_notifier.dart';
 import '../providers/timing_chart_controller.dart';
 import '../suggestion_loader.dart';
 import '../utils/file_utils.dart';
@@ -21,6 +17,7 @@ import '../widgets/form/form_tab.dart' show FormTabState;
 import '../widgets/form/form_tab_constants.dart';
 import '../widgets/form/form_tab_rules.dart';
 import 'export_service.dart';
+import 'chart_svg_builder.dart';
 import 'report_html_builder.dart';
 
 /// HTML レポートの書き出し。
@@ -33,7 +30,6 @@ class ReportExportService {
     required TimingChartController chartController,
     FormTabState? formTabState,
     TimingChartState? timingChartState,
-    required List<TimingChartAnnotation> chartAnnotations,
     List<String> inputNames = const [],
     List<String> plcEipInputNames = const [],
     List<String> outputNames = const [],
@@ -52,8 +48,6 @@ class ReportExportService {
       final locale =
           Provider.of<LocaleNotifier>(context, listen: false).locale;
       final languageCode = locale.languageCode.toLowerCase();
-      final settings = Provider.of<SettingsNotifier>(context, listen: false);
-      final isDark = Theme.of(context).brightness == Brightness.dark;
 
       final plcEipOption = formTabState?.plcOption ?? PlcEipOptions.none;
       final signalsAndPorts = await _resolveSignals(
@@ -70,12 +64,12 @@ class ReportExportService {
         plcEipOption: plcEipOption,
       );
 
-      Uint8List? jpegBytes;
+      String? chartSvg;
       if (timingChartState != null) {
-        jpegBytes = await timingChartState.captureChartJpeg(
-          backgroundColor: isDark ? Colors.black : Colors.white,
-          quality: 90,
-        );
+        final exportData = timingChartState.buildChartSvgExportData();
+        if (exportData != null) {
+          chartSvg = ChartSvgBuilder.build(exportData);
+        }
       }
       if (!context.mounted) return false;
 
@@ -89,17 +83,13 @@ class ReportExportService {
           languageCode: languageCode,
           formState: formState,
           plcEipOption: plcEipOption,
-          timeUnitIsMs: settings.timeUnitIsMs,
-          msPerStep: settings.msPerStep,
           signals: signalsAndPorts.signals,
           signalPorts: signalsAndPorts.ports,
           signalSources: signalsAndPorts.sources,
           tableData: formTabState?.getTableData() ?? const <List<CellMode>>[],
           rowModes: formTabState?.getRowModes() ?? const <String>[],
           triggerMarkdown: triggerMarkdown,
-          chartJpegBase64:
-              jpegBytes == null ? null : base64Encode(jpegBytes),
-          annotations: chartAnnotations,
+          chartSvg: chartSvg,
         ),
       );
 

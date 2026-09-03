@@ -2,7 +2,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_application_1/models/chart/io_channel_source.dart';
 import 'package:flutter_application_1/models/chart/signal_data.dart';
 import 'package:flutter_application_1/models/chart/signal_type.dart';
-import 'package:flutter_application_1/models/chart/timing_chart_annotation.dart';
 import 'package:flutter_application_1/models/form/camera_table_types.dart';
 import 'package:flutter_application_1/models/form/form_state.dart';
 import 'package:flutter_application_1/services/report_html_builder.dart';
@@ -50,7 +49,7 @@ void main() {
       expect(html, contains('<td>タスク実行</td>'));
     });
 
-    test('レポート HTML に信号・カメラ・チャート・コメントを含める', () {
+    test('レポート HTML に信号・カメラ・チャートを含める', () {
       const data = ReportHtmlData(
         languageCode: 'ja',
         formState: TimingFormState(
@@ -62,8 +61,6 @@ void main() {
           outputCount: 16,
         ),
         plcEipOption: PlcEipOptions.none,
-        timeUnitIsMs: false,
-        msPerStep: 1,
         signals: [
           SignalData(
             name: 'TRIGGER',
@@ -84,15 +81,7 @@ void main() {
         ],
         rowModes: [kRowModeSimultaneous],
         triggerMarkdown: '## コードトリガ\n同時に複数の入力を使います。',
-        chartJpegBase64: 'AAAA',
-        annotations: [
-          TimingChartAnnotation(
-            id: 'c1',
-            startTimeIndex: 3,
-            endTimeIndex: 5,
-            text: '立ち上がり',
-          ),
-        ],
+        chartSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50"></svg>',
       );
 
       final html = ReportHtmlBuilder.build(data);
@@ -113,10 +102,19 @@ void main() {
       expect(html, isNot(contains('作成日時')));
       expect(html, contains('順次取込'));
       expect(html, contains('同時取込'));
-      expect(html, contains('data:image/jpeg;base64,AAAA'));
-      expect(html, contains('3–5'));
-      expect(html, contains('立ち上がり'));
-      expect(html, isNot(contains('<script>')));
+      expect(html, contains('chart-viewport'));
+      expect(html, contains('<svg xmlns="http://www.w3.org/2000/svg"'));
+      expect(html, contains('chart-zoom-fit'));
+      expect(html, contains('chart-save'));
+      expect(html, contains('画面にフィット'));
+      expect(html, contains('チャートを保存'));
+      expect(html, contains('function saveChart'));
+      expect(html, contains('function initView'));
+      expect(html, contains('initView();'));
+      expect(html, isNot(contains('chart-zoom-reset')));
+      expect(html, isNot(contains('id="comments"')));
+      expect(html, isNot(contains('時間単位')));
+      expect(html, contains('<script>'));
     });
 
     test('Input に制御コードを含め、ポート昇順に並べる', () {
@@ -131,8 +129,6 @@ void main() {
           outputCount: 16,
         ),
         plcEipOption: PlcEipOptions.none,
-        timeUnitIsMs: false,
-        msPerStep: 1,
         signals: [
           SignalData(
             name: 'BUSY',
@@ -190,8 +186,6 @@ void main() {
           outputCount: 16,
         ),
         plcEipOption: PlcEipOptions.none,
-        timeUnitIsMs: false,
-        msPerStep: 1,
         signals: [
           SignalData(
             name: 'TRIGGER',
@@ -229,8 +223,6 @@ void main() {
           outputCount: 16,
         ),
         plcEipOption: PlcEipOptions.plc,
-        timeUnitIsMs: false,
-        msPerStep: 1,
         signals: [
           SignalData(name: 'TRIGGER', signalType: SignalType.input, values: [0]),
           SignalData(name: 'TRIGGER', signalType: SignalType.input, values: [0]),
@@ -293,8 +285,6 @@ void main() {
           outputCount: 16,
         ),
         plcEipOption: PlcEipOptions.eip,
-        timeUnitIsMs: false,
-        msPerStep: 1,
         signals: [
           SignalData(name: 'READY', signalType: SignalType.input, values: [0]),
           SignalData(
@@ -355,8 +345,6 @@ void main() {
           outputCount: 16,
         ),
         plcEipOption: PlcEipOptions.plc,
-        timeUnitIsMs: false,
-        msPerStep: 1,
         signals: [
           SignalData(
             name: 'PLO3: ACK',
@@ -394,8 +382,6 @@ void main() {
           outputCount: 3,
         ),
         plcEipOption: PlcEipOptions.none,
-        timeUnitIsMs: false,
-        msPerStep: 1,
         signals: [
           SignalData(name: 'TRIGGER', signalType: SignalType.input, values: [0]),
           SignalData(name: 'BUSY', signalType: SignalType.output, values: [0]),

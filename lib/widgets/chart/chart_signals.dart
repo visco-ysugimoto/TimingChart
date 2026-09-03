@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/chart/signal_data.dart';
 import '../../models/chart/signal_type.dart';
 import 'chart_coordinate_mapper.dart';
+import 'chart_drawing_util.dart';
 import 'dart:math' as math;
 
 /// 信号波形描画を管理するクラス
@@ -42,7 +43,6 @@ class ChartSignalsManager {
 
   /// 信号波形を描画
   void drawSignalWaveforms(Canvas canvas, List<List<int>> signals) {
-    var paintLine = Paint()..strokeWidth = 2;
     int visibleRow = 0;
 
     // ステップ境界の累積位置（単位: step幅）を作成
@@ -80,48 +80,18 @@ class ChartSignalsManager {
         continue;
       }
 
-      paintLine =
-          Paint()
-            ..color = _getColorForRow(row, currentSignalType)
-            ..strokeWidth = 2;
-
-      // 波形の描画
-      for (int t = 0; t < rowData.length - 1; t++) {
-        final currentValue = rowData[t];
-        final nextValue = rowData[t + 1];
-
-        final xStart = labelWidth + stepPositions[t] * cellWidth;
-        final xEnd = labelWidth + stepPositions[t + 1] * cellWidth;
-
-        final yCurrent = (currentValue != 0) ? yHigh : yLow;
-        final yNext = (nextValue != 0) ? yHigh : yLow;
-
-        // 水平線
-        canvas.drawLine(
-          Offset(xStart, yCurrent),
-          Offset(xEnd, yCurrent),
-          paintLine,
-        );
-
-        // 値変化なら垂直線
-        if (currentValue != nextValue) {
-          canvas.drawLine(
-            Offset(xEnd, yCurrent),
-            Offset(xEnd, yNext),
-            paintLine,
-          );
-        }
-      }
-
-      // 最後の値の描画（空の場合にエラーを防ぐため）
-      if (rowData.isNotEmpty) {
-        final lastIndex = rowData.length - 1;
-        final lastValue = rowData[lastIndex];
-        final xStart = labelWidth + stepPositions[lastIndex] * cellWidth;
-        final xEnd = labelWidth + stepPositions[lastIndex + 1] * cellWidth;
-        final yLast = (lastValue != 0) ? yHigh : yLow;
-        canvas.drawLine(Offset(xStart, yLast), Offset(xEnd, yLast), paintLine);
-      }
+      final paintLine = createWaveformStrokePaint(
+        _getColorForRow(row, currentSignalType),
+      );
+      final path = buildDigitalWaveformPath(
+        values: rowData,
+        stepPositions: stepPositions,
+        xOrigin: labelWidth,
+        cellWidth: cellWidth,
+        yHigh: yHigh,
+        yLow: yLow,
+      );
+      canvas.drawPath(path, paintLine);
 
       visibleRow++;
     }

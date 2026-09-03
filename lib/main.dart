@@ -1408,7 +1408,6 @@ class _TimingChartGeneratorHomePageState
       chartController: _chartController,
       formTabState: _formTabKey.currentState,
       timingChartState: _timingChartKey.currentState,
-      chartAnnotations: latestAnnotations,
       inputNames: _inputControllers.map((c) => c.text).toList(),
       plcEipInputNames: _plcEipInputControllers.map((c) => c.text).toList(),
       outputNames: _outputControllers.map((c) => c.text).toList(),

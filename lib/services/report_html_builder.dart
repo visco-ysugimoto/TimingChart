@@ -1,7 +1,6 @@
 import '../models/chart/io_channel_source.dart';
 import '../models/chart/signal_data.dart';
 import '../models/chart/signal_type.dart';
-import '../models/chart/timing_chart_annotation.dart';
 import '../models/form/camera_table_types.dart';
 import '../models/form/form_state.dart';
 import '../widgets/form/form_tab_constants.dart';
@@ -14,26 +13,22 @@ class ReportHtmlLabels {
   final String sectionSignals;
   final String sectionCamera;
   final String sectionChart;
-  final String sectionComments;
   final String fieldTrigger;
   final String fieldPlcEip;
   final String fieldInputPorts;
   final String fieldOutputPorts;
   final String fieldHwPorts;
   final String fieldCameras;
-  final String fieldTimeUnit;
-  final String timeUnitStep;
-  final String timeUnitMs;
   final String colPort;
   final String colName;
   final String visibleYes;
   final String visibleNo;
-  final String colStep;
-  final String colComment;
   final String colRow;
   final String noChart;
+  final String chartZoomHint;
+  final String chartZoomFit;
+  final String chartSave;
   final String noSignals;
-  final String noComments;
   final String noCamera;
   final String simultaneous;
   final String inputType;
@@ -56,26 +51,22 @@ class ReportHtmlLabels {
     required this.sectionSignals,
     required this.sectionCamera,
     required this.sectionChart,
-    required this.sectionComments,
     required this.fieldTrigger,
     required this.fieldPlcEip,
     required this.fieldInputPorts,
     required this.fieldOutputPorts,
     required this.fieldHwPorts,
     required this.fieldCameras,
-    required this.fieldTimeUnit,
-    required this.timeUnitStep,
-    required this.timeUnitMs,
     required this.colPort,
     required this.colName,
     required this.visibleYes,
     required this.visibleNo,
-    required this.colStep,
-    required this.colComment,
     required this.colRow,
     required this.noChart,
+    required this.chartZoomHint,
+    required this.chartZoomFit,
+    required this.chartSave,
     required this.noSignals,
-    required this.noComments,
     required this.noCamera,
     required this.simultaneous,
     required this.inputType,
@@ -99,26 +90,22 @@ class ReportHtmlLabels {
     sectionSignals: '信号一覧',
     sectionCamera: 'カメラ取込表',
     sectionChart: 'チャート',
-    sectionComments: 'コメント',
     fieldTrigger: 'トリガー方式',
     fieldPlcEip: 'PLC / EIP',
     fieldInputPorts: '入力ポート数',
     fieldOutputPorts: '出力ポート数',
     fieldHwPorts: 'HWトリガポート数',
     fieldCameras: 'カメラ台数',
-    fieldTimeUnit: '時間単位',
-    timeUnitStep: 'ステップ',
-    timeUnitMs: 'ミリ秒',
     colPort: 'ポート',
     colName: '信号名',
     visibleYes: 'あり',
     visibleNo: 'なし',
-    colStep: 'ステップ',
-    colComment: '内容',
     colRow: '行',
     noChart: 'チャート画像はありません。',
+    chartZoomHint: 'マウスホイールで拡大・縮小、ドラッグで移動',
+    chartZoomFit: '画面にフィット',
+    chartSave: 'チャートを保存',
     noSignals: '信号がありません。',
-    noComments: 'コメントはありません。',
     noCamera: 'カメラ取込表がありません。',
     simultaneous: '同時取込',
     inputType: 'Input',
@@ -142,26 +129,22 @@ class ReportHtmlLabels {
     sectionSignals: 'Signals',
     sectionCamera: 'Camera configuration',
     sectionChart: 'Chart',
-    sectionComments: 'Comments',
     fieldTrigger: 'Trigger mode',
     fieldPlcEip: 'PLC / EIP',
     fieldInputPorts: 'Input ports',
     fieldOutputPorts: 'Output ports',
     fieldHwPorts: 'HW trigger ports',
     fieldCameras: 'Cameras',
-    fieldTimeUnit: 'Time unit',
-    timeUnitStep: 'step',
-    timeUnitMs: 'ms',
     colPort: 'Port',
     colName: 'Name',
     visibleYes: 'Yes',
     visibleNo: 'No',
-    colStep: 'Step',
-    colComment: 'Comment',
     colRow: 'Row',
     noChart: 'No chart image is available.',
+    chartZoomHint: 'Scroll to zoom, drag to pan',
+    chartZoomFit: 'Fit to screen',
+    chartSave: 'Save chart',
     noSignals: 'No signals.',
-    noComments: 'No comments.',
     noCamera: 'No camera configuration table.',
     simultaneous: 'Simultaneous',
     inputType: 'Input',
@@ -222,8 +205,6 @@ class ReportHtmlData {
   final String languageCode;
   final TimingFormState formState;
   final String plcEipOption;
-  final bool timeUnitIsMs;
-  final double msPerStep;
   final List<SignalData> signals;
   final List<int> signalPorts;
   /// [signals] と同じ並び。DIO と PLI/ESI・PLO/ESO を分ける。
@@ -231,23 +212,21 @@ class ReportHtmlData {
   final List<List<CellMode>> tableData;
   final List<String> rowModes;
   final String triggerMarkdown;
+  final String? chartSvg;
   final String? chartJpegBase64;
-  final List<TimingChartAnnotation> annotations;
 
   const ReportHtmlData({
     required this.languageCode,
     required this.formState,
     required this.plcEipOption,
-    required this.timeUnitIsMs,
-    required this.msPerStep,
     required this.signals,
     required this.signalPorts,
     this.signalSources = const [],
     required this.tableData,
     required this.rowModes,
     required this.triggerMarkdown,
+    this.chartSvg,
     this.chartJpegBase64,
-    this.annotations = const [],
   });
 }
 
@@ -350,11 +329,6 @@ class ReportHtmlBuilder {
   static String build(ReportHtmlData data, {ReportHtmlLabels? labels}) {
     final l = labels ?? ReportHtmlLabels.forLanguage(data.languageCode);
     final lang = data.languageCode.toLowerCase() == 'ja' ? 'ja' : 'en';
-    final timeUnit =
-        data.timeUnitIsMs
-            ? '${l.timeUnitMs} (${_formatNumber(data.msPerStep)} ms/step)'
-            : l.timeUnitStep;
-
     final compositionRows = <List<String>>[
       [l.fieldTrigger, data.formState.triggerOption],
       [l.fieldPlcEip, data.plcEipOption],
@@ -362,7 +336,6 @@ class ReportHtmlBuilder {
       [l.fieldOutputPorts, '${data.formState.outputCount}'],
       [l.fieldHwPorts, '${data.formState.hwPort}'],
       [l.fieldCameras, '${data.formState.camera}'],
-      [l.fieldTimeUnit, timeUnit],
     ];
 
     final buf = StringBuffer()
@@ -405,20 +378,24 @@ class ReportHtmlBuilder {
 
     buf.writeln('<section id="chart">');
     buf.writeln('<h2>${escape(l.sectionChart)}</h2>');
-    final jpeg = data.chartJpegBase64;
-    if (jpeg == null || jpeg.isEmpty) {
-      buf.writeln('<p>${escape(l.noChart)}</p>');
+    final svg = data.chartSvg;
+    if (svg != null && svg.isNotEmpty) {
+      buf.writeln(_chartSvgViewport(svg, l));
     } else {
-      buf.writeln(
-        '<img class="chart" alt="${escape(l.sectionChart)}" src="data:image/jpeg;base64,$jpeg">',
-      );
+      final jpeg = data.chartJpegBase64;
+      if (jpeg == null || jpeg.isEmpty) {
+        buf.writeln('<p>${escape(l.noChart)}</p>');
+      } else {
+        buf.writeln(
+          '<img class="chart" alt="${escape(l.sectionChart)}" src="data:image/jpeg;base64,$jpeg">',
+        );
+      }
     }
     buf.writeln('</section>');
 
-    buf.writeln('<section id="comments">');
-    buf.writeln('<h2>${escape(l.sectionComments)}</h2>');
-    buf.writeln(_commentsTable(data, l));
-    buf.writeln('</section>');
+    if (data.chartSvg != null && data.chartSvg!.isNotEmpty) {
+      buf.writeln(_chartPanZoomScript());
+    }
 
     buf.writeln('</body></html>');
     return buf.toString();
@@ -639,30 +616,6 @@ class ReportHtmlBuilder {
     return buf.toString();
   }
 
-  static String _commentsTable(ReportHtmlData data, ReportHtmlLabels l) {
-    if (data.annotations.isEmpty) {
-      return '<p>${escape(l.noComments)}</p>';
-    }
-    final buf = StringBuffer()
-      ..writeln('<table>')
-      ..writeln(
-        '<thead><tr><th>${escape(l.colStep)}</th><th>${escape(l.colComment)}</th></tr></thead>',
-      )
-      ..writeln('<tbody>');
-    for (final ann in data.annotations) {
-      final end = ann.endTimeIndex;
-      final step =
-          end == null || end == ann.startTimeIndex
-              ? '${ann.startTimeIndex}'
-              : '${ann.startTimeIndex}–$end';
-      buf.writeln(
-        '<tr><td>${escape(step)}</td><td>${escape(ann.text)}</td></tr>',
-      );
-    }
-    buf.writeln('</tbody></table>');
-    return buf.toString();
-  }
-
   static String _kvTable(List<List<String>> rows) {
     final buf = StringBuffer()
       ..writeln('<table class="kv">')
@@ -779,11 +732,170 @@ class ReportHtmlBuilder {
     return escaped;
   }
 
-  static String _formatNumber(double value) {
-    if (value == value.roundToDouble()) {
-      return value.toStringAsFixed(0);
+  static String _chartSvgViewport(String svg, ReportHtmlLabels l) {
+    final buf = StringBuffer()
+      ..writeln(
+        '<div class="chart-viewport" id="chart-viewport" data-chart-filename="timing-chart">',
+      )
+      ..writeln('<div class="chart-toolbar">')
+      ..writeln('<span class="chart-zoom-hint">${escape(l.chartZoomHint)}</span>')
+      ..writeln('<div class="chart-toolbar-actions">')
+      ..writeln(
+        '<button type="button" class="chart-zoom-btn" id="chart-zoom-fit">${escape(l.chartZoomFit)}</button>',
+      )
+      ..writeln(
+        '<button type="button" class="chart-zoom-btn" id="chart-save">${escape(l.chartSave)}</button>',
+      )
+      ..writeln('</div>')
+      ..writeln('</div>')
+      ..writeln('<div class="chart-stage" id="chart-stage">')
+      ..writeln('<div class="chart-pan-zoom" id="chart-pan-zoom">')
+      ..write(svg)
+      ..writeln('</div>')
+      ..writeln('</div>')
+      ..writeln('</div>');
+    return buf.toString();
+  }
+
+  static String _chartPanZoomScript() {
+    return '''
+<script>
+(function () {
+  var stage = document.getElementById('chart-stage');
+  var layer = document.getElementById('chart-pan-zoom');
+  var viewport = document.getElementById('chart-viewport');
+  var fitBtn = document.getElementById('chart-zoom-fit');
+  var saveBtn = document.getElementById('chart-save');
+  if (!stage || !layer) return;
+
+  var scale = 1;
+  var tx = 0;
+  var ty = 0;
+  var dragging = false;
+  var lastX = 0;
+  var lastY = 0;
+
+  function applyTransform() {
+    layer.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')';
+  }
+
+  function getSvgSize() {
+    var svg = layer.querySelector('svg');
+    if (!svg) return null;
+    var w = svg.width && svg.width.baseVal ? svg.width.baseVal.value : 0;
+    var h = svg.height && svg.height.baseVal ? svg.height.baseVal.value : 0;
+    if ((!w || !h) && svg.viewBox && svg.viewBox.baseVal) {
+      w = svg.viewBox.baseVal.width;
+      h = svg.viewBox.baseVal.height;
     }
-    return value.toString();
+    if (!w || !h) {
+      var rect = svg.getBoundingClientRect();
+      if (scale > 0) {
+        w = rect.width / scale;
+        h = rect.height / scale;
+      }
+    }
+    if (!w || !h) return null;
+    return { w: w, h: h };
+  }
+
+  function getChartFilename(ext) {
+    var base = viewport && viewport.getAttribute('data-chart-filename');
+    if (!base) base = 'timing-chart';
+    return base + '.' + ext;
+  }
+
+  function downloadBlob(blob, filename) {
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  function ensureSvgNamespace(svgString) {
+    if (svgString.indexOf('xmlns=') >= 0) return svgString;
+    return svgString.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+  }
+
+  function saveChart() {
+    var svg = layer.querySelector('svg');
+    if (!svg) return;
+    var clone = svg.cloneNode(true);
+    var serializer = new XMLSerializer();
+    var svgString = ensureSvgNamespace(serializer.serializeToString(clone));
+    downloadBlob(
+      new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' }),
+      getChartFilename('svg')
+    );
+  }
+
+  function fitView() {
+    var size = getSvgSize();
+    if (!size) return;
+    var padding = 16;
+    var stageW = stage.clientWidth;
+    var stageH = stage.clientHeight;
+    var fitScale = Math.min(
+      (stageW - padding * 2) / size.w,
+      (stageH - padding * 2) / size.h
+    );
+    fitScale = Math.min(12, Math.max(0.2, fitScale));
+    scale = fitScale;
+    tx = (stageW - size.w * scale) / 2;
+    ty = (stageH - size.h * scale) / 2;
+    applyTransform();
+  }
+
+  stage.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    var rect = stage.getBoundingClientRect();
+    var mx = e.clientX - rect.left;
+    var my = e.clientY - rect.top;
+    var prev = scale;
+    var factor = e.deltaY < 0 ? 1.12 : 0.89;
+    var next = Math.min(12, Math.max(0.2, scale * factor));
+    if (next === prev) return;
+    tx = mx - (mx - tx) * (next / prev);
+    ty = my - (my - ty) * (next / prev);
+    scale = next;
+    applyTransform();
+  }, { passive: false });
+
+  stage.addEventListener('mousedown', function (e) {
+    if (e.button !== 0) return;
+    dragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    stage.classList.add('is-dragging');
+  });
+
+  window.addEventListener('mousemove', function (e) {
+    if (!dragging) return;
+    tx += e.clientX - lastX;
+    ty += e.clientY - lastY;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    applyTransform();
+  });
+
+  window.addEventListener('mouseup', function () {
+    dragging = false;
+    stage.classList.remove('is-dragging');
+  });
+
+  if (fitBtn) fitBtn.addEventListener('click', fitView);
+  if (saveBtn) saveBtn.addEventListener('click', saveChart);
+  function initView() {
+    fitView();
+  }
+  initView();
+  window.addEventListener('load', initView);
+})();
+</script>''';
   }
 
   static String _css() {
@@ -805,10 +917,19 @@ table.kv th { width: 10rem; }
 .signal-col table { margin-top: 0.3rem; }
 .signal-col th:first-child, .signal-col td:first-child { width: 4rem; white-space: nowrap; }
 img.chart { max-width: 100%; height: auto; border: 1px solid #ccc; background: #fff; }
+.chart-viewport { border: 1px solid #ccc; background: #f8f9fb; margin: 0.6rem 0 1rem; }
+.chart-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; border-bottom: 1px solid #d8dee8; background: #fff; font-size: 0.88rem; color: #444; }
+.chart-toolbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.chart-zoom-btn { border: 1px solid #b8c0cc; background: #fff; border-radius: 4px; padding: 4px 10px; cursor: pointer; font-size: 0.85rem; }
+.chart-zoom-btn:hover { background: #f0f4fa; }
+.chart-stage { position: relative; height: min(70vh, 720px); overflow: hidden; cursor: grab; touch-action: none; }
+.chart-stage.is-dragging { cursor: grabbing; }
+.chart-pan-zoom { transform-origin: 0 0; display: inline-block; }
+.chart-pan-zoom svg { display: block; max-width: none; height: auto; background: #fff; }
 blockquote { margin: 0.5rem 0; padding: 8px 12px; border-left: 4px solid #1e88e5; background: #f3f6fa; }
 code { font-family: Consolas, "Yu Gothic UI", monospace; background: #f0f0f0; padding: 1px 4px; }
 ul, ol { margin: 0.4rem 0 0.8rem 1.4rem; }
-@media print { body { margin: 8mm; max-width: none; } .signal-tables { flex-wrap: nowrap; overflow: visible; } .signal-col { break-inside: avoid; } img.chart { max-width: 100%; page-break-inside: avoid; } }
+@media print { body { margin: 8mm; max-width: none; } .signal-tables { flex-wrap: nowrap; overflow: visible; } .signal-col { break-inside: avoid; } img.chart { max-width: 100%; page-break-inside: avoid; } .chart-stage { height: auto; overflow: visible; } .chart-toolbar { display: none; } .chart-pan-zoom { transform: none !important; } }
 ''';
   }
 }
