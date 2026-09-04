@@ -162,16 +162,21 @@ class CameraConfigurationTable extends StatelessWidget {
       ),
     );
 
+    final canSimultaneous = canUseSimultaneousCapture(cameraCount);
+
     for (int row = 0; row < rowCount; row++) {
       // データ行: 左端は Row番号＋行モード表示、各セルはモードドロップダウン
+      // カメラ1台では同時取込に意味がないため、行モードは常に none として扱う
+      final displayMode =
+          canSimultaneous ? rowModes[row] : RowMode.none;
       rows.add(
         TableRow(
           children: [
             TableCell(
               child: InkWell(
-                onTap: () => onToggleRowMode(row),
+                onTap: canSimultaneous ? () => onToggleRowMode(row) : null,
                 child: Container(
-                  color: (rowModeColors[rowModes[row]] ?? Colors.white)
+                  color: (rowModeColors[displayMode] ?? Colors.white)
                       .withAlpha((0.3 * 255).round()),
                   padding: const EdgeInsets.all(8.0),
                   child: Center(
@@ -182,9 +187,9 @@ class CameraConfigurationTable extends StatelessWidget {
                           '${row + 1}',
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
-                        if (rowModes[row] != RowMode.none)
+                        if (displayMode != RowMode.none)
                           Text(
-                            _labelForRowMode(context, rowModes[row]),
+                            _labelForRowMode(context, displayMode),
                             style: const TextStyle(fontSize: 10),
                           ),
                       ],

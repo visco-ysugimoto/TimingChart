@@ -12,6 +12,9 @@ enum CellMode { none, mode1, mode2, mode3, mode4, mode5 }
 /// - `simultaneous`: 同一行の複数カメラを同時に取込扱いにするモード
 enum RowMode { none, simultaneous }
 
+/// 同時取込は「同じタイミングで複数カメラを撮る」設定のため、カメラが2台以上のときだけ使える。
+bool canUseSimultaneousCapture(int cameraCount) => cameraCount > 1;
+
 /// `RowMode` を永続化する際の文字列
 ///
 /// NOTE: json 保存/復元では enum.name を使う実装もあるため、将来の互換性のために残しています。

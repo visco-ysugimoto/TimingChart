@@ -22,19 +22,32 @@ extension _TimingChartKeyboardExt on TimingChartState {
     return false;
   }
 
+  /// グローバルキー入力。チャートタブ表示中は、フォーム側にフォーカスが残っていても
+  /// 選択範囲への 0/1 設定を受け付ける。
+  bool _handleHardwareKeyEventImpl(KeyEvent event) {
+    _handleModifierKeyEventImpl(event);
+    if (!_shortcutCaptureEnabled || !_focusNode.canRequestFocus) {
+      return false;
+    }
+    if (event is! KeyDownEvent) return false;
+    return _trySetSignalsFromDigitKey(event);
+  }
+
   /// チャート操作のキーボードイベントを処理します。
   ///
   /// - Ctrl/Cmd+Z: アンドゥ
   /// - Ctrl/Cmd+Y: リドゥ
   /// - Ctrl/Cmd+A: すべて選択
   /// - 0/1キー: 選択範囲を 0/1 に一括設定
-  void _onKeyEventImpl(KeyEvent event) {
-    if (event is! KeyDownEvent) return;
+  KeyEventResult _onKeyEventImpl(KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
     final bool isModifierPressed =
         HardwareKeyboard.instance.isControlPressed ||
         HardwareKeyboard.instance.isMetaPressed;
 
-    if (_handleHorizontalScrollKeysImpl(event)) return;
+    if (_handleHorizontalScrollKeysImpl(event)) {
+      return KeyEventResult.handled;
+    }
 
     // アンドゥ/リドゥショートカット
     if (isModifierPressed) {
@@ -42,29 +55,46 @@ extension _TimingChartKeyboardExt on TimingChartState {
         if (_controller?.canUndo ?? false) {
           _controller?.undo();
         }
-        return;
+        return KeyEventResult.handled;
       } else if (event.logicalKey == LogicalKeyboardKey.keyY) {
         if (_controller?.canRedo ?? false) {
           _controller?.redo();
         }
-        return;
+        return KeyEventResult.handled;
       }
     }
 
     if (isModifierPressed && event.logicalKey == LogicalKeyboardKey.keyA) {
       _selectAllSignals();
-      return;
+      return KeyEventResult.handled;
     }
 
-    // 選択範囲がある場合、1/0キーで信号を設定
-    if (_hasValidSelection) {
-      if (event.logicalKey == LogicalKeyboardKey.digit1) {
-        _setSignalsInSelection(1);
-        return;
-      } else if (event.logicalKey == LogicalKeyboardKey.digit0) {
-        _setSignalsInSelection(0);
-        return;
-      }
+    if (_trySetSignalsFromDigitKey(event)) {
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  /// 選択範囲を High(1) / Low(0) に設定するキーかどうかを判定して実行します。
+  bool _trySetSignalsFromDigitKey(KeyEvent event) {
+    if (!_canEditChartSignals || !_hasValidSelection) return false;
+    final int? value = chartLevelValueFromKeyEvent(event);
+    if (value == null) return false;
+    _setSignalsInSelection(value);
+    return true;
+  }
+
+  void _ensureChartKeyboardFocusImpl() {
+    if (!mounted || !_focusNode.canRequestFocus) return;
+    if (!_focusNode.hasFocus) {
+      _focusNode.requestFocus();
+    }
+  }
+
+  void _setShortcutCaptureEnabledImpl(bool enabled) {
+    _shortcutCaptureEnabled = enabled;
+    if (enabled) {
+      _ensureChartKeyboardFocusImpl();
     }
   }
 }

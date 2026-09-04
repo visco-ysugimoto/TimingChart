@@ -117,6 +117,35 @@ void main() {
       expect(html, contains('<script>'));
     });
 
+    test('カメラが1台のときは同時取込列を出さない', () {
+      const data = ReportHtmlData(
+        languageCode: 'ja',
+        formState: TimingFormState(
+          triggerOption: TriggerOptions.single,
+          ioPort: 16,
+          hwPort: 0,
+          camera: 1,
+          inputCount: 16,
+          outputCount: 16,
+        ),
+        plcEipOption: PlcEipOptions.none,
+        signals: [
+          SignalData(name: 'TRIGGER', signalType: SignalType.input, values: [0]),
+        ],
+        signalPorts: [1],
+        tableData: [
+          [CellMode.mode1],
+        ],
+        rowModes: [kRowModeSimultaneous],
+        triggerMarkdown: '',
+      );
+
+      final html = ReportHtmlBuilder.build(data);
+      expect(html, contains('順次取込'));
+      expect(html, contains('Camera 1'));
+      expect(html, isNot(contains('同時取込')));
+    });
+
     test('Input に制御コードを含め、ポート昇順に並べる', () {
       const data = ReportHtmlData(
         languageCode: 'ja',

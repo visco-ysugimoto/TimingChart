@@ -327,15 +327,31 @@ class ColoredCommentTextEditingController extends TextEditingController {
     TextStyle? style,
     required bool withComposing,
   }) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color displayColor(Color color) =>
+        isDark && color == Colors.black ? Colors.white : color;
+
     final TextStyle base = (style ?? const TextStyle()).copyWith(
-      color: baseColor,
+      color: displayColor(baseColor),
     );
     final TextRange? composing =
         withComposing && value.isComposingRangeValid ? value.composing : null;
+    final List<CommentColorSpan> displaySpans = isDark
+        ? [
+            for (final span in colorSpans)
+              span.colorValue == Colors.black.toARGB32()
+                  ? CommentColorSpan(
+                      start: span.start,
+                      end: span.end,
+                      colorValue: Colors.white.toARGB32(),
+                    )
+                  : span,
+          ]
+        : colorSpans;
     return buildCommentTextSpan(
       text: text,
       baseStyle: base,
-      spans: colorSpans,
+      spans: displaySpans,
       composing: composing,
     );
   }

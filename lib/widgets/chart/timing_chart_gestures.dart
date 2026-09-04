@@ -38,6 +38,7 @@ extension _TimingChartGesturesExt on TimingChartState {
   }
 
   void _handleTapImpl(TapUpDetails details) {
+    _ensureChartKeyboardFocusImpl();
     final chartLocalPos = details.localPosition;
     final adjustedPos = Offset(
       chartLocalPos.dx -
@@ -167,6 +168,7 @@ extension _TimingChartGesturesExt on TimingChartState {
   }
 
   void _onPanStartImpl(DragStartDetails details) {
+    _ensureChartKeyboardFocusImpl();
     final chartLocalPos = details.localPosition;
 
     final adjustedPosForAnn = Offset(
@@ -501,6 +503,11 @@ extension _TimingChartGesturesExt on TimingChartState {
               child: Text(s.ctx_delete_columns),
             ),
           PopupMenuItem(value: 'addComment', child: Text(s.ctx_add_comment)),
+          if (_hasCodeOptionSignal)
+            PopupMenuItem(
+              value: 'addCodeComment',
+              child: Text(s.ctx_add_code_comment),
+            ),
           PopupMenuItem(value: 'omit', child: Text(s.ctx_draw_omission)),
         ];
       }
@@ -586,6 +593,9 @@ extension _TimingChartGesturesExt on TimingChartState {
             _showAddCommentDialog();
           }
           break;
+        case 'addCodeComment':
+          await _showAddCodeOptionCommentDialog();
+          break;
         case 'omit':
           _toggleOmissionTime(clickedTimeIndex);
           break;
@@ -593,17 +603,13 @@ extension _TimingChartGesturesExt on TimingChartState {
     }
   }
 
-  /// 上部クリップ内にコメントボックス全体が収まる最小の top（チャートローカルY）
+  /// 上部クリップ上端までコメントを上げられる最小の top（チャートローカルY）
+  ///
+  /// ボックス高さで上限を下げると、改行後に下端がチャートへはみ出す。
   double _minAllowedCommentTop(double boxHeight) {
     const double topPadding = 8.0;
     const double maxTop = TimingChartState._maxTopCommentAreaHeight;
-    final double minTopFlush = -(maxTop - topPadding);
-    if (boxHeight <= 0) return minTopFlush;
-    final double minTopFullBox = -(maxTop - topPadding - boxHeight);
-    if (minTopFullBox <= 0 && minTopFullBox > minTopFlush) {
-      return minTopFullBox;
-    }
-    return minTopFlush;
+    return -(maxTop - topPadding);
   }
 
   /// ドラッグ中の上部余白プレビュー（ペインター計測と同じ +8px パディング）

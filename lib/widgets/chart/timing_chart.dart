@@ -12,6 +12,7 @@ import '../../models/chart/timing_chart_annotation.dart';
 import '../../models/chart/signal_type.dart';
 import '../../models/chart/io_channel_source.dart';
 import '../../utils/comment_text_spans.dart';
+import '../../utils/chart_shortcut_keys.dart';
 import 'chart_annotations.dart';
 import 'chart_grid.dart';
 import 'chart_signals.dart';
@@ -21,7 +22,10 @@ import '../../providers/settings_notifier.dart';
 import 'package:provider/provider.dart'; // Provider用
 import '../../generated/l10n.dart';
 import '../../providers/timing_chart_controller.dart';
+import '../../providers/form_state_notifier.dart';
 import '../../services/chart_svg_export_data.dart';
+import '../form/form_tab_constants.dart';
+import 'code_option_comment_dialog.dart';
 
 part 'timing_chart_types.dart';
 part 'timing_chart_auto_comments.dart';
@@ -234,6 +238,9 @@ class TimingChartState extends State<TimingChart>
 
   /// 修飾キー（Ctrl/Cmd）が現在押されているかどうか
   bool _isModifierPressed = false;
+
+  /// チャートタブ表示中のみ、選択範囲への 0/1 ショートカットをグローバルに受け付ける
+  bool _shortcutCaptureEnabled = false;
 
   /// 左側の信号ラベル領域の幅
   final double labelWidth = 200.0;
@@ -469,10 +476,18 @@ class TimingChartState extends State<TimingChart>
   }
 
   // NOTE: キーボード/フォーカス処理は `timing_chart_keyboard.dart` に分離しました。
-  bool _handleModifierKeyEvent(KeyEvent event) =>
-      _handleModifierKeyEventImpl(event);
+  bool _handleHardwareKeyEvent(KeyEvent event) =>
+      _handleHardwareKeyEventImpl(event);
 
-  void _onKeyEvent(KeyEvent event) => _onKeyEventImpl(event);
+  KeyEventResult _onKeyEvent(FocusNode _, KeyEvent event) =>
+      _onKeyEventImpl(event);
+
+  /// チャートタブの表示状態に合わせて 0/1 ショートカットの受付を切り替えます
+  void setShortcutCaptureEnabled(bool enabled) =>
+      _setShortcutCaptureEnabledImpl(enabled);
+
+  /// チャート操作のキー入力を受け取るためにフォーカスを取得します
+  void requestKeyboardFocus() => _ensureChartKeyboardFocusImpl();
 
   /// ウィジェットが最初に作成されたときに状態を初期化します
   ///
@@ -494,7 +509,7 @@ class TimingChartState extends State<TimingChart>
     };
     suggestionLanguageVersion.addListener(_langListener);
 
-    HardwareKeyboard.instance.addHandler(_handleModifierKeyEvent);
+    HardwareKeyboard.instance.addHandler(_handleHardwareKeyEvent);
     _isModifierPressed =
         HardwareKeyboard.instance.isControlPressed ||
         HardwareKeyboard.instance.isMetaPressed;
@@ -1523,8 +1538,15 @@ class TimingChartState extends State<TimingChart>
     }
   }
 
+  /// チャート描画と同じダークモード補正（黒→白）。
+  Color _themeAwareChartColor(Color color) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    if (isDark && color == Colors.black) return Colors.white;
+    return color;
+  }
+
   /// 新規コメントと同じ見た目になるプロパティ初期値。
-  /// 破線・矢印は未指定時と同様にアプリ設定の色を使う。
+  /// 破線・矢印は未指定時と同様に、アプリ設定の色をテーマ補正して使う。
   _CommentPropertyDefaults _commentPropertyDefaults() {
     final SettingsNotifier settings = Provider.of<SettingsNotifier>(
       context,
@@ -1536,8 +1558,10 @@ class TimingChartState extends State<TimingChart>
       borderColorValue: Colors.grey.shade600.toARGB32(),
       backgroundColorValue: const Color(0xFFFDFDFD).toARGB32(),
       textColorValue: Colors.black.toARGB32(),
-      dashedLineColorValue: settings.commentDashedColor.toARGB32(),
-      arrowColorValue: settings.commentArrowColor.toARGB32(),
+      dashedLineColorValue:
+          _themeAwareChartColor(settings.commentDashedColor).toARGB32(),
+      arrowColorValue:
+          _themeAwareChartColor(settings.commentArrowColor).toARGB32(),
       showBorder: true,
       showDashedLine: true,
       showArrow: true,
@@ -1645,6 +1669,7 @@ class TimingChartState extends State<TimingChart>
             ctx,
             title: s.comment_properties_dashed_color,
             initial: Color(dashedLineColorValue),
+            includeWhite: true,
           );
           if (picked != null) {
             setLocalState(() => dashedLineColorValue = picked.toARGB32());
@@ -1656,6 +1681,7 @@ class TimingChartState extends State<TimingChart>
             ctx,
             title: s.comment_properties_arrow_color,
             initial: Color(arrowColorValue),
+            includeWhite: true,
           );
           if (picked != null) {
             setLocalState(() => arrowColorValue = picked.toARGB32());
@@ -1918,10 +1944,11 @@ class TimingChartState extends State<TimingChart>
     Color baseTextColor = Colors.black,
     String? hintText,
   }) async {
+    final Color displayColor = _themeAwareChartColor(baseTextColor);
     final controller = ColoredCommentTextEditingController(
       text: initialText,
       colorSpans: initialColorSpans,
-      baseColor: baseTextColor,
+      baseColor: displayColor,
     );
 
     Widget dialogBuilder(BuildContext ctx) {
@@ -1937,9 +1964,14 @@ class TimingChartState extends State<TimingChart>
                 controller: controller,
                 autofocus: true,
                 maxLines: null,
-                decoration: hintText != null
-                    ? InputDecoration(hintText: hintText)
-                    : const InputDecoration(),
+                cursorColor: displayColor,
+                style: TextStyle(color: displayColor),
+                decoration: InputDecoration(
+                  hintText: hintText,
+                  hintStyle: TextStyle(
+                    color: displayColor.withValues(alpha: 0.55),
+                  ),
+                ),
               ),
               const SizedBox(height: 8),
               AnimatedBuilder(
@@ -2062,6 +2094,71 @@ class TimingChartState extends State<TimingChart>
       _controller?.setAnnotations(annotations);
     }
   }
+
+  bool get _hasCodeOptionSignal =>
+      _idSignalNames.contains(SignalNames.codeOption);
+
+  int? _codeOptionVisibleRowIndex() {
+    final int original = _idSignalNames.indexOf(SignalNames.codeOption);
+    if (original < 0) return null;
+    final int visible = _visibleIndexes.indexOf(original);
+    return visible >= 0 ? visible : null;
+  }
+
+  /// 制御コード選択から CODE_OPTION 向けコメントを追加します
+  Future<void> _showAddCodeOptionCommentDialog() async {
+    late final int startTime;
+    int? endTime;
+    if (_hasValidSelection) {
+      startTime = math.min(_startTimeIndex!, _endTimeIndex!);
+      endTime = math.max(_startTimeIndex!, _endTimeIndex!);
+    } else {
+      if (_lastRightClickPos == null) return;
+      final box = context.findRenderObject() as RenderBox?;
+      if (box == null) return;
+      final localPos = box.globalToLocal(_lastRightClickPos!);
+      final tIndex = _getTimeIndexFromDx(localPos.dx);
+      if (tIndex < 0) return;
+      startTime = tIndex;
+    }
+
+    final int inputCount = Provider.of<FormStateNotifier>(
+      context,
+      listen: false,
+    ).state.inputCount;
+
+    final bool prevCanRequest = _focusNode.canRequestFocus;
+    _focusNode.canRequestFocus = false;
+    FocusScope.of(context).unfocus();
+
+    final String? text = await showCodeOptionCommentDialog(
+      context: context,
+      inputCount: inputCount,
+    );
+
+    _focusNode.canRequestFocus = prevCanRequest;
+    if (mounted) _focusNode.requestFocus();
+
+    if (text == null || text.isEmpty) return;
+
+    final annId = "ann${DateTime.now().millisecondsSinceEpoch}";
+    final newAnnotation = TimingChartAnnotation(
+      id: annId,
+      startTimeIndex: startTime,
+      endTimeIndex: endTime,
+      text: text,
+      arrowTipRowIndex: _codeOptionVisibleRowIndex(),
+    );
+
+    setState(() {
+      annotations.add(newAnnotation);
+      _highlightTimeIndices = [..._highlightTimeIndices];
+      _forceRepaint();
+      if (endTime != null) _clearSelection();
+    });
+    _controller?.setAnnotations(annotations);
+  }
+
   // NOTE: 自動コメント生成は `timing_chart_auto_comments.dart` の extension へ分離しました。
 
   /// 新しい範囲アノテーションを追加するダイアログを表示します
@@ -2638,39 +2735,21 @@ class TimingChartState extends State<TimingChart>
                                       Brightness.dark
                                   ? Colors.white
                                   : Colors.black,
-                              dashedColor:
-                                  Theme.of(context).brightness ==
-                                          Brightness.dark &&
-                                      Provider.of<SettingsNotifier>(
-                                            context,
-                                          ).commentDashedColor ==
-                                          Colors.black
-                                  ? Colors.white
-                                  : Provider.of<SettingsNotifier>(
-                                      context,
-                                    ).commentDashedColor,
-                              arrowColor:
-                                  Theme.of(context).brightness ==
-                                          Brightness.dark &&
-                                      Provider.of<SettingsNotifier>(
-                                            context,
-                                          ).commentArrowColor ==
-                                          Colors.black
-                                  ? Colors.white
-                                  : Provider.of<SettingsNotifier>(
-                                      context,
-                                    ).commentArrowColor,
-                              omissionColor:
-                                  Theme.of(context).brightness ==
-                                          Brightness.dark &&
-                                      Provider.of<SettingsNotifier>(
-                                            context,
-                                          ).omissionLineColor ==
-                                          Colors.black
-                                  ? Colors.white
-                                  : Provider.of<SettingsNotifier>(
-                                      context,
-                                    ).omissionLineColor,
+                              dashedColor: _themeAwareChartColor(
+                                Provider.of<SettingsNotifier>(
+                                  context,
+                                ).commentDashedColor,
+                              ),
+                              arrowColor: _themeAwareChartColor(
+                                Provider.of<SettingsNotifier>(
+                                  context,
+                                ).commentArrowColor,
+                              ),
+                              omissionColor: _themeAwareChartColor(
+                                Provider.of<SettingsNotifier>(
+                                  context,
+                                ).omissionLineColor,
+                              ),
                               omissionFillColor: Theme.of(
                                 context,
                               ).scaffoldBackgroundColor,
@@ -2780,12 +2859,13 @@ class TimingChartState extends State<TimingChart>
             onPointerSignal: _handlePointerSignal,
             child: _buildChartWithLayout(context, true),
           )
-        : KeyboardListener(
+        : Focus(
             focusNode: _focusNode,
             autofocus: true,
             onKeyEvent: _onKeyEvent,
             child: Listener(
               onPointerSignal: _handlePointerSignal,
+              onPointerDown: (_) => _ensureChartKeyboardFocusImpl(),
               child: _buildChartWithLayout(context, false),
             ),
           );
@@ -3224,7 +3304,7 @@ class TimingChartState extends State<TimingChart>
   @override
   void dispose() {
     suggestionLanguageVersion.removeListener(_langListener);
-    HardwareKeyboard.instance.removeHandler(_handleModifierKeyEvent);
+    HardwareKeyboard.instance.removeHandler(_handleHardwareKeyEvent);
     _controller?.removeListener(_controllerListener);
     _hScrollController.dispose();
     _vScrollController.dispose();

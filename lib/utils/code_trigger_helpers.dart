@@ -140,9 +140,10 @@ class CodeTriggerHelpers {
     }
   }
 
-  /// 時刻 [t] の Control/Group/Task ビット列を文字列化する
+  /// 時刻 [t] の Task/Group/Control ビット列を文字列化する
   ///
   /// 各グループ内はポート番号の大きい側を左（上位ビット）にする。
+  /// 表示順は実信号と同じ Task → Group → Control。
   /// 例: Control Code1..4 = `C:b4b3b2b1` → `C:0100` なら Code3=1
   static String formatCodeBitPatternAt({
     required int t,
@@ -170,9 +171,10 @@ class CodeTriggerHelpers {
       }
     }
 
-    // 収集はポート昇順（下位→上位）なので、表示は反転して上位を左にする
+    // 収集はポート昇順（下位→上位）なので、表示は反転して上位を左にする。
+    // 実信号の並び（Task → Group → Control）に合わせて TGC 順で出す。
     String bits(List<int> xs) => xs.reversed.map((b) => b.toString()).join();
-    return 'C:${bits(control)} G:${bits(group)} T:${bits(task)}';
+    return 'T:${bits(task)} G:${bits(group)} C:${bits(control)}';
   }
 
   static bool _isIdlePattern(String pattern) => !pattern.contains('1');
@@ -224,4 +226,131 @@ class CodeTriggerHelpers {
     }
     return result;
   }
+
+  /// ヘルプ／マニュアルに掲載されている制御コード
+  ///
+  /// グループ・タスクが必要なのは、特定のタスクを指定するコマンドだけ。
+  /// 例: タスク実行・アクティブタスク切り替え・ロード・アンロード。
+  /// 全タスクアンロードやロット開始などは制御コードのみ。
+  static const List<CodeControlCommand> knownControlCommands = [
+    CodeControlCommand(code: 1, requiresGroup: true, requiresTask: true),
+    CodeControlCommand(code: 2),
+    CodeControlCommand(code: 3, requiresGroup: true, requiresTask: true),
+    CodeControlCommand(code: 4, requiresGroup: true, requiresTask: true),
+    CodeControlCommand(code: 5, requiresGroup: true, requiresTask: true),
+    CodeControlCommand(code: 9),
+    CodeControlCommand(code: 10),
+    CodeControlCommand(code: 12),
+    CodeControlCommand(code: 34),
+    CodeControlCommand(code: 35),
+    CodeControlCommand(code: 37),
+    CodeControlCommand(code: 38),
+    CodeControlCommand(code: 39),
+    CodeControlCommand(code: 40),
+    CodeControlCommand(code: 42),
+    CodeControlCommand(code: 43),
+    CodeControlCommand(code: 44),
+    CodeControlCommand(code: 45),
+    CodeControlCommand(code: 48),
+    CodeControlCommand(code: 49),
+  ];
+
+  static List<int> get knownControlCodes =>
+      knownControlCommands.map((c) => c.code).toList(growable: false);
+
+  static CodeControlCommand commandSpec(int code) {
+    for (final command in knownControlCommands) {
+      if (command.code == code) return command;
+    }
+    return CodeControlCommand(code: code);
+  }
+
+  /// グループ / タスク番号の仕様上の上限（1〜50）
+  static const int documentedGroupTaskMax = 50;
+
+  /// 入力ポート数に応じた Control / Group / Task のビット幅
+  static CodeOptionBitWidths bitWidths(int inputCount) {
+    if (inputCount >= FormTabConstants.maxInputPorts) {
+      return const CodeOptionBitWidths(control: 8, group: 6, task: 6);
+    }
+    return const CodeOptionBitWidths(control: 4, group: 3, task: 6);
+  }
+
+  /// [width] bit に収まる制御コードだけを返す
+  static List<int> availableControlCodes(int inputCount) {
+    final int maxValue = (1 << bitWidths(inputCount).control) - 1;
+    return knownControlCodes.where((code) => code <= maxValue).toList();
+  }
+
+  static int maxGroupNumber(int inputCount) {
+    final int bitMax = (1 << bitWidths(inputCount).group) - 1;
+    return documentedGroupTaskMax < bitMax ? documentedGroupTaskMax : bitMax;
+  }
+
+  static int maxTaskNumber(int inputCount) {
+    final int bitMax = (1 << bitWidths(inputCount).task) - 1;
+    return documentedGroupTaskMax < bitMax ? documentedGroupTaskMax : bitMax;
+  }
+
+  /// 左が MSB のビット列。範囲外の値はクリップする。
+  static String formatBits(int value, int width) {
+    if (width <= 0) return '';
+    final int maxValue = (1 << width) - 1;
+    final int clamped = value < 0 ? 0 : (value > maxValue ? maxValue : value);
+    return clamped.toRadixString(2).padLeft(width, '0');
+  }
+
+  /// コマンド名とビット列を結合したコメント本文
+  ///
+  /// 実信号の並び（Task → Group → Control）に合わせて TGC 順。
+  /// グループ／タスクが不要な制御コードでは `T:` `G:` を付けない。
+  /// 例: `タスクロード T:000101 G:001010 C:00000100`
+  /// 例: `全タスクアンロード C:00001100`
+  static String formatCodeOptionComment({
+    required String commandName,
+    required int controlCode,
+    int group = 0,
+    int task = 0,
+    required int inputCount,
+  }) {
+    final widths = bitWidths(inputCount);
+    final spec = commandSpec(controlCode);
+    final parts = <String>[];
+    final name = commandName.trim();
+    if (name.isNotEmpty) parts.add(name);
+    if (spec.requiresTask) {
+      parts.add('T:${formatBits(task, widths.task)}');
+    }
+    if (spec.requiresGroup) {
+      parts.add('G:${formatBits(group, widths.group)}');
+    }
+    parts.add('C:${formatBits(controlCode, widths.control)}');
+    return parts.join(' ');
+  }
+}
+
+/// CODE_OPTION を構成する各領域のビット幅
+class CodeOptionBitWidths {
+  final int control;
+  final int group;
+  final int task;
+
+  const CodeOptionBitWidths({
+    required this.control,
+    required this.group,
+    required this.task,
+  });
+}
+
+/// 制御コードのグループ／タスク要否
+class CodeControlCommand {
+  final int code;
+  final bool requiresGroup;
+  final bool requiresTask;
+
+  const CodeControlCommand({
+    required this.code,
+    this.requiresGroup = false,
+    this.requiresTask = false,
+  });
 }

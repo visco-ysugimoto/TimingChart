@@ -736,6 +736,10 @@ class _TimingChartGeneratorHomePageState
         }
       }
     }
+
+    _timingChartKey.currentState?.setShortcutCaptureEnabled(
+      _tabController.index == 1,
+    );
   }
 
   /// 入力ポート数を更新します

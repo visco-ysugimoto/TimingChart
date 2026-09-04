@@ -34,6 +34,67 @@ class MessageLookup extends MessageLookupByLibrary {
     "chart_edit_unlock_tooltip": MessageLookupByLibrary.simpleMessage(
       "チャート編集のロックを解除",
     ),
+    "code_cmd_clear_judgment_counter": MessageLookupByLibrary.simpleMessage(
+      "判定値カウンタクリア",
+    ),
+    "code_cmd_edit_lot_settings": MessageLookupByLibrary.simpleMessage(
+      "ロット設定編集",
+    ),
+    "code_cmd_end_distributed": MessageLookupByLibrary.simpleMessage("分散運用終了"),
+    "code_cmd_end_image_save": MessageLookupByLibrary.simpleMessage("画像保存終了"),
+    "code_cmd_end_lot": MessageLookupByLibrary.simpleMessage("ロット終了"),
+    "code_cmd_end_screen_save": MessageLookupByLibrary.simpleMessage("画面保存終了"),
+    "code_cmd_execute_active_task": MessageLookupByLibrary.simpleMessage(
+      "アクティブタスク実行",
+    ),
+    "code_cmd_execute_system": MessageLookupByLibrary.simpleMessage(
+      "システムコマンド実行",
+    ),
+    "code_cmd_execute_task": MessageLookupByLibrary.simpleMessage("タスク実行"),
+    "code_cmd_load_task": MessageLookupByLibrary.simpleMessage("タスクロード"),
+    "code_cmd_save_image_file": MessageLookupByLibrary.simpleMessage(
+      "画像ファイル保存",
+    ),
+    "code_cmd_save_screen_file": MessageLookupByLibrary.simpleMessage(
+      "画面ファイル保存",
+    ),
+    "code_cmd_start_distributed": MessageLookupByLibrary.simpleMessage(
+      "分散運用開始",
+    ),
+    "code_cmd_start_image_save": MessageLookupByLibrary.simpleMessage("画像保存開始"),
+    "code_cmd_start_lot": MessageLookupByLibrary.simpleMessage("ロット開始"),
+    "code_cmd_start_screen_save": MessageLookupByLibrary.simpleMessage(
+      "画面保存開始",
+    ),
+    "code_cmd_switch_active_task": MessageLookupByLibrary.simpleMessage(
+      "アクティブタスク切り替え",
+    ),
+    "code_cmd_system_shutdown": MessageLookupByLibrary.simpleMessage(
+      "システムシャットダウン",
+    ),
+    "code_cmd_unload_all_tasks": MessageLookupByLibrary.simpleMessage(
+      "全タスクアンロード",
+    ),
+    "code_cmd_unload_task": MessageLookupByLibrary.simpleMessage("タスクアンロード"),
+    "code_comment_body": MessageLookupByLibrary.simpleMessage("コメント本文"),
+    "code_comment_control": MessageLookupByLibrary.simpleMessage("制御コード"),
+    "code_comment_group": MessageLookupByLibrary.simpleMessage("グループ番号"),
+    "code_comment_group_required": MessageLookupByLibrary.simpleMessage(
+      "この制御コードではグループ番号が必要です",
+    ),
+    "code_comment_group_task_required": MessageLookupByLibrary.simpleMessage(
+      "この制御コードではグループ番号とタスク番号が必要です",
+    ),
+    "code_comment_none": MessageLookupByLibrary.simpleMessage("なし"),
+    "code_comment_preview": MessageLookupByLibrary.simpleMessage("プレビュー"),
+    "code_comment_select": MessageLookupByLibrary.simpleMessage("選択してください"),
+    "code_comment_task": MessageLookupByLibrary.simpleMessage("タスク番号"),
+    "code_comment_task_required": MessageLookupByLibrary.simpleMessage(
+      "この制御コードではタスク番号が必要です",
+    ),
+    "code_comment_title": MessageLookupByLibrary.simpleMessage(
+      "CODE_OPTION コメントを追加",
+    ),
     "color_picker_selected": MessageLookupByLibrary.simpleMessage("選択中:"),
     "color_picker_title": MessageLookupByLibrary.simpleMessage("色を選択"),
     "color_picker_transparent": MessageLookupByLibrary.simpleMessage("透明"),
@@ -119,6 +180,7 @@ class MessageLookup extends MessageLookupByLibrary {
       "一致しない信号があります",
     ),
     "createTemplateButton": MessageLookupByLibrary.simpleMessage("テンプレートを作成"),
+    "ctx_add_code_comment": MessageLookupByLibrary.simpleMessage("コードコメントを追加"),
     "ctx_add_comment": MessageLookupByLibrary.simpleMessage("コメントを追加"),
     "ctx_arrow_horizontal_off_to_on": MessageLookupByLibrary.simpleMessage(
       "水平矢印をオンにする",

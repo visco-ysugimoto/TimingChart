@@ -125,5 +125,47 @@ void main() {
       // 接続矢印（水平線 + 矢印先端）
       expect(svg.split('stroke-width="2"').length, greaterThan(2));
     });
+
+    test('コメントの改行を SVG の複数 tspan として出力する', () {
+      const data = ChartSvgExportData(
+        signals: [
+          [0, 1, 1],
+        ],
+        signalNames: ['CODE_OPTION'],
+        signalTypes: [SignalType.input],
+        annotations: [
+          TimingChartAnnotation(
+            id: 'nl1',
+            startTimeIndex: 1,
+            endTimeIndex: null,
+            text: 'タスク実行\nT:000100 G:000010 C:00000001',
+            placement: 'top',
+          ),
+        ],
+        cellWidth: 40,
+        cellHeight: 40,
+        labelWidth: 200,
+        commentAreaHeight: 40,
+        topCommentAreaHeight: 80,
+        chartMarginLeft: 16,
+        chartMarginTop: 16,
+        totalWidth: 336,
+        totalHeight: 176,
+        labelColor: Colors.black,
+        backgroundColor: Colors.white,
+        dashedColor: Colors.black,
+        omissionColor: Colors.black,
+        omissionFillColor: Colors.white,
+        arrowColor: Colors.black,
+        signalColors: {SignalType.input: Colors.blue},
+      );
+
+      final svg = ChartSvgBuilder.build(data);
+      expect(svg, contains('タスク実行'));
+      expect(svg, contains('T:000100 G:000010 C:00000001'));
+      expect(svg, isNot(contains('タスク実行T:000100')));
+      expect(svg, contains(' dy="'));
+      expect(RegExp(r'<tspan[^>]*x="').allMatches(svg).length, greaterThan(1));
+    });
   });
 }

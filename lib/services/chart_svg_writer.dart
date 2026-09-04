@@ -112,7 +112,10 @@ class ChartSvgWriter {
   void tspanGroup({
     required double x,
     required double y,
-    required List<({String text, String fill, String fontWeight})> spans,
+    required List<
+      ({String text, String fill, String fontWeight, bool newLine, double dy})
+    >
+    spans,
     double fontSize = 14,
     String textAnchor = 'start',
   }) {
@@ -122,8 +125,15 @@ class ChartSvgWriter {
       'font-family="Segoe UI, Yu Gothic UI, Hiragino Sans, sans-serif">',
     );
     for (final span in spans) {
+      _elements.write('<tspan');
+      if (span.newLine) {
+        _elements.write(' x="${_n(x)}"');
+        if (span.dy != 0) {
+          _elements.write(' dy="${_n(span.dy)}"');
+        }
+      }
       _elements.write(
-        '<tspan fill="${span.fill}" font-weight="${span.fontWeight}">'
+        ' fill="${span.fill}" font-weight="${span.fontWeight}">'
         '${_escapeText(span.text)}</tspan>',
       );
     }
@@ -173,6 +183,8 @@ class ChartSvgWriter {
 
   static String _escapeText(String text) {
     return text
+        .replaceAll('\r', '')
+        .replaceAll('\n', '')
         .replaceAll('&', '&amp;')
         .replaceAll('<', '&lt;')
         .replaceAll('>', '&gt;');

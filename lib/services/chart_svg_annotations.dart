@@ -197,6 +197,7 @@ class ChartSvgAnnotations {
           commentRect: commentRect,
           arrowRect: arrowRect,
           textSpan: textSpan,
+          textPainter: textPainter,
           fontSize: fontSize,
           perAnnDashedColor: perAnnDashedColor,
           perAnnArrowColor: perAnnArrowColor,
@@ -243,6 +244,7 @@ class ChartSvgAnnotations {
         _SvgCommentBox(
           rect: item.commentRect,
           textSpan: item.textSpan,
+          textPainter: item.textPainter,
           fontSize: item.fontSize,
           borderColor: item.borderColor,
           backgroundColor: item.backgroundColor,
@@ -372,37 +374,156 @@ class ChartSvgAnnotations {
       rx: 8,
     );
 
-    final spans = _textSpansFromTextSpan(box.textSpan, box.fontSize);
+    final textX = box.rect.left + 5;
+    final spans = _tspansFromLaidOutText(box.textPainter, box.textSpan);
     writer.tspanGroup(
-      x: box.rect.left + 5,
+      x: textX,
       y: box.rect.top + box.fontSize + 4,
       spans: spans,
       fontSize: box.fontSize,
     );
   }
 
-  static List<({String text, String fill, String fontWeight})>
-  _textSpansFromTextSpan(TextSpan span, double fontSize) {
-    final result = <({String text, String fill, String fontWeight})>[];
-    void walk(TextSpan node) {
-      final style = node.style;
-      final text = node.text ?? '';
-      if (text.isNotEmpty) {
+  static List<
+    ({String text, String fill, String fontWeight, bool newLine, double dy})
+  >
+  _tspansFromLaidOutText(TextPainter painter, TextSpan span) {
+    final fullText = span.toPlainText();
+    if (fullText.isEmpty) return const [];
+
+    final runs = _styledRunsFromTextSpan(span);
+    final lines = _lineRanges(painter, fullText);
+    if (lines.isEmpty) {
+      return [
+        for (final run in runs)
+          if (run.end > run.start)
+            (
+              text: fullText.substring(run.start, run.end),
+              fill: run.fill,
+              fontWeight: run.fontWeight,
+              newLine: false,
+              dy: 0.0,
+            ),
+      ];
+    }
+
+    final result =
+        <
+          ({
+            String text,
+            String fill,
+            String fontWeight,
+            bool newLine,
+            double dy,
+          })
+        >[];
+    for (final line in lines) {
+      var firstOnLine = true;
+      for (final run in runs) {
+        final start = math.max(run.start, line.start);
+        final end = math.min(run.end, line.end);
+        if (end <= start) continue;
         result.add((
-          text: text,
+          text: fullText.substring(start, end),
+          fill: run.fill,
+          fontWeight: run.fontWeight,
+          newLine: firstOnLine,
+          dy: firstOnLine ? line.dy : 0.0,
+        ));
+        firstOnLine = false;
+      }
+      if (firstOnLine) {
+        result.add((
+          text: '',
+          fill: '#000000',
+          fontWeight: 'normal',
+          newLine: true,
+          dy: line.dy,
+        ));
+      }
+    }
+    return result;
+  }
+
+  static List<({int start, int end, String fill, String fontWeight})>
+  _styledRunsFromTextSpan(TextSpan span) {
+    final result = <({int start, int end, String fill, String fontWeight})>[];
+    var offset = 0;
+    void walk(TextSpan node, TextStyle? inherited) {
+      final style = node.style == null
+          ? inherited
+          : (inherited?.merge(node.style) ?? node.style);
+      final text = node.text;
+      if (text != null && text.isNotEmpty) {
+        result.add((
+          start: offset,
+          end: offset + text.length,
           fill: ChartSvgWriter.color(style?.color ?? Colors.black),
           fontWeight: style?.fontWeight == FontWeight.bold ? 'bold' : 'normal',
         ));
+        offset += text.length;
       }
       if (node.children != null) {
         for (final child in node.children!) {
-          if (child is TextSpan) walk(child);
+          if (child is TextSpan) walk(child, style);
         }
       }
     }
 
-    walk(span);
+    walk(span, span.style);
     return result;
+  }
+
+  static List<({int start, int end, double dy})> _lineRanges(
+    TextPainter painter,
+    String text,
+  ) {
+    if (text.isEmpty) return const [];
+    final metrics = painter.computeLineMetrics();
+    if (metrics.isEmpty) {
+      return [(start: 0, end: text.length, dy: 0.0)];
+    }
+
+    final ranges = <({int start, int end, double dy})>[];
+    var offset = 0;
+    var lineIndex = 0;
+    while (offset < text.length && lineIndex < text.length + 4) {
+      final boundary = painter.getLineBoundary(
+        TextPosition(offset: offset, affinity: TextAffinity.downstream),
+      );
+      final start = math.max(offset, boundary.start).clamp(0, text.length);
+      var end = boundary.end.clamp(0, text.length);
+      if (end <= start) {
+        if (offset < text.length &&
+            (text.codeUnitAt(offset) == 0x0A ||
+                text.codeUnitAt(offset) == 0x0D)) {
+          end = start;
+        } else {
+          offset += 1;
+          continue;
+        }
+      }
+      var contentEnd = end;
+      while (contentEnd > start) {
+        final code = text.codeUnitAt(contentEnd - 1);
+        if (code == 0x0A || code == 0x0D) {
+          contentEnd--;
+        } else {
+          break;
+        }
+      }
+      final dy = lineIndex == 0
+          ? 0.0
+          : (lineIndex < metrics.length
+                ? metrics[lineIndex].baseline - metrics[lineIndex - 1].baseline
+                : painter.preferredLineHeight);
+      ranges.add((start: start, end: contentEnd, dy: dy));
+      lineIndex++;
+      var next = boundary.end;
+      if (next <= offset) next = offset + 1;
+      offset = next;
+    }
+    return ranges;
   }
 
   static void _drawSpanArrow(
@@ -594,6 +715,7 @@ class _PreparedAnnotation {
   final Rect commentRect;
   final Rect? arrowRect;
   final TextSpan textSpan;
+  final TextPainter textPainter;
   final double fontSize;
   final Color perAnnDashedColor;
   final Color perAnnArrowColor;
@@ -606,6 +728,7 @@ class _PreparedAnnotation {
     required this.commentRect,
     required this.arrowRect,
     required this.textSpan,
+    required this.textPainter,
     required this.fontSize,
     required this.perAnnDashedColor,
     required this.perAnnArrowColor,
@@ -618,6 +741,7 @@ class _PreparedAnnotation {
 class _SvgCommentBox {
   final Rect rect;
   final TextSpan textSpan;
+  final TextPainter textPainter;
   final double fontSize;
   final Color borderColor;
   final Color? backgroundColor;
@@ -625,6 +749,7 @@ class _SvgCommentBox {
   const _SvgCommentBox({
     required this.rect,
     required this.textSpan,
+    required this.textPainter,
     required this.fontSize,
     required this.borderColor,
     this.backgroundColor,

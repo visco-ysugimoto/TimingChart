@@ -1466,6 +1466,326 @@ class S {
       args: [],
     );
   }
+
+  /// `Add code comment`
+  String get ctx_add_code_comment {
+    return Intl.message(
+      'Add code comment',
+      name: 'ctx_add_code_comment',
+      desc: 'Context menu: add CODE_OPTION comment from control code',
+      args: [],
+    );
+  }
+
+  /// `Add CODE_OPTION comment`
+  String get code_comment_title {
+    return Intl.message(
+      'Add CODE_OPTION comment',
+      name: 'code_comment_title',
+      desc: 'Dialog title for CODE_OPTION comment composer',
+      args: [],
+    );
+  }
+
+  /// `Control code`
+  String get code_comment_control {
+    return Intl.message(
+      'Control code',
+      name: 'code_comment_control',
+      desc: 'Label for control code dropdown',
+      args: [],
+    );
+  }
+
+  /// `Group number`
+  String get code_comment_group {
+    return Intl.message(
+      'Group number',
+      name: 'code_comment_group',
+      desc: 'Label for optional group number',
+      args: [],
+    );
+  }
+
+  /// `Task number`
+  String get code_comment_task {
+    return Intl.message(
+      'Task number',
+      name: 'code_comment_task',
+      desc: 'Label for optional task number',
+      args: [],
+    );
+  }
+
+  /// `None`
+  String get code_comment_none {
+    return Intl.message(
+      'None',
+      name: 'code_comment_none',
+      desc: 'Dropdown item meaning group/task is unspecified',
+      args: [],
+    );
+  }
+
+  /// `Select`
+  String get code_comment_select {
+    return Intl.message(
+      'Select',
+      name: 'code_comment_select',
+      desc: 'Hint when a required group/task number is not chosen yet',
+      args: [],
+    );
+  }
+
+  /// `This control code requires a group number and a task number`
+  String get code_comment_group_task_required {
+    return Intl.message(
+      'This control code requires a group number and a task number',
+      name: 'code_comment_group_task_required',
+      desc: 'Hint when both group and task are required',
+      args: [],
+    );
+  }
+
+  /// `This control code requires a group number`
+  String get code_comment_group_required {
+    return Intl.message(
+      'This control code requires a group number',
+      name: 'code_comment_group_required',
+      desc: 'Hint when only group number is required',
+      args: [],
+    );
+  }
+
+  /// `This control code requires a task number`
+  String get code_comment_task_required {
+    return Intl.message(
+      'This control code requires a task number',
+      name: 'code_comment_task_required',
+      desc: 'Hint when only task number is required',
+      args: [],
+    );
+  }
+
+  /// `Preview`
+  String get code_comment_preview {
+    return Intl.message(
+      'Preview',
+      name: 'code_comment_preview',
+      desc: 'Label for generated comment preview',
+      args: [],
+    );
+  }
+
+  /// `Comment text`
+  String get code_comment_body {
+    return Intl.message(
+      'Comment text',
+      name: 'code_comment_body',
+      desc: 'Label for editable comment body',
+      args: [],
+    );
+  }
+
+  /// `Execute task`
+  String get code_cmd_execute_task {
+    return Intl.message(
+      'Execute task',
+      name: 'code_cmd_execute_task',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Execute system command`
+  String get code_cmd_execute_system {
+    return Intl.message(
+      'Execute system command',
+      name: 'code_cmd_execute_system',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Switch active task`
+  String get code_cmd_switch_active_task {
+    return Intl.message(
+      'Switch active task',
+      name: 'code_cmd_switch_active_task',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Load task`
+  String get code_cmd_load_task {
+    return Intl.message(
+      'Load task',
+      name: 'code_cmd_load_task',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Unload task`
+  String get code_cmd_unload_task {
+    return Intl.message(
+      'Unload task',
+      name: 'code_cmd_unload_task',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Execute active task`
+  String get code_cmd_execute_active_task {
+    return Intl.message(
+      'Execute active task',
+      name: 'code_cmd_execute_active_task',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Clear judgment counter`
+  String get code_cmd_clear_judgment_counter {
+    return Intl.message(
+      'Clear judgment counter',
+      name: 'code_cmd_clear_judgment_counter',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Unload all tasks`
+  String get code_cmd_unload_all_tasks {
+    return Intl.message(
+      'Unload all tasks',
+      name: 'code_cmd_unload_all_tasks',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Start lot`
+  String get code_cmd_start_lot {
+    return Intl.message(
+      'Start lot',
+      name: 'code_cmd_start_lot',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `End lot`
+  String get code_cmd_end_lot {
+    return Intl.message(
+      'End lot',
+      name: 'code_cmd_end_lot',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Start image save`
+  String get code_cmd_start_image_save {
+    return Intl.message(
+      'Start image save',
+      name: 'code_cmd_start_image_save',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `End image save`
+  String get code_cmd_end_image_save {
+    return Intl.message(
+      'End image save',
+      name: 'code_cmd_end_image_save',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Save image file`
+  String get code_cmd_save_image_file {
+    return Intl.message(
+      'Save image file',
+      name: 'code_cmd_save_image_file',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Edit lot settings`
+  String get code_cmd_edit_lot_settings {
+    return Intl.message(
+      'Edit lot settings',
+      name: 'code_cmd_edit_lot_settings',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `System shutdown`
+  String get code_cmd_system_shutdown {
+    return Intl.message(
+      'System shutdown',
+      name: 'code_cmd_system_shutdown',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Save screen file`
+  String get code_cmd_save_screen_file {
+    return Intl.message(
+      'Save screen file',
+      name: 'code_cmd_save_screen_file',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Start screen save`
+  String get code_cmd_start_screen_save {
+    return Intl.message(
+      'Start screen save',
+      name: 'code_cmd_start_screen_save',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `End screen save`
+  String get code_cmd_end_screen_save {
+    return Intl.message(
+      'End screen save',
+      name: 'code_cmd_end_screen_save',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `Start distributed operation`
+  String get code_cmd_start_distributed {
+    return Intl.message(
+      'Start distributed operation',
+      name: 'code_cmd_start_distributed',
+      desc: '',
+      args: [],
+    );
+  }
+
+  /// `End distributed operation`
+  String get code_cmd_end_distributed {
+    return Intl.message(
+      'End distributed operation',
+      name: 'code_cmd_end_distributed',
+      desc: '',
+      args: [],
+    );
+  }
 }
 
 class AppLocalizationDelegate extends LocalizationsDelegate<S> {

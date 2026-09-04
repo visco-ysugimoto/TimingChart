@@ -170,15 +170,14 @@ class _StepTimingChartPainter extends CustomPainter {
 
     final rowCount = signals.length;
 
-    final double maskHeight =
-        rowCount * cellHeight + commentAreaHeight + topCommentAreaHeight;
+    final double maskHeight = rowCount * cellHeight;
     final Paint labelMaskPaint =
         Paint()
           ..color = omissionFillColor
           ..style = PaintingStyle.fill;
     final double maskWidth = (labelWidth - 1).clamp(0.0, double.infinity);
     canvas.drawRect(
-      Rect.fromLTWH(0, -topCommentAreaHeight, maskWidth, maskHeight),
+      Rect.fromLTWH(0, 0, maskWidth, maskHeight),
       labelMaskPaint,
     );
 
@@ -255,14 +254,19 @@ class _StepTimingChartPainter extends CustomPainter {
     _gridManager.drawTimeLabels(canvas, size, rowCount, maxTimeSteps);
 
     canvas.save();
-    canvas.clipRect(
-      Rect.fromLTWH(
-        labelWidth + 1,
-        -topCommentAreaHeight,
-        drawAreaWidth - (labelWidth + 1),
-        rowCount * cellHeight + commentAreaHeight + topCommentAreaHeight,
-      ),
-    );
+    final double chartBottomY = rowCount * cellHeight;
+    final Path annotationClip = Path()
+      ..fillType = PathFillType.evenOdd
+      ..addRect(
+        Rect.fromLTWH(
+          0,
+          -topCommentAreaHeight,
+          drawAreaWidth,
+          topCommentAreaHeight + chartBottomY + commentAreaHeight,
+        ),
+      )
+      ..addRect(Rect.fromLTWH(0, 0, labelWidth + 1, chartBottomY));
+    canvas.clipPath(annotationClip);
     _annotationsManager.drawAnnotations(canvas, size, rowCount);
     canvas.restore();
 
@@ -435,7 +439,12 @@ class _LabelsOverlayPainter extends CustomPainter {
       0.0,
       double.infinity,
     );
-    canvas.drawRect(Rect.fromLTWH(0, 0, overlayWidth, size.height), bgPaint);
+    final int rows = signalNames.length;
+    final double rowsHeight = rows * cellHeight;
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, overlayWidth, rowsHeight),
+      bgPaint,
+    );
 
     final gridPaint =
         Paint()
@@ -443,7 +452,6 @@ class _LabelsOverlayPainter extends CustomPainter {
           ..strokeWidth = 1.0
           ..style = PaintingStyle.stroke;
     final double overlayWidthForLines = chartMarginLeft + labelWidth - 1;
-    final int rows = signalNames.length;
     for (int i = 0; i <= rows; i++) {
       final double y = i * cellHeight;
       canvas.drawLine(Offset(0, y), Offset(overlayWidthForLines, y), gridPaint);
@@ -456,7 +464,7 @@ class _LabelsOverlayPainter extends CustomPainter {
     final double borderX = chartMarginLeft + labelWidth;
     canvas.drawLine(
       Offset(borderX, 0),
-      Offset(borderX, size.height),
+      Offset(borderX, rowsHeight),
       borderPaint,
     );
 

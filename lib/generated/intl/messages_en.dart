@@ -36,6 +36,79 @@ class MessageLookup extends MessageLookupByLibrary {
     "chart_edit_unlock_tooltip": MessageLookupByLibrary.simpleMessage(
       "Unlock chart editing",
     ),
+    "code_cmd_clear_judgment_counter": MessageLookupByLibrary.simpleMessage(
+      "Clear judgment counter",
+    ),
+    "code_cmd_edit_lot_settings": MessageLookupByLibrary.simpleMessage(
+      "Edit lot settings",
+    ),
+    "code_cmd_end_distributed": MessageLookupByLibrary.simpleMessage(
+      "End distributed operation",
+    ),
+    "code_cmd_end_image_save": MessageLookupByLibrary.simpleMessage(
+      "End image save",
+    ),
+    "code_cmd_end_lot": MessageLookupByLibrary.simpleMessage("End lot"),
+    "code_cmd_end_screen_save": MessageLookupByLibrary.simpleMessage(
+      "End screen save",
+    ),
+    "code_cmd_execute_active_task": MessageLookupByLibrary.simpleMessage(
+      "Execute active task",
+    ),
+    "code_cmd_execute_system": MessageLookupByLibrary.simpleMessage(
+      "Execute system command",
+    ),
+    "code_cmd_execute_task": MessageLookupByLibrary.simpleMessage(
+      "Execute task",
+    ),
+    "code_cmd_load_task": MessageLookupByLibrary.simpleMessage("Load task"),
+    "code_cmd_save_image_file": MessageLookupByLibrary.simpleMessage(
+      "Save image file",
+    ),
+    "code_cmd_save_screen_file": MessageLookupByLibrary.simpleMessage(
+      "Save screen file",
+    ),
+    "code_cmd_start_distributed": MessageLookupByLibrary.simpleMessage(
+      "Start distributed operation",
+    ),
+    "code_cmd_start_image_save": MessageLookupByLibrary.simpleMessage(
+      "Start image save",
+    ),
+    "code_cmd_start_lot": MessageLookupByLibrary.simpleMessage("Start lot"),
+    "code_cmd_start_screen_save": MessageLookupByLibrary.simpleMessage(
+      "Start screen save",
+    ),
+    "code_cmd_switch_active_task": MessageLookupByLibrary.simpleMessage(
+      "Switch active task",
+    ),
+    "code_cmd_system_shutdown": MessageLookupByLibrary.simpleMessage(
+      "System shutdown",
+    ),
+    "code_cmd_unload_all_tasks": MessageLookupByLibrary.simpleMessage(
+      "Unload all tasks",
+    ),
+    "code_cmd_unload_task": MessageLookupByLibrary.simpleMessage("Unload task"),
+    "code_comment_body": MessageLookupByLibrary.simpleMessage("Comment text"),
+    "code_comment_control": MessageLookupByLibrary.simpleMessage(
+      "Control code",
+    ),
+    "code_comment_group": MessageLookupByLibrary.simpleMessage("Group number"),
+    "code_comment_group_required": MessageLookupByLibrary.simpleMessage(
+      "This control code requires a group number",
+    ),
+    "code_comment_group_task_required": MessageLookupByLibrary.simpleMessage(
+      "This control code requires a group number and a task number",
+    ),
+    "code_comment_none": MessageLookupByLibrary.simpleMessage("None"),
+    "code_comment_preview": MessageLookupByLibrary.simpleMessage("Preview"),
+    "code_comment_select": MessageLookupByLibrary.simpleMessage("Select"),
+    "code_comment_task": MessageLookupByLibrary.simpleMessage("Task number"),
+    "code_comment_task_required": MessageLookupByLibrary.simpleMessage(
+      "This control code requires a task number",
+    ),
+    "code_comment_title": MessageLookupByLibrary.simpleMessage(
+      "Add CODE_OPTION comment",
+    ),
     "color_picker_selected": MessageLookupByLibrary.simpleMessage("Selected:"),
     "color_picker_title": MessageLookupByLibrary.simpleMessage("Select Color"),
     "color_picker_transparent": MessageLookupByLibrary.simpleMessage(
@@ -136,6 +209,9 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "createTemplateButton": MessageLookupByLibrary.simpleMessage(
       "Create Template",
+    ),
+    "ctx_add_code_comment": MessageLookupByLibrary.simpleMessage(
+      "Add code comment",
     ),
     "ctx_add_comment": MessageLookupByLibrary.simpleMessage("Add comment"),
     "ctx_arrow_horizontal_off_to_on": MessageLookupByLibrary.simpleMessage(

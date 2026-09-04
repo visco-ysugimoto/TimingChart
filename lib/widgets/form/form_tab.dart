@@ -766,6 +766,9 @@ class FormTabState extends State<FormTab>
 
   // 行モードを切り替える
   void _changeRowMode(int row) {
+    if (!canUseSimultaneousCapture(formState.camera)) {
+      return;
+    }
     setState(() {
       final current = _rowModes[row];
       _rowModes[row] = current == RowMode.none
@@ -1502,9 +1505,9 @@ class FormTabState extends State<FormTab>
       for (int c = 1; c <= formState.camera; c++) c: [],
     };
 
-    final bool hasSimultaneous = _rowModes.any(
-      (mode) => mode == RowMode.simultaneous,
-    );
+    final bool hasSimultaneous =
+        canUseSimultaneousCapture(formState.camera) &&
+        _rowModes.any((mode) => mode == RowMode.simultaneous);
 
     if (hasSimultaneous) {
       // --- 信号データの更新 ---
@@ -1996,6 +1999,10 @@ class FormTabState extends State<FormTab>
         _rowModes = _rowModes.sublist(0, _rowCount);
       }
 
+      if (!canUseSimultaneousCapture(config.formState.camera)) {
+        _rowModes = List.generate(_rowCount, (_) => RowMode.none);
+      }
+
       if (config.inputVisibility.length == _inputVisibility.length) {
         _inputVisibility = List.from(config.inputVisibility);
       }
@@ -2326,7 +2333,12 @@ class FormTabState extends State<FormTab>
     }
   }
 
-  List<String> getRowModes() => _rowModes.map((e) => e.name).toList();
+  List<String> getRowModes() {
+    if (!canUseSimultaneousCapture(formState.camera)) {
+      return List.filled(_rowModes.length, RowMode.none.name);
+    }
+    return _rowModes.map((e) => e.name).toList();
+  }
 
   // CODE_OPTION / Command Option の波形を生成する
   List<int> _generateCodeOptionWave(List<int> autoWave, int waveLength) {

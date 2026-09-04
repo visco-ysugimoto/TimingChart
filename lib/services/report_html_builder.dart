@@ -592,12 +592,17 @@ class ReportHtmlBuilder {
     if (cols == 0) {
       return '<p>${escape(l.noCamera)}</p>';
     }
+    final showSimultaneous =
+        canUseSimultaneousCapture(data.formState.camera) &&
+        canUseSimultaneousCapture(cols);
     final buf = StringBuffer()..writeln('<table>')..writeln('<thead><tr>');
     buf.write('<th>${escape(l.colRow)}</th>');
     for (var c = 0; c < cols; c++) {
       buf.write('<th>${escape('${l.cameraColumnPrefix} ${c + 1}')}</th>');
     }
-    buf.write('<th>${escape(l.simultaneous)}</th>');
+    if (showSimultaneous) {
+      buf.write('<th>${escape(l.simultaneous)}</th>');
+    }
     buf.writeln('</tr></thead><tbody>');
     for (var r = 0; r < data.tableData.length; r++) {
       final row = data.tableData[r];
@@ -606,10 +611,14 @@ class ReportHtmlBuilder {
         final mode = c < row.length ? row[c] : CellMode.none;
         buf.write('<td>${escape(l.cellModeLabel(mode))}</td>');
       }
-      final simultaneous =
-          r < data.rowModes.length &&
-          data.rowModes[r] == RowMode.simultaneous.name;
-      buf.write('<td>${escape(simultaneous ? l.visibleYes : l.visibleNo)}</td>');
+      if (showSimultaneous) {
+        final simultaneous =
+            r < data.rowModes.length &&
+            data.rowModes[r] == RowMode.simultaneous.name;
+        buf.write(
+          '<td>${escape(simultaneous ? l.visibleYes : l.visibleNo)}</td>',
+        );
+      }
       buf.writeln('</tr>');
     }
     buf.writeln('</tbody></table>');
