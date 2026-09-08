@@ -176,6 +176,7 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "common_cancel": MessageLookupByLibrary.simpleMessage("Cancel"),
     "common_change": MessageLookupByLibrary.simpleMessage("Change"),
+    "common_clear": MessageLookupByLibrary.simpleMessage("Clear"),
     "common_default": MessageLookupByLibrary.simpleMessage("Default"),
     "common_ok": MessageLookupByLibrary.simpleMessage("OK"),
     "concat_continue": MessageLookupByLibrary.simpleMessage("Append"),
@@ -257,11 +258,32 @@ class MessageLookup extends MessageLookupByLibrary {
     "default_camera_count": MessageLookupByLibrary.simpleMessage(
       "Default camera count",
     ),
-    "default_chart_length": MessageLookupByLibrary.simpleMessage(
-      "Default chart length",
-    ),
     "default_export_folder": MessageLookupByLibrary.simpleMessage(
-      "Default export folder",
+      "Export subfolder name",
+    ),
+    "default_hw_trigger_enabled": MessageLookupByLibrary.simpleMessage(
+      "Enable HW trigger by default",
+    ),
+    "default_hw_trigger_enabled_help": MessageLookupByLibrary.simpleMessage(
+      "When on, a new form uses HW Port = camera count.",
+    ),
+    "default_input_port": MessageLookupByLibrary.simpleMessage(
+      "Default input ports",
+    ),
+    "default_output_port": MessageLookupByLibrary.simpleMessage(
+      "Default output ports",
+    ),
+    "default_plc_eip_option": MessageLookupByLibrary.simpleMessage(
+      "Default PLC/EIP",
+    ),
+    "default_time_unit_ms": MessageLookupByLibrary.simpleMessage(
+      "Default time unit: milliseconds",
+    ),
+    "default_time_unit_ms_help": MessageLookupByLibrary.simpleMessage(
+      "Used for new charts and Clear. The chart toolbar still changes the current chart.",
+    ),
+    "default_trigger_option": MessageLookupByLibrary.simpleMessage(
+      "Default trigger option",
     ),
     "drawer_concat_chart": MessageLookupByLibrary.simpleMessage(
       "Append chart to the end...",
@@ -310,6 +332,7 @@ class MessageLookup extends MessageLookupByLibrary {
     "file_name_prefix": MessageLookupByLibrary.simpleMessage(
       "File name prefix",
     ),
+    "file_name_prefix_none": MessageLookupByLibrary.simpleMessage("None"),
     "formTabTitle": MessageLookupByLibrary.simpleMessage("Input Form"),
     "hint_export_folder": MessageLookupByLibrary.simpleMessage("Export Chart"),
     "hint_filename_prefix": MessageLookupByLibrary.simpleMessage("prefix_"),
@@ -388,6 +411,12 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "settings_export_base_directory_not_set":
         MessageLookupByLibrary.simpleMessage("Not set (show save dialog)"),
+    "settings_export_subfolder_help": MessageLookupByLibrary.simpleMessage(
+      "Quick save writes files into this subfolder under the base folder.",
+    ),
+    "settings_form_defaults_section": MessageLookupByLibrary.simpleMessage(
+      "Form defaults (new / clear)",
+    ),
     "settings_html_export_sections": MessageLookupByLibrary.simpleMessage(
       "Default HTML report sections",
     ),
@@ -407,8 +436,25 @@ class MessageLookup extends MessageLookupByLibrary {
     "settings_quick_export": MessageLookupByLibrary.simpleMessage(
       "Quick save (skip dialog)",
     ),
+    "settings_reset_all": MessageLookupByLibrary.simpleMessage(
+      "Reset settings",
+    ),
+    "settings_reset_all_confirm_message": MessageLookupByLibrary.simpleMessage(
+      "All preferences except language will be restored to defaults. This cannot be undone.",
+    ),
+    "settings_reset_all_confirm_title": MessageLookupByLibrary.simpleMessage(
+      "Reset settings?",
+    ),
+    "settings_reset_all_done": MessageLookupByLibrary.simpleMessage(
+      "Settings were reset to defaults",
+    ),
+    "settings_reset_all_help": MessageLookupByLibrary.simpleMessage(
+      "Restores all settings except language to defaults. Form defaults apply after Clear or restart.",
+    ),
     "settings_title": MessageLookupByLibrary.simpleMessage("Preferences"),
-    "show_grid_lines": MessageLookupByLibrary.simpleMessage("Show grid lines"),
+    "show_bottom_unit_labels": MessageLookupByLibrary.simpleMessage(
+      "Show bottom time labels",
+    ),
     "show_io_numbers": MessageLookupByLibrary.simpleMessage("Show IO numbers"),
     "signal_label_properties_color": MessageLookupByLibrary.simpleMessage(
       "Color",
@@ -430,8 +476,41 @@ class MessageLookup extends MessageLookupByLibrary {
     "signal_label_properties_title": MessageLookupByLibrary.simpleMessage(
       "Signal label properties",
     ),
+    "toolbar_edit_grid_done_tooltip": MessageLookupByLibrary.simpleMessage(
+      "Finish grid editing",
+    ),
+    "toolbar_edit_grid_tooltip": MessageLookupByLibrary.simpleMessage(
+      "Edit grid (drag or tap boundaries to adjust)",
+    ),
+    "toolbar_labels_tooltip": MessageLookupByLibrary.simpleMessage(
+      "Show time labels at the bottom of the chart",
+    ),
+    "toolbar_redo": MessageLookupByLibrary.simpleMessage("Redo"),
+    "toolbar_selection_tooltip": MessageLookupByLibrary.simpleMessage(
+      "Selection length",
+    ),
+    "toolbar_undo": MessageLookupByLibrary.simpleMessage("Undo"),
+    "toolbar_unit_tooltip": MessageLookupByLibrary.simpleMessage(
+      "Time unit (steps / milliseconds)",
+    ),
+    "toolbar_zoom_fit": MessageLookupByLibrary.simpleMessage("Fit to view"),
+    "toolbar_zoom_fit_selection": MessageLookupByLibrary.simpleMessage(
+      "Fit selection",
+    ),
+    "toolbar_zoom_in": MessageLookupByLibrary.simpleMessage("Zoom in"),
+    "toolbar_zoom_out": MessageLookupByLibrary.simpleMessage("Zoom out"),
+    "toolbar_zoom_percent": MessageLookupByLibrary.simpleMessage(
+      "Current zoom",
+    ),
     "triggerOptionLabel": MessageLookupByLibrary.simpleMessage(
       "Trigger Option",
+    ),
+    "unsaved_changes_message": MessageLookupByLibrary.simpleMessage(
+      "If you quit now, unsaved chart changes will be lost. Quit anyway?",
+    ),
+    "unsaved_changes_quit": MessageLookupByLibrary.simpleMessage("Quit"),
+    "unsaved_changes_title": MessageLookupByLibrary.simpleMessage(
+      "Unsaved changes",
     ),
     "updateChartButton": MessageLookupByLibrary.simpleMessage("Update Chart"),
   };

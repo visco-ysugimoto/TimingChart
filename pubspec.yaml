@@ -57,6 +57,8 @@ dependencies:
   archive: ^3.6.1
   # マークダウン表示用（flutter_markdown の後継）
   flutter_markdown_plus: ^1.0.7
+  # デスクトップの終了確認用
+  window_manager: ^0.4.3
 
 dev_dependencies:
   flutter_test:

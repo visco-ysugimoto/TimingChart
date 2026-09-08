@@ -77,7 +77,7 @@ Another chart is joined after the current waveforms.
 | Item | Description |
 | --- | --- |
 | **English / Japanese** | Switch UI language and suggestion lists |
-| **Preferences** | Display, colors, grid, and export paths |
+| **Preferences** | Display, colors, and export paths |
 | **Help** | Opens this dialog |
 | **About** | Version and changelog |
 
@@ -93,13 +93,15 @@ Categories are listed on the left of the Preferences window.
 | --- | --- |
 | **Show IO numbers** | Prefix port numbers on chart labels. Per-row overrides are available from the label properties on the chart |
 | **Default camera count** | Camera count for new sessions (1–8) |
+| **Form defaults** | Trigger type, I/O port counts, HW trigger, and PLC/EIP. Used at startup and Clear |
+| **Reset settings** | Restore all preferences except language. Form defaults apply after Clear or restart |
 
 ### Chart
 
 | Item | Description |
 | --- | --- |
-| **Show grid lines** | Grid in the waveform area |
-| **Default chart length** | Waveform length (steps) used by Template |
+| **Default time unit: milliseconds** | Unit for new charts and Clear. The chart step / ms toggle still changes only the current chart |
+| **Show bottom time labels** | Time scale under the chart. Same setting as the labels icon on the chart toolbar |
 | **Signal colors** | Input / output / HW trigger / auxiliary line colors |
 | **Comment colors** | Default dashed line, arrow, and omission colors. Individual comments can override these on the chart |
 
@@ -107,12 +109,14 @@ Categories are listed on the left of the Preferences window.
 
 | Item | Description |
 | --- | --- |
-| **Export base folder (full path)** | Folder used for quick save. If unset, a dialog is shown every time |
-| **Quick save (skip dialog)** | Save immediately into the base folder |
-| **Default export folder** | Subfolder name under the base folder |
-| **File name prefix** | Prefix added to exported file names |
+| **Export base folder (full path)** | Folder used for quick save. If unset, a dialog is shown every time. Can be cleared |
+| **Export subfolder name** | Folder created directly under the base folder (default: Export Chart) |
+| **File name prefix** | Prefix added to exported file names. Leave empty for none |
+| **Quick save (skip dialog)** | Save immediately into the subfolder under the base folder |
 
 ### Appearance / Language
 
 - **Dark mode** and **Accent color** change the look of the app.
 - Language can also be switched from the left menu. Input suggestions follow the selected language.
+
+If you close the window with unsaved chart changes, a confirmation dialog appears. JSON export, Clear, and JSON / .ziq import mark the chart as saved. Exporting JPEG / XLSX / HTML alone does not.

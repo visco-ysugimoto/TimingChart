@@ -26,6 +26,8 @@ import '../../providers/form_state_notifier.dart';
 import '../../services/chart_svg_export_data.dart';
 import '../form/form_tab_constants.dart';
 import 'code_option_comment_dialog.dart';
+import '../common/app_controls.dart';
+import '../common/color_picker_dialog.dart';
 
 part 'timing_chart_types.dart';
 part 'timing_chart_auto_comments.dart';
@@ -1194,135 +1196,15 @@ class TimingChartState extends State<TimingChart>
     bool allowTransparent = false,
     bool includeWhite = false,
     List<Color> extraPresets = const [],
-  }) async {
-    Color selected = initial;
-    final List<Color> presets = [
-      Colors.black,
-      if (includeWhite) Colors.white,
-      const Color(0xFF616161), // grey 700
-      Colors.red,
-      Colors.orange,
-      Colors.green,
-      Colors.blue,
-      Colors.purple,
-      Colors.brown,
-      ...extraPresets,
-    ];
-
-    Widget buildColorPreview(Color color, {double size = 18}) {
-      if (color.a == 0) {
-        return Container(
-          width: size,
-          height: size,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: Colors.grey.shade200,
-            border: Border.all(color: Colors.black26),
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Text(
-            '∅',
-            style: TextStyle(fontSize: size * 0.55, color: Colors.black54),
-          ),
-        );
-      }
-      return Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          color: color,
-          border: Border.all(color: Colors.black26),
-          borderRadius: BorderRadius.circular(4),
-        ),
-      );
-    }
-
-    Widget contentBuilder(BuildContext ctx, StateSetter setLocalState) {
-      final s = S.of(context);
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              if (allowTransparent)
-                InkWell(
-                  onTap: () =>
-                      setLocalState(() => selected = Colors.transparent),
-                  child: Container(
-                    width: 28,
-                    height: 28,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade200,
-                      border: Border.all(
-                        color: selected.a == 0 ? Colors.black : Colors.black26,
-                        width: selected.a == 0 ? 2 : 1,
-                      ),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: const Text(
-                      '∅',
-                      style: TextStyle(fontSize: 14, color: Colors.black54),
-                    ),
-                  ),
-                ),
-              ...presets.map((c) {
-                final bool isSelected = c.toARGB32() == selected.toARGB32();
-                return InkWell(
-                  onTap: () => setLocalState(() => selected = c),
-                  child: Container(
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      color: c,
-                      border: Border.all(
-                        color: isSelected ? Colors.black : Colors.black26,
-                        width: isSelected ? 2 : 1,
-                      ),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                  ),
-                );
-              }),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Text('${s.color_picker_selected} '),
-              buildColorPreview(selected),
-              const SizedBox(width: 8),
-              Text(
-                selected.a == 0
-                    ? s.color_picker_transparent
-                    : '#${selected.toARGB32().toRadixString(16).padLeft(8, '0').toUpperCase()}',
-              ),
-            ],
-          ),
-        ],
-      );
-    }
-
-    Widget dialogBuilder(BuildContext ctx) {
-      return AlertDialog(
-        title: Text(title),
-        content: StatefulBuilder(builder: contentBuilder),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, null),
-            child: Text(S.of(context).common_cancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, selected),
-            child: Text(S.of(context).common_ok),
-          ),
-        ],
-      );
-    }
-
-    return showDialog<Color>(context: context, builder: dialogBuilder);
+  }) {
+    return ColorPickerDialog.show(
+      context,
+      title: title,
+      initial: initial,
+      allowTransparent: allowTransparent,
+      includeWhite: includeWhite,
+      extraPresets: extraPresets,
+    );
   }
 
   /// 補助信号のラベル名と色を編集します
@@ -1335,8 +1217,10 @@ class TimingChartState extends State<TimingChart>
         ? widget.signalColorArgb[originalRow]
         : null;
     final Color defaultColor =
-        Provider.of<SettingsNotifier>(context, listen: false)
-            .signalColors[SignalType.auxiliary] ??
+        Provider.of<SettingsNotifier>(
+          context,
+          listen: false,
+        ).signalColors[SignalType.auxiliary] ??
         Colors.orange;
 
     final nameController = TextEditingController(text: currentName);
@@ -1558,10 +1442,12 @@ class TimingChartState extends State<TimingChart>
       borderColorValue: Colors.grey.shade600.toARGB32(),
       backgroundColorValue: const Color(0xFFFDFDFD).toARGB32(),
       textColorValue: Colors.black.toARGB32(),
-      dashedLineColorValue:
-          _themeAwareChartColor(settings.commentDashedColor).toARGB32(),
-      arrowColorValue:
-          _themeAwareChartColor(settings.commentArrowColor).toARGB32(),
+      dashedLineColorValue: _themeAwareChartColor(
+        settings.commentDashedColor,
+      ).toARGB32(),
+      arrowColorValue: _themeAwareChartColor(
+        settings.commentArrowColor,
+      ).toARGB32(),
       showBorder: true,
       showDashedLine: true,
       showArrow: true,
@@ -1582,8 +1468,7 @@ class TimingChartState extends State<TimingChart>
         ? ann.fontSize!
         : defaults.fontSize;
     bool isBold = ann.isBold == true;
-    int borderColorValue =
-        ann.borderColorValue ?? defaults.borderColorValue;
+    int borderColorValue = ann.borderColorValue ?? defaults.borderColorValue;
     int backgroundColorValue =
         ann.backgroundColorValue ?? defaults.backgroundColorValue;
     int textColorValue = ann.textColorValue ?? defaults.textColorValue;
@@ -1701,16 +1586,15 @@ class TimingChartState extends State<TimingChart>
             children: [
               SizedBox(
                 width: 60,
-                child:
-                    visible == null || onVisibleChanged == null
-                        ? null
-                        : Tooltip(
-                          message: visibilityTooltip ?? '',
-                          child: Switch(
-                            value: visible,
-                            onChanged: onVisibleChanged,
-                          ),
+                child: visible == null || onVisibleChanged == null
+                    ? null
+                    : Tooltip(
+                        message: visibilityTooltip ?? '',
+                        child: Switch(
+                          value: visible,
+                          onChanged: onVisibleChanged,
                         ),
+                      ),
               ),
               SizedBox(width: 92, child: Text(label)),
               Opacity(
@@ -1849,8 +1733,7 @@ class TimingChartState extends State<TimingChart>
                   color: Color(borderColorValue),
                   onPickColor: pickBorderColor,
                   visible: showBorder,
-                  onVisibleChanged: (v) =>
-                      setLocalState(() => showBorder = v),
+                  onVisibleChanged: (v) => setLocalState(() => showBorder = v),
                   visibilityTooltip: s.comment_properties_show_border,
                 ),
                 const SizedBox(height: 8),
@@ -1875,8 +1758,7 @@ class TimingChartState extends State<TimingChart>
                   color: Color(arrowColorValue),
                   onPickColor: pickArrowColor,
                   visible: showArrow,
-                  onVisibleChanged: (v) =>
-                      setLocalState(() => showArrow = v),
+                  onVisibleChanged: (v) => setLocalState(() => showArrow = v),
                   visibilityTooltip: s.comment_properties_show_arrow,
                 ),
                 Align(
@@ -1987,11 +1869,11 @@ class TimingChartState extends State<TimingChart>
                                     controller.selection;
                                 final Color? picked =
                                     await _showBorderColorPickerDialog(
-                                  ctx,
-                                  title: s.comment_selection_color,
-                                  initial: controller.baseColor,
-                                  includeWhite: true,
-                                );
+                                      ctx,
+                                      title: s.comment_selection_color,
+                                      initial: controller.baseColor,
+                                      includeWhite: true,
+                                    );
                                 if (!ctx.mounted) return;
                                 controller.selection = selection;
                                 if (picked != null) {
@@ -2027,7 +1909,9 @@ class TimingChartState extends State<TimingChart>
                 ctx,
                 _CommentTextEditResult(
                   text: controller.text,
-                  colorSpans: List<CommentColorSpan>.from(controller.colorSpans),
+                  colorSpans: List<CommentColorSpan>.from(
+                    controller.colorSpans,
+                  ),
                 ),
               );
             },
@@ -2901,44 +2785,11 @@ class TimingChartState extends State<TimingChart>
   }
 
   Widget _buildZoomControls() {
-    final int zoomPercent = (_effectiveZoomFactor * 100).round();
-    final bool canZoomIn = _effectiveZoomFactor < _maxZoomFactorForView - 0.001;
-    final bool canZoomOut =
-        _effectiveZoomFactor > _minZoomFactorForView + 0.001;
-    final bool canReset =
-        (_effectiveZoomFactor - _minZoomFactorForView).abs() > 0.001;
-    final bool canFitSelection = _hasValidSelection;
-
     if (_controller == null) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          OutlinedButton.icon(
-            icon: const Icon(Icons.zoom_out, size: 16),
-            label: const Text('Zoom out'),
-            onPressed: canZoomOut ? _zoomOutWithAnchorAtCenter : null,
-          ),
-          const SizedBox(width: 6),
-          Text('$zoomPercent%'),
-          const SizedBox(width: 6),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.zoom_in, size: 16),
-            label: const Text('Zoom in'),
-            onPressed: canZoomIn ? _zoomInWithAnchorAtCenter : null,
-          ),
-          const SizedBox(width: 6),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.fit_screen, size: 16),
-            label: const Text('Fit'),
-            onPressed: canReset ? _resetZoom : null,
-          ),
-          const SizedBox(width: 6),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.fit_screen_outlined, size: 16),
-            label: const Text('Fit sel'),
-            onPressed: canFitSelection ? _zoomToSelectionFit : null,
-          ),
-        ],
+      return _buildZoomControlRow(
+        canUndo: false,
+        canRedo: false,
+        showUndoRedo: false,
       );
     }
 
@@ -2957,6 +2808,19 @@ class TimingChartState extends State<TimingChart>
   }
 
   Widget _buildZoomControlsListenable(BuildContext context, Widget? _) {
+    return _buildZoomControlRow(
+      canUndo: _controller?.canUndo ?? false,
+      canRedo: _controller?.canRedo ?? false,
+      showUndoRedo: true,
+    );
+  }
+
+  Widget _buildZoomControlRow({
+    required bool canUndo,
+    required bool canRedo,
+    required bool showUndoRedo,
+  }) {
+    final s = S.of(context);
     final int zoomPercent = (_effectiveZoomFactor * 100).round();
     final bool canZoomIn = _effectiveZoomFactor < _maxZoomFactorForView - 0.001;
     final bool canZoomOut =
@@ -2964,47 +2828,55 @@ class TimingChartState extends State<TimingChart>
     final bool canReset =
         (_effectiveZoomFactor - _minZoomFactorForView).abs() > 0.001;
     final bool canFitSelection = _hasValidSelection;
-    final bool canUndo = _controller?.canUndo ?? false;
-    final bool canRedo = _controller?.canRedo ?? false;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        OutlinedButton.icon(
-          icon: const Icon(Icons.undo, size: 16),
-          label: const Text('Undo'),
-          onPressed: canUndo ? _onUndoPressed : null,
-        ),
-        const SizedBox(width: 6),
-        OutlinedButton.icon(
-          icon: const Icon(Icons.redo, size: 16),
-          label: const Text('Redo'),
-          onPressed: canRedo ? _onRedoPressed : null,
-        ),
-        const SizedBox(width: 12),
-        OutlinedButton.icon(
-          icon: const Icon(Icons.zoom_out, size: 16),
-          label: const Text('Zoom out'),
+        if (showUndoRedo) ...[
+          AppControls.toolbarIcon(
+            context: context,
+            icon: Icons.undo,
+            tooltip: s.toolbar_undo,
+            onPressed: canUndo ? _onUndoPressed : null,
+          ),
+          AppControls.toolbarIcon(
+            context: context,
+            icon: Icons.redo,
+            tooltip: s.toolbar_redo,
+            onPressed: canRedo ? _onRedoPressed : null,
+          ),
+          AppControls.toolbarDivider(),
+        ],
+        AppControls.toolbarIcon(
+          context: context,
+          icon: Icons.zoom_out,
+          tooltip: s.toolbar_zoom_out,
           onPressed: canZoomOut ? _zoomOutWithAnchorAtCenter : null,
         ),
-        const SizedBox(width: 6),
-        Text('$zoomPercent%'),
-        const SizedBox(width: 6),
-        OutlinedButton.icon(
-          icon: const Icon(Icons.zoom_in, size: 16),
-          label: const Text('Zoom in'),
+        Tooltip(
+          message: s.toolbar_zoom_percent,
+          waitDuration: AppControls.tooltipDelay,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Text('$zoomPercent%', style: const TextStyle(fontSize: 13)),
+          ),
+        ),
+        AppControls.toolbarIcon(
+          context: context,
+          icon: Icons.zoom_in,
+          tooltip: s.toolbar_zoom_in,
           onPressed: canZoomIn ? _zoomInWithAnchorAtCenter : null,
         ),
-        const SizedBox(width: 6),
-        OutlinedButton.icon(
-          icon: const Icon(Icons.fit_screen, size: 16),
-          label: const Text('Fit'),
+        AppControls.toolbarIcon(
+          context: context,
+          icon: Icons.fit_screen,
+          tooltip: s.toolbar_zoom_fit,
           onPressed: canReset ? _resetZoom : null,
         ),
-        const SizedBox(width: 6),
-        OutlinedButton.icon(
-          icon: const Icon(Icons.fit_screen_outlined, size: 16),
-          label: const Text('Fit sel'),
+        AppControls.toolbarIcon(
+          context: context,
+          icon: Icons.fit_screen_outlined,
+          tooltip: s.toolbar_zoom_fit_selection,
           onPressed: canFitSelection ? _zoomToSelectionFit : null,
         ),
       ],
@@ -3078,7 +2950,6 @@ class TimingChartState extends State<TimingChart>
     final settings = Provider.of<SettingsNotifier>(context);
     final s = S.of(context);
     final bool isMs = settings.timeUnitIsMs;
-    final String label = isMs ? 'ms' : 'step';
 
     void onTimeUnitChanged(bool v) {
       _onTimeUnitChanged(settings, v);
@@ -3102,62 +2973,83 @@ class TimingChartState extends State<TimingChart>
           ),
         ],
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      child: Wrap(
+        spacing: 2,
+        runSpacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          IconButton(
-            icon: Icon(
-              _isChartEditLocked ? Icons.lock : Icons.lock_open,
-              size: 20,
-            ),
+          AppControls.toolbarIcon(
+            context: context,
+            icon: _isChartEditLocked ? Icons.lock : Icons.lock_open,
             tooltip: _isChartEditLocked
                 ? s.chart_edit_unlock_tooltip
                 : s.chart_edit_lock_tooltip,
-            visualDensity: VisualDensity.compact,
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            selected: _isChartEditLocked,
             onPressed: () {
               setState(() {
                 _isChartEditLocked = !_isChartEditLocked;
               });
             },
           ),
-          const SizedBox(width: 4),
-          Text('Unit:'),
-          const SizedBox(width: 6),
-          Switch(value: isMs, onChanged: onTimeUnitChanged),
-          Text(label),
-          const SizedBox(width: 12),
-          Text('Labels:'),
-          const SizedBox(width: 6),
-          Switch(
-            value: settings.showBottomUnitLabels,
-            onChanged: onShowLabelsChanged,
+          AppControls.toolbarDivider(),
+          Tooltip(
+            message: s.toolbar_unit_tooltip,
+            waitDuration: AppControls.tooltipDelay,
+            child: ToggleButtons(
+              constraints: const BoxConstraints(minWidth: 44, minHeight: 32),
+              borderRadius: AppControls.borderRadius,
+              isSelected: [!isMs, isMs],
+              onPressed: (index) {
+                final nextIsMs = index == 1;
+                if (nextIsMs != isMs) onTimeUnitChanged(nextIsMs);
+              },
+              children: const [
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8),
+                  child: Text('step'),
+                ),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8),
+                  child: Text('ms'),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(width: 12),
+          AppControls.toolbarIcon(
+            context: context,
+            icon: Icons.straighten,
+            tooltip: s.toolbar_labels_tooltip,
+            selected: settings.showBottomUnitLabels,
+            onPressed: () =>
+                onShowLabelsChanged(!settings.showBottomUnitLabels),
+          ),
           if (_showAdvancedTimingControls && isMs) ...[
-            //Text('ms/step'),
-            //const SizedBox(width: 6),
-            //_buildMsPerStepField(),
-            //const SizedBox(width: 12),
-            //_buildEditStepDurationsButton(),
-            const SizedBox(width: 12),
-            OutlinedButton.icon(
-              icon: Icon(
-                _isEditingSteps ? Icons.close_fullscreen : Icons.open_in_full,
-                size: 16,
-              ),
-              label: Text(_isEditingSteps ? 'Done' : 'Edit grid'),
+            AppControls.toolbarDivider(),
+            AppControls.toolbarIcon(
+              context: context,
+              icon: _isEditingSteps ? Icons.close_fullscreen : Icons.grid_on,
+              tooltip: _isEditingSteps
+                  ? s.toolbar_edit_grid_done_tooltip
+                  : s.toolbar_edit_grid_tooltip,
+              selected: _isEditingSteps,
               onPressed: _toggleEditGridMode,
             ),
-            const SizedBox(width: 8),
-            const Text('（境界線をドラッグ/タップで調整）'),
           ],
-          const SizedBox(width: 12),
+          AppControls.toolbarDivider(),
           _buildZoomControls(),
-          const SizedBox(width: 12),
-          Text('Sel: ${_buildSelectionLabel(settings)}'),
+          AppControls.toolbarDivider(),
+          Tooltip(
+            message: s.toolbar_selection_tooltip,
+            waitDuration: AppControls.tooltipDelay,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: Text(
+                _buildSelectionLabel(settings),
+                style: const TextStyle(fontSize: 13),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -3373,10 +3265,7 @@ class _CommentTextEditResult {
   final String text;
   final List<CommentColorSpan> colorSpans;
 
-  const _CommentTextEditResult({
-    required this.text,
-    required this.colorSpans,
-  });
+  const _CommentTextEditResult({required this.text, required this.colorSpans});
 }
 
 // NOTE: Painter は `timing_chart_painters.dart` に分離しました。

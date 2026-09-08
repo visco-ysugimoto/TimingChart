@@ -1,10 +1,11 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/chart/signal_type.dart';
+import '../models/form/form_state.dart';
 import '../models/report/html_report_sections.dart';
+import '../widgets/form/form_tab_constants.dart';
+import '../widgets/form/form_tab_rules.dart';
 
 class SettingsNotifier extends ChangeNotifier {
   SharedPreferences? _prefs;
@@ -12,12 +13,21 @@ class SettingsNotifier extends ChangeNotifier {
 
   // 保存用キー
   static const _kDefaultCameraCount = 'defaultCameraCount';
+  static const _kDefaultTriggerOption = 'defaultTriggerOption';
+  static const _kDefaultInputPort = 'defaultInputPort';
+  static const _kDefaultOutputPort = 'defaultOutputPort';
+  static const _kDefaultHwTriggerEnabled = 'defaultHwTriggerEnabled';
+  static const _kDefaultPlcEipOption = 'defaultPlcEipOption';
+  static const _kShowIoNumbers = 'showIoNumbers';
+  static const _kDefaultTimeUnitIsMs = 'defaultTimeUnitIsMs';
   static const _kTimeUnitIsMs = 'timeUnitIsMs';
-  static const _kMsPerStep = 'msPerStep';
-  static const _kStepDurationsMs = 'stepDurationsMs';
-  static const _kShowGridLines = 'showGridLines';
   static const _kShowBottomUnitLabels = 'showBottomUnitLabels';
-  static const _kDefaultChartLength = 'defaultChartLength';
+  static const _removedPrefKeys = <String>[
+    'showGridLines',
+    'defaultChartLength',
+    'msPerStep',
+    'stepDurationsMs',
+  ];
   static const _kColorInput = 'color_input';
   static const _kColorOutput = 'color_output';
   static const _kColorHwTrigger = 'color_hwTrigger';
@@ -33,6 +43,33 @@ class SettingsNotifier extends ChangeNotifier {
   static const _kDarkMode = 'darkMode';
   static const _kAccentColor = 'accentColor';
 
+  static const _managedPrefKeys = <String>[
+    _kDefaultCameraCount,
+    _kDefaultTriggerOption,
+    _kDefaultInputPort,
+    _kDefaultOutputPort,
+    _kDefaultHwTriggerEnabled,
+    _kDefaultPlcEipOption,
+    _kShowIoNumbers,
+    _kDefaultTimeUnitIsMs,
+    _kTimeUnitIsMs,
+    _kShowBottomUnitLabels,
+    _kColorInput,
+    _kColorOutput,
+    _kColorHwTrigger,
+    _kColorAuxiliary,
+    _kCommentDashedColor,
+    _kCommentArrowColor,
+    _kOmissionLineColor,
+    _kExportFolder,
+    _kFileNamePrefix,
+    _kLastExportDirectory,
+    _kQuickExportEnabled,
+    _kHtmlReportSections,
+    _kDarkMode,
+    _kAccentColor,
+  ];
+
   SettingsNotifier() {
     initialized = _init();
   }
@@ -46,24 +83,46 @@ class SettingsNotifier extends ChangeNotifier {
     final p = _prefs;
     if (p == null) return;
 
+    for (final key in _removedPrefKeys) {
+      p.remove(key);
+    }
+
     // 一般
     _defaultCameraCount = p.getInt(_kDefaultCameraCount) ?? _defaultCameraCount;
+    _defaultInputPort = _clampPort(
+      p.getInt(_kDefaultInputPort) ?? _defaultInputPort,
+    );
+    _defaultOutputPort = _clampPort(
+      p.getInt(_kDefaultOutputPort) ?? _defaultOutputPort,
+    );
+    _defaultTriggerOption = _normalizeTriggerOption(
+      p.getString(_kDefaultTriggerOption) ?? _defaultTriggerOption,
+      _defaultInputPort,
+    );
+    _defaultHwTriggerEnabled =
+        p.getBool(_kDefaultHwTriggerEnabled) ?? _defaultHwTriggerEnabled;
+    _defaultPlcEipOption = _normalizePlcEipOption(
+      p.getString(_kDefaultPlcEipOption) ?? _defaultPlcEipOption,
+    );
+    _showIoNumbers = p.getBool(_kShowIoNumbers) ?? _showIoNumbers;
 
     // チャート
-    _timeUnitIsMs = p.getBool(_kTimeUnitIsMs) ?? _timeUnitIsMs;
-
-    // msPerStep / stepDurationsMs はチャート固有の時間情報なので、
-    // アプリ起動時は初期化する（前回の値を読み込まない）。
-    // インポート時は JSON / ZIQ 側の値が setter 経由で反映される。
+    // 旧キー timeUnitIsMs は「表示中チャートの単位」と混ざっていたため、
+    // 既定値へ移行してから削除する。
+    _defaultTimeUnitIsMs =
+        p.getBool(_kDefaultTimeUnitIsMs) ??
+        p.getBool(_kTimeUnitIsMs) ??
+        _defaultTimeUnitIsMs;
+    if (!p.containsKey(_kDefaultTimeUnitIsMs) &&
+        p.containsKey(_kTimeUnitIsMs)) {
+      p.setBool(_kDefaultTimeUnitIsMs, _defaultTimeUnitIsMs);
+    }
+    p.remove(_kTimeUnitIsMs);
+    _timeUnitIsMs = _defaultTimeUnitIsMs;
     _msPerStep = 1.0;
-    _prefs?.remove(_kMsPerStep);
     _stepDurationsMs = [];
-    _prefs?.remove(_kStepDurationsMs);
-
-    _showGridLines = p.getBool(_kShowGridLines) ?? _showGridLines;
     _showBottomUnitLabels =
         p.getBool(_kShowBottomUnitLabels) ?? _showBottomUnitLabels;
-    _defaultChartLength = p.getInt(_kDefaultChartLength) ?? _defaultChartLength;
 
     final ci = p.getInt(_kColorInput);
     if (ci != null) _signalColors[SignalType.input] = Color(ci);
@@ -112,30 +171,135 @@ class SettingsNotifier extends ChangeNotifier {
     }
   }
 
+  String _defaultTriggerOption = TriggerOptions.single;
+  String get defaultTriggerOption => _defaultTriggerOption;
+  set defaultTriggerOption(String v) {
+    final next = _normalizeTriggerOption(v, _defaultInputPort);
+    if (next == _defaultTriggerOption) return;
+    _defaultTriggerOption = next;
+    _prefs?.setString(_kDefaultTriggerOption, next);
+    notifyListeners();
+  }
+
+  int _defaultInputPort = 32;
+  int get defaultInputPort => _defaultInputPort;
+  set defaultInputPort(int v) {
+    final next = _clampPort(v);
+    if (next == _defaultInputPort) return;
+    _defaultInputPort = next;
+    _prefs?.setInt(_kDefaultInputPort, next);
+    final trigger = _normalizeTriggerOption(_defaultTriggerOption, next);
+    if (trigger != _defaultTriggerOption) {
+      _defaultTriggerOption = trigger;
+      _prefs?.setString(_kDefaultTriggerOption, trigger);
+    }
+    notifyListeners();
+  }
+
+  int _defaultOutputPort = 32;
+  int get defaultOutputPort => _defaultOutputPort;
+  set defaultOutputPort(int v) {
+    final next = _clampPort(v);
+    if (next == _defaultOutputPort) return;
+    _defaultOutputPort = next;
+    _prefs?.setInt(_kDefaultOutputPort, next);
+    notifyListeners();
+  }
+
+  bool _defaultHwTriggerEnabled = false;
+  bool get defaultHwTriggerEnabled => _defaultHwTriggerEnabled;
+  set defaultHwTriggerEnabled(bool v) {
+    if (v == _defaultHwTriggerEnabled) return;
+    _defaultHwTriggerEnabled = v;
+    _prefs?.setBool(_kDefaultHwTriggerEnabled, v);
+    notifyListeners();
+  }
+
+  String _defaultPlcEipOption = PlcEipOptions.none;
+  String get defaultPlcEipOption => _defaultPlcEipOption;
+  set defaultPlcEipOption(String v) {
+    final next = _normalizePlcEipOption(v);
+    if (next == _defaultPlcEipOption) return;
+    _defaultPlcEipOption = next;
+    _prefs?.setString(_kDefaultPlcEipOption, next);
+    notifyListeners();
+  }
+
+  /// 新規作成 / Clear 時に使うフォーム初期値
+  TimingFormState get defaultFormState {
+    return TimingFormState(
+      triggerOption: _defaultTriggerOption,
+      ioPort: _defaultInputPort,
+      hwPort: _defaultHwTriggerEnabled ? _defaultCameraCount : 0,
+      camera: _defaultCameraCount,
+      inputCount: _defaultInputPort,
+      outputCount: _defaultOutputPort,
+    );
+  }
+
+  static int _clampPort(int v) {
+    if (FormTabRules.portOptions.contains(v)) return v;
+    return FormTabRules.portOptions.last;
+  }
+
+  static String _normalizeTriggerOption(String value, int inputPort) {
+    final allowed = FormTabRules.triggerOptionsForInputCount(inputPort);
+    if (allowed.contains(value)) return value;
+    return TriggerOptions.single;
+  }
+
+  static String _normalizePlcEipOption(String value) {
+    if (value == PlcEipOptions.plc || value == PlcEipOptions.eip) {
+      return value;
+    }
+    return PlcEipOptions.none;
+  }
+
+  bool _showIoNumbers = true;
+  bool get showIoNumbers => _showIoNumbers;
+  set showIoNumbers(bool v) {
+    if (v == _showIoNumbers) return;
+    _showIoNumbers = v;
+    _prefs?.setBool(_kShowIoNumbers, v);
+    notifyListeners();
+  }
+
   // ───────── チャート ─────────
-  // 横軸の単位: true = ms, false = step
+  // 新規作成時の既定単位: true = ms, false = step
+  bool _defaultTimeUnitIsMs = false;
+  bool get defaultTimeUnitIsMs => _defaultTimeUnitIsMs;
+  set defaultTimeUnitIsMs(bool v) {
+    if (v == _defaultTimeUnitIsMs) return;
+    _defaultTimeUnitIsMs = v;
+    _prefs?.setBool(_kDefaultTimeUnitIsMs, v);
+    notifyListeners();
+  }
+
+  // 表示中チャートの横軸単位（チャート固有。永続化しない）
   bool _timeUnitIsMs = false;
   bool get timeUnitIsMs => _timeUnitIsMs;
   set timeUnitIsMs(bool v) {
     if (v != _timeUnitIsMs) {
       _timeUnitIsMs = v;
-      _prefs?.setBool(_kTimeUnitIsMs, v);
       notifyListeners();
     }
   }
 
-  // 1 step あたりのミリ秒
+  void applyDefaultTimeUnit() {
+    timeUnitIsMs = _defaultTimeUnitIsMs;
+  }
+
+  // 1 step あたりのミリ秒（チャート固有。永続化しない）
   double _msPerStep = 1.0;
   double get msPerStep => _msPerStep;
   set msPerStep(double v) {
     if (v > 0 && v != _msPerStep) {
       _msPerStep = v;
-      _prefs?.setDouble(_kMsPerStep, v);
       notifyListeners();
     }
   }
 
-  // stepごとの個別時間 [ms]（ms単位使用時の非等間隔に利用）
+  // stepごとの個別時間 [ms]（ms単位使用時の非等間隔に利用。永続化しない）
   List<double> _stepDurationsMs = [];
   List<double> get stepDurationsMs => List.unmodifiable(_stepDurationsMs);
   void setStepDurationsMs(List<double> durations) {
@@ -143,7 +307,6 @@ class SettingsNotifier extends ChangeNotifier {
     _stepDurationsMs = durations
         .map((e) => e.isFinite && e > 0 ? e : _msPerStep)
         .toList(growable: true);
-    _prefs?.setString(_kStepDurationsMs, jsonEncode(_stepDurationsMs));
     notifyListeners();
   }
 
@@ -153,21 +316,9 @@ class SettingsNotifier extends ChangeNotifier {
       _stepDurationsMs.addAll(
         List<double>.filled(length - _stepDurationsMs.length, _msPerStep),
       );
-      _prefs?.setString(_kStepDurationsMs, jsonEncode(_stepDurationsMs));
       notifyListeners();
     } else if (_stepDurationsMs.length > length) {
       _stepDurationsMs = _stepDurationsMs.sublist(0, length);
-      _prefs?.setString(_kStepDurationsMs, jsonEncode(_stepDurationsMs));
-      notifyListeners();
-    }
-  }
-
-  bool _showGridLines = true;
-  bool get showGridLines => _showGridLines;
-  set showGridLines(bool v) {
-    if (v != _showGridLines) {
-      _showGridLines = v;
-      _prefs?.setBool(_kShowGridLines, v);
       notifyListeners();
     }
   }
@@ -179,16 +330,6 @@ class SettingsNotifier extends ChangeNotifier {
     if (v != _showBottomUnitLabels) {
       _showBottomUnitLabels = v;
       _prefs?.setBool(_kShowBottomUnitLabels, v);
-      notifyListeners();
-    }
-  }
-
-  int _defaultChartLength = 50;
-  int get defaultChartLength => _defaultChartLength;
-  set defaultChartLength(int v) {
-    if (v != _defaultChartLength && v > 0) {
-      _defaultChartLength = v;
-      _prefs?.setInt(_kDefaultChartLength, v);
       notifyListeners();
     }
   }
@@ -336,5 +477,43 @@ class SettingsNotifier extends ChangeNotifier {
       _prefs?.setInt(_kAccentColor, c.toARGB32());
       notifyListeners();
     }
+  }
+
+  /// 言語以外のアプリ設定を初期値に戻す
+  Future<void> resetAll() async {
+    _defaultCameraCount = 1;
+    _defaultTriggerOption = TriggerOptions.single;
+    _defaultInputPort = 32;
+    _defaultOutputPort = 32;
+    _defaultHwTriggerEnabled = false;
+    _defaultPlcEipOption = PlcEipOptions.none;
+    _showIoNumbers = true;
+    _defaultTimeUnitIsMs = false;
+    _timeUnitIsMs = false;
+    _msPerStep = 1.0;
+    _stepDurationsMs = [];
+    _showBottomUnitLabels = true;
+    _signalColors[SignalType.input] = Colors.blue;
+    _signalColors[SignalType.output] = Colors.red;
+    _signalColors[SignalType.hwTrigger] = Colors.green;
+    _signalColors[SignalType.auxiliary] = Colors.orange;
+    _commentDashedColor = Colors.black;
+    _commentArrowColor = Colors.black;
+    _omissionLineColor = Colors.black;
+    _exportFolder = 'Export Chart';
+    _fileNamePrefix = '';
+    _lastExportDirectory = null;
+    _quickExportEnabled = true;
+    _htmlReportSections = HtmlReportSectionSet.all;
+    _darkMode = false;
+    _accentColor = Colors.blue;
+
+    final p = _prefs;
+    if (p != null) {
+      for (final key in [..._managedPrefKeys, ..._removedPrefKeys]) {
+        await p.remove(key);
+      }
+    }
+    notifyListeners();
   }
 }

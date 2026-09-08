@@ -154,6 +154,7 @@ class MessageLookup extends MessageLookupByLibrary {
     "comment_selection_color": MessageLookupByLibrary.simpleMessage("選択範囲の色"),
     "common_cancel": MessageLookupByLibrary.simpleMessage("キャンセル"),
     "common_change": MessageLookupByLibrary.simpleMessage("変更"),
+    "common_clear": MessageLookupByLibrary.simpleMessage("クリア"),
     "common_default": MessageLookupByLibrary.simpleMessage("デフォルト"),
     "common_ok": MessageLookupByLibrary.simpleMessage("OK"),
     "concat_continue": MessageLookupByLibrary.simpleMessage("結合する"),
@@ -209,9 +210,28 @@ class MessageLookup extends MessageLookupByLibrary {
     "ctx_signal_properties": MessageLookupByLibrary.simpleMessage("プロパティ"),
     "dark_mode": MessageLookupByLibrary.simpleMessage("ダークモード"),
     "default_camera_count": MessageLookupByLibrary.simpleMessage("デフォルトのカメラ数"),
-    "default_chart_length": MessageLookupByLibrary.simpleMessage("デフォルトのチャート長"),
     "default_export_folder": MessageLookupByLibrary.simpleMessage(
-      "デフォルトのエクスポートフォルダー",
+      "保存先のサブフォルダ名",
+    ),
+    "default_hw_trigger_enabled": MessageLookupByLibrary.simpleMessage(
+      "HWトリガーをカメラ数と同じにする",
+    ),
+    "default_hw_trigger_enabled_help": MessageLookupByLibrary.simpleMessage(
+      "オンのとき、新規作成時の HW Port はカメラ数になります。",
+    ),
+    "default_input_port": MessageLookupByLibrary.simpleMessage("デフォルトの入力ポート数"),
+    "default_output_port": MessageLookupByLibrary.simpleMessage("デフォルトの出力ポート数"),
+    "default_plc_eip_option": MessageLookupByLibrary.simpleMessage(
+      "デフォルトの PLC/EIP",
+    ),
+    "default_time_unit_ms": MessageLookupByLibrary.simpleMessage(
+      "デフォルトの時間単位をミリ秒にする",
+    ),
+    "default_time_unit_ms_help": MessageLookupByLibrary.simpleMessage(
+      "新規作成と Clear に使います。チャート上の Unit スイッチは表示中のチャートだけ変えます。",
+    ),
+    "default_trigger_option": MessageLookupByLibrary.simpleMessage(
+      "デフォルトのトリガー種別",
     ),
     "drawer_concat_chart": MessageLookupByLibrary.simpleMessage(
       "チャートを末尾に結合...",
@@ -258,6 +278,7 @@ class MessageLookup extends MessageLookupByLibrary {
       "XLSXをエクスポートしました",
     ),
     "file_name_prefix": MessageLookupByLibrary.simpleMessage("ファイル名の接頭辞"),
+    "file_name_prefix_none": MessageLookupByLibrary.simpleMessage("なし"),
     "formTabTitle": MessageLookupByLibrary.simpleMessage("入力フォーム"),
     "hint_export_folder": MessageLookupByLibrary.simpleMessage("Export Chart"),
     "hint_filename_prefix": MessageLookupByLibrary.simpleMessage("prefix_"),
@@ -322,6 +343,12 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "settings_export_base_directory_not_set":
         MessageLookupByLibrary.simpleMessage("未設定（保存時にダイアログ表示）"),
+    "settings_export_subfolder_help": MessageLookupByLibrary.simpleMessage(
+      "クイック保存時は、エクスポート先フォルダの下にこの名前のフォルダを作ります。",
+    ),
+    "settings_form_defaults_section": MessageLookupByLibrary.simpleMessage(
+      "フォーム初期値（新規作成 / Clear）",
+    ),
     "settings_html_export_sections": MessageLookupByLibrary.simpleMessage(
       "HTMLレポートのデフォルト出力項目",
     ),
@@ -339,8 +366,23 @@ class MessageLookup extends MessageLookupByLibrary {
     "settings_quick_export": MessageLookupByLibrary.simpleMessage(
       "クイック保存（ダイアログを省略）",
     ),
+    "settings_reset_all": MessageLookupByLibrary.simpleMessage("設定をリセット"),
+    "settings_reset_all_confirm_message": MessageLookupByLibrary.simpleMessage(
+      "言語設定以外のすべての環境設定が初期値に戻ります。この操作は取り消せません。",
+    ),
+    "settings_reset_all_confirm_title": MessageLookupByLibrary.simpleMessage(
+      "設定をリセットしますか？",
+    ),
+    "settings_reset_all_done": MessageLookupByLibrary.simpleMessage(
+      "設定を初期値に戻しました",
+    ),
+    "settings_reset_all_help": MessageLookupByLibrary.simpleMessage(
+      "言語以外の設定を初期値に戻します。フォーム初期値は Clear または再起動後に反映されます。",
+    ),
     "settings_title": MessageLookupByLibrary.simpleMessage("設定"),
-    "show_grid_lines": MessageLookupByLibrary.simpleMessage("グリッド線を表示"),
+    "show_bottom_unit_labels": MessageLookupByLibrary.simpleMessage(
+      "下部の時間ラベルを表示",
+    ),
     "show_io_numbers": MessageLookupByLibrary.simpleMessage("IO 番号を表示"),
     "signal_label_properties_color": MessageLookupByLibrary.simpleMessage("色"),
     "signal_label_properties_global_io_off":
@@ -358,7 +400,38 @@ class MessageLookup extends MessageLookupByLibrary {
     "signal_label_properties_title": MessageLookupByLibrary.simpleMessage(
       "信号ラベルのプロパティ",
     ),
+    "toolbar_edit_grid_done_tooltip": MessageLookupByLibrary.simpleMessage(
+      "グリッド編集を終了",
+    ),
+    "toolbar_edit_grid_tooltip": MessageLookupByLibrary.simpleMessage(
+      "グリッド編集（境界線をドラッグまたはタップで調整）",
+    ),
+    "toolbar_labels_tooltip": MessageLookupByLibrary.simpleMessage(
+      "チャート下部の時間ラベルを表示",
+    ),
+    "toolbar_redo": MessageLookupByLibrary.simpleMessage("やり直す"),
+    "toolbar_selection_tooltip": MessageLookupByLibrary.simpleMessage(
+      "選択範囲の長さ",
+    ),
+    "toolbar_undo": MessageLookupByLibrary.simpleMessage("元に戻す"),
+    "toolbar_unit_tooltip": MessageLookupByLibrary.simpleMessage(
+      "時間の単位（ステップ / ミリ秒）",
+    ),
+    "toolbar_zoom_fit": MessageLookupByLibrary.simpleMessage("全体を表示"),
+    "toolbar_zoom_fit_selection": MessageLookupByLibrary.simpleMessage(
+      "選択範囲に合わせる",
+    ),
+    "toolbar_zoom_in": MessageLookupByLibrary.simpleMessage("拡大"),
+    "toolbar_zoom_out": MessageLookupByLibrary.simpleMessage("縮小"),
+    "toolbar_zoom_percent": MessageLookupByLibrary.simpleMessage("現在の拡大率"),
     "triggerOptionLabel": MessageLookupByLibrary.simpleMessage("トリガーオプション"),
+    "unsaved_changes_message": MessageLookupByLibrary.simpleMessage(
+      "終了すると、保存していないチャートの変更は失われます。終了しますか？",
+    ),
+    "unsaved_changes_quit": MessageLookupByLibrary.simpleMessage("終了"),
+    "unsaved_changes_title": MessageLookupByLibrary.simpleMessage(
+      "未保存の変更があります",
+    ),
     "updateChartButton": MessageLookupByLibrary.simpleMessage("チャート更新"),
   };
 }

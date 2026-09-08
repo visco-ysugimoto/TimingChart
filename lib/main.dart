@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+﻿import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/scheduler.dart';
@@ -7,9 +7,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io' as io;
 
+import 'package:window_manager/window_manager.dart';
 import 'generated/l10n.dart';
 import 'models/form/form_state.dart';
 import 'models/chart/signal_data.dart';
@@ -65,6 +65,15 @@ Future<void> main() async {
     return;
   }
 
+  // Flutter 3.35+ の Windows では UI スレッドとプラットフォームスレッドが統合されており、
+  // runApp 前（メッセージループ開始前）に window_manager を await するとデッドロックする。
+  if (!kIsWeb &&
+      (io.Platform.isWindows || io.Platform.isLinux || io.Platform.isMacOS)) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_initDesktopWindowManager());
+    });
+  }
+
   runApp(
     MultiProvider(
       providers: [
@@ -76,6 +85,11 @@ Future<void> main() async {
       child: const TimingChartGeneratorApp(),
     ),
   );
+}
+
+Future<void> _initDesktopWindowManager() async {
+  await windowManager.ensureInitialized();
+  await windowManager.setPreventClose(true);
 }
 
 void _printZiqFilesStatus({
@@ -367,11 +381,8 @@ class TimingChartGeneratorHomePage extends StatefulWidget {
 
 class _TimingChartGeneratorHomePageState
     extends State<TimingChartGeneratorHomePage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WindowListener {
   late TabController _tabController;
-
-  bool _showIoNumbers = true;
-  SharedPreferences? _prefs;
 
   late FormControllersNotifier _controllersNotifier;
 
@@ -384,6 +395,7 @@ class _TimingChartGeneratorHomePageState
   String _plcEipOption = 'None';
 
   bool _isImportingZiq = false;
+  bool _hasUnsavedChanges = false;
 
   /// PLC/EIPオプションが無効な場合、関連するコントローラーをクリアします
   void _clearPlcEipControllersIfDisabled() {
@@ -511,6 +523,7 @@ class _TimingChartGeneratorHomePageState
     }
 
     _commitNameToValues(nameToValues);
+    _markDirty();
   }
 
   /// DIO出力とPLC/EIP出力を交換します
@@ -550,6 +563,7 @@ class _TimingChartGeneratorHomePageState
     }
 
     _commitNameToValues(nameToValues);
+    _markDirty();
   }
 
   /// チャートの信号が変更された際の処理を行います
@@ -583,6 +597,7 @@ class _TimingChartGeneratorHomePageState
       _chartSignals = updatedSignals;
       _chartShowIoNumbers = updatedSignals.map((s) => s.showIoNumber).toList();
     });
+    _markDirty();
   }
 
   void _handleSignalShowIoNumberChanged(int originalIndex, bool showIoNumber) {
@@ -595,6 +610,7 @@ class _TimingChartGeneratorHomePageState
           .map((signal) => signal.showIoNumber)
           .toList();
     });
+    _markDirty();
   }
 
   void _handleAuxiliaryAppearanceChanged(
@@ -619,6 +635,7 @@ class _TimingChartGeneratorHomePageState
     final names = _chartSignals.map((s) => s.name).toList();
     _timingChartKey.currentState?.updateSignalNames(names);
     _chartController.setSignalNames(names);
+    _markDirty();
   }
 
   /// PLC/EIPオプションに基づいてデフォルトの入力名を生成します
@@ -644,17 +661,9 @@ class _TimingChartGeneratorHomePageState
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
 
-    // SettingsNotifier からデフォルトカメラ数を取得
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
-
-    final initial = TimingFormState(
-      triggerOption: 'Single Trigger',
-      ioPort: 32,
-      hwPort: 0,
-      camera: settings.defaultCameraCount,
-      inputCount: 32,
-      outputCount: 32,
-    );
+    final initial = settings.defaultFormState;
+    _plcEipOption = settings.defaultPlcEipOption;
 
     _scheduleFormUpdate((n) => n.replace(initial));
 
@@ -678,29 +687,39 @@ class _TimingChartGeneratorHomePageState
 
     _tabController.addListener(_handleTabChange);
 
+    if (!kIsWeb &&
+        (io.Platform.isWindows || io.Platform.isLinux || io.Platform.isMacOS)) {
+      windowManager.addListener(this);
+    }
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _formNotifier.replace(_formState);
     });
 
-    _initPrefs();
-
-    // SharedPreferences から設定が読み込まれたあとで、フォームのカメラ数も更新
+    // SharedPreferences から設定が読み込まれたあとで、フォーム初期値を反映
     settings.initialized.then((_) {
       if (!mounted) return;
-      _scheduleFormUpdate((n) {
-        n.update(camera: settings.defaultCameraCount);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _syncFormToSettingsDefaults(settings);
       });
     });
   }
 
-  Future<void> _initPrefs() async {
-    _prefs = await SharedPreferences.getInstance();
-    final saved = _prefs?.getBool('showIoNumbers');
-    if (saved != null) {
-      setState(() {
-        _showIoNumbers = saved;
-      });
-    }
+  /// 設定のフォーム初期値を、現在のフォームへ適用する
+  void _syncFormToSettingsDefaults(SettingsNotifier settings) {
+    final initial = settings.defaultFormState;
+    _scheduleFormUpdate((n) => n.replace(initial));
+    _controllersNotifier.setInputCount(initial.inputCount);
+    _controllersNotifier.setOutputCount(initial.outputCount);
+    _controllersNotifier.setHwTriggerCount(initial.hwPort);
+    _controllersNotifier.setAuxiliaryCount(0);
+    setState(() {
+      _plcEipOption = settings.defaultPlcEipOption;
+    });
+    _formTabKey.currentState?.setPlcEipOption(settings.defaultPlcEipOption);
+    _clearPlcEipControllersIfDisabled();
+    settings.applyDefaultTimeUnit();
   }
 
   /// タブが変更された際の処理を行います
@@ -786,24 +805,10 @@ class _TimingChartGeneratorHomePageState
       _timingChartKey.currentState!.updateAnnotations([]);
     }
 
-    _scheduleFormUpdate((n) {
-      final settings = Provider.of<SettingsNotifier>(context, listen: false);
-      n.replace(
-        TimingFormState(
-          triggerOption: 'Single Trigger',
-          ioPort: 32,
-          hwPort: 0,
-          camera: settings.defaultCameraCount,
-          inputCount: 32,
-          outputCount: 32,
-        ),
-      );
-    });
-
-    _controllersNotifier.setInputCount(32);
-    _controllersNotifier.setOutputCount(32);
-    _controllersNotifier.setHwTriggerCount(0);
-    _controllersNotifier.setAuxiliaryCount(0);
+    _syncFormToSettingsDefaults(
+      Provider.of<SettingsNotifier>(context, listen: false),
+    );
+    _markClean();
   }
 
   /// PLC/EIPオプションに基づいてIOチャネルソースを解決します
@@ -987,6 +992,7 @@ class _TimingChartGeneratorHomePageState
     );
 
     if (!mounted) return;
+    if (success) _markClean();
     final s = S.of(context);
     _showExportResultSnackBar(
       success: success,
@@ -1076,6 +1082,7 @@ class _TimingChartGeneratorHomePageState
       return;
     }
 
+    _markClean();
     final s = S.of(context);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -1212,6 +1219,7 @@ class _TimingChartGeneratorHomePageState
     }
 
     if (!mounted) return;
+    _markDirty();
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(s.concat_success)));
@@ -1570,7 +1578,52 @@ class _TimingChartGeneratorHomePageState
   void dispose() {
     _tabController.removeListener(_handleTabChange);
     _tabController.dispose();
+    if (!kIsWeb &&
+        (io.Platform.isWindows || io.Platform.isLinux || io.Platform.isMacOS)) {
+      windowManager.removeListener(this);
+    }
     super.dispose();
+  }
+
+  void _markDirty() {
+    _hasUnsavedChanges = true;
+  }
+
+  void _markClean() {
+    _hasUnsavedChanges = false;
+  }
+
+  @override
+  Future<void> onWindowClose() async {
+    if (!_hasUnsavedChanges) {
+      await windowManager.destroy();
+      return;
+    }
+    if (!mounted) {
+      await windowManager.destroy();
+      return;
+    }
+    final s = S.of(context);
+    final quit = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(s.unsaved_changes_title),
+        content: Text(s.unsaved_changes_message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(s.common_cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(s.unsaved_changes_quit),
+          ),
+        ],
+      ),
+    );
+    if (quit == true) {
+      await windowManager.destroy();
+    }
   }
 
   /// ウィジェットツリーを構築します
@@ -1850,6 +1903,7 @@ class _TimingChartGeneratorHomePageState
                   // スナックバーの表示
 
                   if (!context.mounted) return;
+                  _markClean();
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
@@ -1954,15 +2008,7 @@ class _TimingChartGeneratorHomePageState
                 Navigator.pop(context);
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => SettingsWindow(
-                      showIoNumbers: _showIoNumbers,
-                      onShowIoNumbersChanged: (val) {
-                        setState(() => _showIoNumbers = val);
-                        _prefs?.setBool('showIoNumbers', val);
-                      },
-                    ),
-                  ),
+                  MaterialPageRoute(builder: (_) => const SettingsWindow()),
                 );
               },
             ),
@@ -2081,6 +2127,7 @@ class _TimingChartGeneratorHomePageState
                           );
                         }
                       });
+                      _markDirty();
                     },
                 onClearFields: () {
                   _clearAllTextFields();
@@ -2107,7 +2154,7 @@ class _TimingChartGeneratorHomePageState
                 controller: _chartController,
                 fitToScreen: true,
                 showAllSignalTypes: false,
-                showIoNumbers: _showIoNumbers,
+                showIoNumbers: context.watch<SettingsNotifier>().showIoNumbers,
                 portNumbers: _chartPortNumbers,
                 ioSources: _chartIoSources,
                 plcEipMode: _plcEipOption,
@@ -2116,6 +2163,7 @@ class _TimingChartGeneratorHomePageState
                 onAuxiliaryAppearanceChanged: _handleAuxiliaryAppearanceChanged,
                 onAnnotationsChanged: (anns) {
                   _chartAnnotations = List.from(anns);
+                  _markDirty();
                 },
                 showIoNumbersPerSignal: _chartShowIoNumbers,
                 signalColorArgb: _chartSignals.map((s) => s.colorArgb).toList(),

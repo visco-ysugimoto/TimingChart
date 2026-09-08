@@ -7,39 +7,26 @@ import '../../providers/settings_notifier.dart';
 import '../../providers/locale_notifier.dart';
 import '../../models/chart/signal_type.dart';
 import '../../suggestion_loader.dart';
+import '../common/color_picker_dialog.dart';
+import '../form/form_tab_constants.dart';
+import '../form/form_tab_rules.dart';
 import '../report/html_report_sections_picker.dart';
 
 // ────────────────────────────────────────────────────────────
 //  環境設定ウインドウ
 //  Google Chrome の設定画面のように、左側にカテゴリ（NavigationRail）
 //  右側に選択中カテゴリの設定項目を表示するレイアウト。
-//  実際の機能はまだ実装しないため、各項目はプレースホルダーとして
-//  ListTile / SwitchListTile を配置している。
 // ────────────────────────────────────────────────────────────
 
 class SettingsWindow extends StatefulWidget {
-  final bool showIoNumbers;
-  final ValueChanged<bool> onShowIoNumbersChanged;
-
-  const SettingsWindow({
-    super.key,
-    required this.showIoNumbers,
-    required this.onShowIoNumbersChanged,
-  });
+  const SettingsWindow({super.key});
 
   @override
   State<SettingsWindow> createState() => _SettingsWindowState();
 }
 
 class _SettingsWindowState extends State<SettingsWindow> {
-  late bool _showIoNumbers;
   int _selectedIndex = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _showIoNumbers = widget.showIoNumbers;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -87,56 +74,38 @@ class _SettingsWindowState extends State<SettingsWindow> {
     );
   }
 
-  // 色選択ダイアログ (簡易)
-  Future<Color?> _pickColor(BuildContext context, Color currentColor) async {
+  Future<Color?> _pickColor(BuildContext context, Color currentColor) {
+    return ColorPickerDialog.show(context, initial: currentColor);
+  }
+
+  Future<void> _confirmResetAll(
+    BuildContext context,
+    SettingsNotifier settings,
+  ) async {
     final s = S.of(context);
-    const preset = [
-      Colors.red,
-      Colors.green,
-      Colors.blue,
-      Colors.orange,
-      Colors.purple,
-      Colors.cyan,
-      Colors.black,
-      Colors.grey,
-    ];
-    Color? selected = currentColor;
-    return showDialog<Color>(
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: Text(s.color_picker_title),
-        content: SizedBox(
-          width: 300,
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final c in preset)
-                GestureDetector(
-                  onTap: () {
-                    Navigator.of(context).pop(c);
-                  },
-                  child: Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: c,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: Colors.black12),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
+      builder: (ctx) => AlertDialog(
+        title: Text(s.settings_reset_all_confirm_title),
+        content: Text(s.settings_reset_all_confirm_message),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(selected),
+            onPressed: () => Navigator.of(ctx).pop(false),
             child: Text(s.common_cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(s.settings_reset_all),
           ),
         ],
       ),
     );
+    if (confirmed != true) return;
+    await settings.resetAll();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(s.settings_reset_all_done)));
   }
 
   // カテゴリごとの設定項目を返す
@@ -153,11 +122,8 @@ class _SettingsWindowState extends State<SettingsWindow> {
             SwitchListTile(
               secondary: const Icon(Icons.tag),
               title: Text(s.show_io_numbers),
-              value: _showIoNumbers,
-              onChanged: (val) {
-                setState(() => _showIoNumbers = val);
-                widget.onShowIoNumbersChanged(val);
-              },
+              value: settings.showIoNumbers,
+              onChanged: (val) => settings.showIoNumbers = val,
             ),
             ListTile(
               leading: const Icon(Icons.camera_alt_outlined),
@@ -175,61 +141,141 @@ class _SettingsWindowState extends State<SettingsWindow> {
                 }
               },
             ),
-            // 自動保存間隔は未使用のため削除
+            const Divider(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: Text(
+                s.settings_form_defaults_section,
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.bolt_outlined),
+              title: Text(s.default_trigger_option),
+              trailing: DropdownButton<String>(
+                value:
+                    FormTabRules.triggerOptionsForInputCount(
+                      settings.defaultInputPort,
+                    ).contains(settings.defaultTriggerOption)
+                    ? settings.defaultTriggerOption
+                    : TriggerOptions.single,
+                items: [
+                  for (final option in FormTabRules.triggerOptionsForInputCount(
+                    settings.defaultInputPort,
+                  ))
+                    DropdownMenuItem(value: option, child: Text(option)),
+                ],
+                onChanged: (v) {
+                  if (v != null) settings.defaultTriggerOption = v;
+                },
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.login),
+              title: Text(s.default_input_port),
+              trailing: DropdownButton<int>(
+                value: settings.defaultInputPort,
+                items: [
+                  for (final n in FormTabRules.portOptions)
+                    DropdownMenuItem(value: n, child: Text('$n')),
+                ],
+                onChanged: (v) {
+                  if (v != null) settings.defaultInputPort = v;
+                },
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.logout),
+              title: Text(s.default_output_port),
+              trailing: DropdownButton<int>(
+                value: settings.defaultOutputPort,
+                items: [
+                  for (final n in FormTabRules.portOptions)
+                    DropdownMenuItem(value: n, child: Text('$n')),
+                ],
+                onChanged: (v) {
+                  if (v != null) settings.defaultOutputPort = v;
+                },
+              ),
+            ),
+            SwitchListTile(
+              secondary: const Icon(Icons.memory_outlined),
+              title: Text(s.default_hw_trigger_enabled),
+              subtitle: Text(s.default_hw_trigger_enabled_help),
+              value: settings.defaultHwTriggerEnabled,
+              onChanged: (v) => settings.defaultHwTriggerEnabled = v,
+            ),
+            ListTile(
+              leading: const Icon(Icons.device_hub_outlined),
+              title: Text(s.default_plc_eip_option),
+              trailing: DropdownButton<String>(
+                value: settings.defaultPlcEipOption,
+                items: const [
+                  DropdownMenuItem(
+                    value: PlcEipOptions.none,
+                    child: Text(PlcEipOptions.none),
+                  ),
+                  DropdownMenuItem(
+                    value: PlcEipOptions.plc,
+                    child: Text(PlcEipOptions.plc),
+                  ),
+                  DropdownMenuItem(
+                    value: PlcEipOptions.eip,
+                    child: Text(PlcEipOptions.eip),
+                  ),
+                ],
+                onChanged: (v) {
+                  if (v != null) settings.defaultPlcEipOption = v;
+                },
+              ),
+            ),
+            const Divider(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Text(
+                s.settings_reset_all,
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(s.settings_reset_all_help),
+            ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: OutlinedButton.icon(
+                  onPressed: () => _confirmResetAll(context, settings),
+                  icon: const Icon(Icons.restore),
+                  label: Text(s.settings_reset_all),
+                ),
+              ),
+            ),
           ],
         );
 
       // ─────────── チャート設定 ───────────
       case 1:
         final isDark = Theme.of(context).brightness == Brightness.dark;
-        Color _effective(Color c) =>
+        Color effective(Color c) =>
             isDark && c == Colors.black ? Colors.white : c;
 
         return ListView(
           padding: const EdgeInsets.all(16),
           children: [
             SwitchListTile(
-              secondary: const Icon(Icons.grid_on),
-              title: Text(s.show_grid_lines),
-              value: settings.showGridLines,
-              onChanged: (val) => settings.showGridLines = val,
+              secondary: const Icon(Icons.timer_outlined),
+              title: Text(s.default_time_unit_ms),
+              subtitle: Text(s.default_time_unit_ms_help),
+              value: settings.defaultTimeUnitIsMs,
+              onChanged: (val) => settings.defaultTimeUnitIsMs = val,
             ),
-            ListTile(
-              leading: const Icon(Icons.timeline),
-              title: Text(s.default_chart_length),
-              subtitle: Text('${settings.defaultChartLength}'),
-              trailing: const Icon(Icons.edit),
-              onTap: () async {
-                final controller = TextEditingController(
-                  text: '${settings.defaultChartLength}',
-                );
-                final updated = await showDialog<int>(
-                  context: context,
-                  builder: (_) => AlertDialog(
-                    title: Text(s.default_chart_length),
-                    content: TextField(
-                      controller: controller,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(hintText: '50'),
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: Text(s.common_cancel),
-                      ),
-                      TextButton(
-                        onPressed: () => Navigator.of(
-                          context,
-                        ).pop(int.tryParse(controller.text)),
-                        child: Text(s.common_ok),
-                      ),
-                    ],
-                  ),
-                );
-                if (updated != null && updated > 0) {
-                  settings.defaultChartLength = updated;
-                }
-              },
+            SwitchListTile(
+              secondary: const Icon(Icons.straighten),
+              title: Text(s.show_bottom_unit_labels),
+              value: settings.showBottomUnitLabels,
+              onChanged: (val) => settings.showBottomUnitLabels = val,
             ),
             const Divider(),
             ListTile(
@@ -303,7 +349,7 @@ class _SettingsWindowState extends State<SettingsWindow> {
               leading: Container(
                 width: 24,
                 height: 24,
-                color: _effective(settings.commentDashedColor),
+                color: effective(settings.commentDashedColor),
               ),
               title: Text(s.comment_dashed_color),
               onTap: () async {
@@ -318,7 +364,7 @@ class _SettingsWindowState extends State<SettingsWindow> {
               leading: Container(
                 width: 24,
                 height: 24,
-                color: _effective(settings.commentArrowColor),
+                color: effective(settings.commentArrowColor),
               ),
               title: Text(s.comment_arrow_color),
               onTap: () async {
@@ -330,7 +376,7 @@ class _SettingsWindowState extends State<SettingsWindow> {
               leading: Container(
                 width: 24,
                 height: 24,
-                color: _effective(settings.omissionLineColor),
+                color: effective(settings.omissionLineColor),
               ),
               title: Text(s.omission_line_color),
               onTap: () async {
@@ -357,7 +403,18 @@ class _SettingsWindowState extends State<SettingsWindow> {
                 settings.lastExportDirectory ??
                     s.settings_export_base_directory_not_set,
               ),
-              trailing: const Icon(Icons.edit),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (settings.lastExportDirectory != null)
+                    IconButton(
+                      icon: const Icon(Icons.clear),
+                      tooltip: s.common_clear,
+                      onPressed: () => settings.lastExportDirectory = null,
+                    ),
+                  const Icon(Icons.edit),
+                ],
+              ),
               onTap: () async {
                 final path = await FilePicker.getDirectoryPath(
                   dialogTitle: s.settings_pick_export_directory,
@@ -368,26 +425,13 @@ class _SettingsWindowState extends State<SettingsWindow> {
                 }
               },
             ),
-            SwitchListTile(
-              secondary: const Icon(Icons.flash_on),
-              title: Text(s.settings_quick_export),
-              value: settings.quickExportEnabled,
-              onChanged: (v) => settings.quickExportEnabled = v,
-            ),
-            const SizedBox(height: 8),
             ListTile(
-              leading: const Icon(Icons.html),
-              title: Text(s.settings_html_export_sections),
-              subtitle: Text(s.settings_html_export_sections_help),
-            ),
-            HtmlReportSectionsPicker(
-              value: settings.htmlReportSections,
-              onChanged: (next) => settings.htmlReportSections = next,
-            ),
-            ListTile(
-              leading: const Icon(Icons.folder_open),
+              leading: const Icon(Icons.create_new_folder_outlined),
               title: Text(s.default_export_folder),
-              subtitle: Text(settings.exportFolder),
+              subtitle: Text(
+                '${settings.exportFolder}\n${s.settings_export_subfolder_help}',
+              ),
+              isThreeLine: true,
               trailing: const Icon(Icons.edit),
               onTap: () async {
                 final controller = TextEditingController(
@@ -401,6 +445,7 @@ class _SettingsWindowState extends State<SettingsWindow> {
                       controller: controller,
                       decoration: InputDecoration(
                         hintText: s.hint_export_folder,
+                        helperText: s.settings_export_subfolder_help,
                       ),
                     ),
                     actions: [
@@ -424,7 +469,11 @@ class _SettingsWindowState extends State<SettingsWindow> {
             ListTile(
               leading: const Icon(Icons.text_fields),
               title: Text(s.file_name_prefix),
-              subtitle: Text(settings.fileNamePrefix),
+              subtitle: Text(
+                settings.fileNamePrefix.isEmpty
+                    ? s.file_name_prefix_none
+                    : settings.fileNamePrefix,
+              ),
               trailing: const Icon(Icons.edit),
               onTap: () async {
                 final controller = TextEditingController(
@@ -453,10 +502,26 @@ class _SettingsWindowState extends State<SettingsWindow> {
                     ],
                   ),
                 );
-                if (updated != null && updated.isNotEmpty) {
+                if (updated != null) {
                   settings.fileNamePrefix = updated;
                 }
               },
+            ),
+            SwitchListTile(
+              secondary: const Icon(Icons.flash_on),
+              title: Text(s.settings_quick_export),
+              value: settings.quickExportEnabled,
+              onChanged: (v) => settings.quickExportEnabled = v,
+            ),
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const Icon(Icons.html),
+              title: Text(s.settings_html_export_sections),
+              subtitle: Text(s.settings_html_export_sections_help),
+            ),
+            HtmlReportSectionsPicker(
+              value: settings.htmlReportSections,
+              onChanged: (next) => settings.htmlReportSections = next,
             ),
           ],
         );

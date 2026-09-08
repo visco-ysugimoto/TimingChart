@@ -47,6 +47,7 @@ import 'form_tab_constants.dart';
 import 'form_tab_output_preset.dart';
 import 'form_tab_rules.dart';
 import '../../utils/code_trigger_helpers.dart';
+import '../common/app_controls.dart';
 
 class FormTab extends StatefulWidget {
   /// Template、インポート、またはチャート編集による基準チャートが存在するか
@@ -142,10 +143,6 @@ class FormTabState extends State<FormTab>
   // AutomaticKeepAliveClientMixin により、タブ切り替え後も状態を保持するため true を返す
   @override
   bool get wantKeepAlive => true;
-
-  static const double _buttonHeight = 48.0;
-  static const double _buttonHorizontalPadding = 16.0;
-  static const double _buttonVerticalPadding = 12.0;
 
   // --- 画面状態（テーブル） ---
   /// Camera Configuration Table の行数（初期値: `FormTabConstants.defaultRowCount`）
@@ -387,10 +384,9 @@ class FormTabState extends State<FormTab>
     if (fs.triggerOption == TriggerOptions.single) {
       if (widget.inputControllers.isEmpty) return;
       final dio0 = widget.inputControllers[0].text.trim();
-      final plc0 =
-          widget.plcEipInputControllers.isNotEmpty
-              ? widget.plcEipInputControllers[0].text.trim()
-              : '';
+      final plc0 = widget.plcEipInputControllers.isNotEmpty
+          ? widget.plcEipInputControllers[0].text.trim()
+          : '';
       // PLI へ移した TRIGGER を、更新のたびに DI へ書き戻さない
       if (dio0.isEmpty && plc0 != SignalNames.trigger) {
         widget.controllersNotifier.setInputText(0, SignalNames.trigger);
@@ -784,8 +780,7 @@ class FormTabState extends State<FormTab>
         case SignalType.input:
           final onPlc =
               _plcEipOption != PlcEipOptions.none && _inputTabIndex == 1;
-          final vis =
-              onPlc ? _plcEipInputVisibility : _inputVisibility;
+          final vis = onPlc ? _plcEipInputVisibility : _inputVisibility;
           if (index < vis.length) {
             vis[index] = !vis[index];
           }
@@ -793,8 +788,7 @@ class FormTabState extends State<FormTab>
         case SignalType.output:
           final onPlc =
               _plcEipOption != PlcEipOptions.none && _outputTabIndex == 1;
-          final vis =
-              onPlc ? _plcEipOutputVisibility : _outputVisibility;
+          final vis = onPlc ? _plcEipOutputVisibility : _outputVisibility;
           if (index < vis.length) {
             vis[index] = !vis[index];
           }
@@ -818,10 +812,9 @@ class FormTabState extends State<FormTab>
         case SignalType.input:
           final onPlc =
               _plcEipOption != PlcEipOptions.none && _inputTabIndex == 1;
-          final controllers =
-              onPlc
-                  ? widget.plcEipInputControllers
-                  : widget.inputControllers;
+          final controllers = onPlc
+              ? widget.plcEipInputControllers
+              : widget.inputControllers;
           if (index < controllers.length) {
             targetName = controllers[index].text;
           }
@@ -829,10 +822,9 @@ class FormTabState extends State<FormTab>
         case SignalType.output:
           final onPlc =
               _plcEipOption != PlcEipOptions.none && _outputTabIndex == 1;
-          final controllers =
-              onPlc
-                  ? widget.plcEipOutputControllers
-                  : widget.outputControllers;
+          final controllers = onPlc
+              ? widget.plcEipOutputControllers
+              : widget.outputControllers;
           if (index < controllers.length) {
             targetName = controllers[index].text;
           }
@@ -1327,8 +1319,10 @@ class FormTabState extends State<FormTab>
       );
     }
 
-    final chartNameSet =
-        _signalDataList.where(_includeOnChart).map((s) => s.name).toSet();
+    final chartNameSet = _signalDataList
+        .where(_includeOnChart)
+        .map((s) => s.name)
+        .toSet();
 
     List<String> outNames = [];
     List<SignalType> outTypes = [];
@@ -1617,8 +1611,8 @@ class FormTabState extends State<FormTab>
 
     final int waveLength = filteredSignals.isNotEmpty
         ? filteredSignals
-            .map((s) => s.values.length)
-            .fold(requiredSampleLength, math.max)
+              .map((s) => s.values.length)
+              .fold(requiredSampleLength, math.max)
         : requiredSampleLength;
     filteredSignals = [
       ...filteredSignals,
@@ -1661,8 +1655,10 @@ class FormTabState extends State<FormTab>
       _updateSignalDataList();
     }
 
-    final chartNameSet =
-        _signalDataList.where(_includeOnChart).map((s) => s.name).toSet();
+    final chartNameSet = _signalDataList
+        .where(_includeOnChart)
+        .map((s) => s.name)
+        .toSet();
 
     List<String> outNames = [];
     List<SignalType> outTypes = [];
@@ -1922,8 +1918,9 @@ class FormTabState extends State<FormTab>
           name: name,
           signalType: SignalType.auxiliary,
           values: List.filled(waveLength, 0),
-          isVisible:
-              i < _auxiliaryVisibility.length ? _auxiliaryVisibility[i] : true,
+          isVisible: i < _auxiliaryVisibility.length
+              ? _auxiliaryVisibility[i]
+              : true,
           showIoNumber: false,
           colorArgb: i < _auxiliaryColors.length ? _auxiliaryColors[i] : null,
         ),
@@ -2015,7 +2012,9 @@ class FormTabState extends State<FormTab>
         _hwTriggerVisibility = List.from(config.hwTriggerVisibility);
       }
 
-      widget.controllersNotifier.setAuxiliaryCount(config.auxiliaryNames.length);
+      widget.controllersNotifier.setAuxiliaryCount(
+        config.auxiliaryNames.length,
+      );
       widget.controllersNotifier.setAuxiliaryTexts(config.auxiliaryNames);
       if (config.auxiliaryVisibility.length ==
           widget.auxiliaryControllers.length) {
@@ -2023,10 +2022,9 @@ class FormTabState extends State<FormTab>
       } else {
         _auxiliaryVisibility = List.generate(
           widget.auxiliaryControllers.length,
-          (i) =>
-              i < config.auxiliaryVisibility.length
-                  ? config.auxiliaryVisibility[i]
-                  : true,
+          (i) => i < config.auxiliaryVisibility.length
+              ? config.auxiliaryVisibility[i]
+              : true,
         );
       }
       _auxiliaryColors = List<int?>.generate(
@@ -2486,12 +2484,7 @@ class FormTabState extends State<FormTab>
     final fs = context.watch<FormStateNotifier>().state;
 
     // UIスタイルはまとめて生成（build内のノイズを減らし、画面構造を読みやすくする）
-    final buttonStyles = _FormTabButtonStyles.from(
-      context,
-      height: _buttonHeight,
-      horizontalPadding: _buttonHorizontalPadding,
-      verticalPadding: _buttonVerticalPadding,
-    );
+    final buttonStyles = _FormTabButtonStyles.from(context);
     final headerStyles = _FormTabHeaderStyles.from(context);
 
     // PLC/EIP の有無で TabController を持つ/捨てるので、build前に状態を保証する
@@ -2633,12 +2626,13 @@ class FormTabState extends State<FormTab>
 class _FormTabButtonStyles {
   /// FormTab 内で使うボタンスタイルの束。
   ///
-  /// NOTE: “同じpadding/高さで色だけ違う” という意図を揃えるためにまとめている。
+  /// チャート操作バーと同じ高さ・角丸・アイコンサイズに揃える。
   final ButtonStyle clear;
   final ButtonStyle update;
   final ButtonStyle template;
   final ButtonStyle addRow;
   final ButtonStyle removeRow;
+  final ButtonStyle transfer;
 
   const _FormTabButtonStyles({
     required this.clear,
@@ -2646,50 +2640,38 @@ class _FormTabButtonStyles {
     required this.template,
     required this.addRow,
     required this.removeRow,
+    required this.transfer,
   });
 
-  static _FormTabButtonStyles from(
-    BuildContext context, {
-    required double height,
-    required double horizontalPadding,
-    required double verticalPadding,
-  }) {
-    final EdgeInsets padding = EdgeInsets.symmetric(
-      horizontal: horizontalPadding,
-      vertical: verticalPadding,
-    );
-
+  static _FormTabButtonStyles from(BuildContext context) {
+    const minSize = Size(120, AppControls.height);
     return _FormTabButtonStyles(
-      clear: ElevatedButton.styleFrom(
-        backgroundColor: Colors.red.shade100,
-        foregroundColor: Colors.red.shade900,
-        minimumSize: Size(120, height),
-        padding: padding,
+      clear: AppControls.filled(
+        background: Colors.red.shade100,
+        foreground: Colors.red.shade900,
+        minimumSize: minSize,
       ),
-      update: ElevatedButton.styleFrom(
-        backgroundColor: Colors.blue.shade100,
-        foregroundColor: Colors.blue.shade900,
-        minimumSize: Size(120, height),
-        padding: padding,
+      update: AppControls.filled(
+        background: Colors.blue.shade100,
+        foreground: Colors.blue.shade900,
+        minimumSize: minSize,
       ),
-      template: ElevatedButton.styleFrom(
-        backgroundColor: Colors.orange.shade100,
-        foregroundColor: Colors.orange.shade900,
-        minimumSize: Size(120, height),
-        padding: padding,
+      template: AppControls.filled(
+        background: Colors.orange.shade100,
+        foreground: Colors.orange.shade900,
+        minimumSize: minSize,
       ),
-      addRow: ElevatedButton.styleFrom(
-        backgroundColor: Colors.green.shade100,
-        foregroundColor: Colors.green.shade900,
-        minimumSize: Size(120, height),
-        padding: padding,
+      addRow: AppControls.filled(
+        background: Colors.green.shade100,
+        foreground: Colors.green.shade900,
+        minimumSize: minSize,
       ),
-      removeRow: ElevatedButton.styleFrom(
-        backgroundColor: Colors.red.shade100,
-        foregroundColor: Colors.red.shade900,
-        minimumSize: Size(120, height),
-        padding: padding,
+      removeRow: AppControls.filled(
+        background: Colors.red.shade100,
+        foreground: Colors.red.shade900,
+        minimumSize: minSize,
       ),
+      transfer: AppControls.tonal(context),
     );
   }
 }
@@ -2888,12 +2870,14 @@ class _FormTabHeaderSection extends StatelessWidget {
               if (showTransferButtons) ...[
                 ElevatedButton.icon(
                   onPressed: onTransferInputs,
+                  style: buttonStyles.transfer,
                   icon: const Icon(Icons.swap_horiz),
                   label: const Text('DI⇔PLI/ESI'),
                 ),
                 const SizedBox(width: 12),
                 ElevatedButton.icon(
                   onPressed: onTransferOutputs,
+                  style: buttonStyles.transfer,
                   icon: const Icon(Icons.swap_horiz),
                   label: const Text('DO⇔PLO/ESO'),
                 ),
@@ -3102,10 +3086,9 @@ class _FormTabBodySection extends StatelessWidget {
                                   ? inputControllers
                                   : plcEipInputControllers,
                               count: formState.inputCount,
-                              visibilityList:
-                                  (!useTabs || inputTabIndex == 0)
-                                      ? inputVisibility
-                                      : plcEipInputVisibility,
+                              visibilityList: (!useTabs || inputTabIndex == 0)
+                                  ? inputVisibility
+                                  : plcEipInputVisibility,
                               onVisibilityChanged: (index) =>
                                   onToggleVisibility(index, SignalType.input),
                               triggerOption: formState.triggerOption,
@@ -3128,10 +3111,9 @@ class _FormTabBodySection extends StatelessWidget {
                                   ? outputControllers
                                   : plcEipOutputControllers,
                               count: formState.outputCount,
-                              visibilityList:
-                                  (!useTabs || outputTabIndex == 0)
-                                      ? outputVisibility
-                                      : plcEipOutputVisibility,
+                              visibilityList: (!useTabs || outputTabIndex == 0)
+                                  ? outputVisibility
+                                  : plcEipOutputVisibility,
                               onVisibilityChanged: (index) =>
                                   onToggleVisibility(index, SignalType.output),
                             ),

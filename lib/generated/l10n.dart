@@ -517,6 +517,16 @@ class S {
     );
   }
 
+  /// `Clear`
+  String get common_clear {
+    return Intl.message(
+      'Clear',
+      name: 'common_clear',
+      desc: 'Common button: Clear',
+      args: [],
+    );
+  }
+
   /// `Show IO numbers`
   String get show_io_numbers {
     return Intl.message(
@@ -537,22 +547,102 @@ class S {
     );
   }
 
-  /// `Show grid lines`
-  String get show_grid_lines {
+  /// `Form defaults (new / clear)`
+  String get settings_form_defaults_section {
     return Intl.message(
-      'Show grid lines',
-      name: 'show_grid_lines',
-      desc: 'Toggle to show grid lines',
+      'Form defaults (new / clear)',
+      name: 'settings_form_defaults_section',
+      desc: 'Settings section header for form initial values',
       args: [],
     );
   }
 
-  /// `Default chart length`
-  String get default_chart_length {
+  /// `Default trigger option`
+  String get default_trigger_option {
     return Intl.message(
-      'Default chart length',
-      name: 'default_chart_length',
-      desc: 'Label for default chart length',
+      'Default trigger option',
+      name: 'default_trigger_option',
+      desc: 'Label for default trigger option',
+      args: [],
+    );
+  }
+
+  /// `Default input ports`
+  String get default_input_port {
+    return Intl.message(
+      'Default input ports',
+      name: 'default_input_port',
+      desc: 'Label for default input port count',
+      args: [],
+    );
+  }
+
+  /// `Default output ports`
+  String get default_output_port {
+    return Intl.message(
+      'Default output ports',
+      name: 'default_output_port',
+      desc: 'Label for default output port count',
+      args: [],
+    );
+  }
+
+  /// `Enable HW trigger by default`
+  String get default_hw_trigger_enabled {
+    return Intl.message(
+      'Enable HW trigger by default',
+      name: 'default_hw_trigger_enabled',
+      desc: 'Toggle to set HW port equal to camera count on new forms',
+      args: [],
+    );
+  }
+
+  /// `When on, a new form uses HW Port = camera count.`
+  String get default_hw_trigger_enabled_help {
+    return Intl.message(
+      'When on, a new form uses HW Port = camera count.',
+      name: 'default_hw_trigger_enabled_help',
+      desc: 'Help text for default HW trigger toggle',
+      args: [],
+    );
+  }
+
+  /// `Default PLC/EIP`
+  String get default_plc_eip_option {
+    return Intl.message(
+      'Default PLC/EIP',
+      name: 'default_plc_eip_option',
+      desc: 'Label for default PLC/EIP option',
+      args: [],
+    );
+  }
+
+  /// `Default time unit: milliseconds`
+  String get default_time_unit_ms {
+    return Intl.message(
+      'Default time unit: milliseconds',
+      name: 'default_time_unit_ms',
+      desc: 'Toggle default chart time unit to milliseconds',
+      args: [],
+    );
+  }
+
+  /// `Used for new charts and Clear. The chart toolbar still changes the current chart.`
+  String get default_time_unit_ms_help {
+    return Intl.message(
+      'Used for new charts and Clear. The chart toolbar still changes the current chart.',
+      name: 'default_time_unit_ms_help',
+      desc: 'Help text for default time unit',
+      args: [],
+    );
+  }
+
+  /// `Show bottom time labels`
+  String get show_bottom_unit_labels {
+    return Intl.message(
+      'Show bottom time labels',
+      name: 'show_bottom_unit_labels',
+      desc: 'Toggle bottom time labels on the chart',
       args: [],
     );
   }
@@ -637,12 +727,22 @@ class S {
     );
   }
 
-  /// `Default export folder`
+  /// `Export subfolder name`
   String get default_export_folder {
     return Intl.message(
-      'Default export folder',
+      'Export subfolder name',
       name: 'default_export_folder',
-      desc: 'Label for default export folder',
+      desc: 'Subfolder name created under the export base folder',
+      args: [],
+    );
+  }
+
+  /// `Quick save writes files into this subfolder under the base folder.`
+  String get settings_export_subfolder_help {
+    return Intl.message(
+      'Quick save writes files into this subfolder under the base folder.',
+      name: 'settings_export_subfolder_help',
+      desc: 'Help text explaining the export subfolder',
       args: [],
     );
   }
@@ -653,6 +753,16 @@ class S {
       'File name prefix',
       name: 'file_name_prefix',
       desc: 'Label for file name prefix',
+      args: [],
+    );
+  }
+
+  /// `None`
+  String get file_name_prefix_none {
+    return Intl.message(
+      'None',
+      name: 'file_name_prefix_none',
+      desc: 'Placeholder when file name prefix is empty',
       args: [],
     );
   }
@@ -1563,6 +1673,206 @@ class S {
       'Appended chart',
       name: 'concat_join_default',
       desc: 'Default join annotation label',
+      args: [],
+    );
+  }
+
+  /// `Time unit (steps / milliseconds)`
+  String get toolbar_unit_tooltip {
+    return Intl.message(
+      'Time unit (steps / milliseconds)',
+      name: 'toolbar_unit_tooltip',
+      desc: 'Tooltip for chart toolbar time unit toggle',
+      args: [],
+    );
+  }
+
+  /// `Show time labels at the bottom of the chart`
+  String get toolbar_labels_tooltip {
+    return Intl.message(
+      'Show time labels at the bottom of the chart',
+      name: 'toolbar_labels_tooltip',
+      desc: 'Tooltip for chart toolbar bottom labels toggle',
+      args: [],
+    );
+  }
+
+  /// `Edit grid (drag or tap boundaries to adjust)`
+  String get toolbar_edit_grid_tooltip {
+    return Intl.message(
+      'Edit grid (drag or tap boundaries to adjust)',
+      name: 'toolbar_edit_grid_tooltip',
+      desc: 'Tooltip for entering grid edit mode',
+      args: [],
+    );
+  }
+
+  /// `Finish grid editing`
+  String get toolbar_edit_grid_done_tooltip {
+    return Intl.message(
+      'Finish grid editing',
+      name: 'toolbar_edit_grid_done_tooltip',
+      desc: 'Tooltip for leaving grid edit mode',
+      args: [],
+    );
+  }
+
+  /// `Undo`
+  String get toolbar_undo {
+    return Intl.message(
+      'Undo',
+      name: 'toolbar_undo',
+      desc: 'Tooltip for undo',
+      args: [],
+    );
+  }
+
+  /// `Redo`
+  String get toolbar_redo {
+    return Intl.message(
+      'Redo',
+      name: 'toolbar_redo',
+      desc: 'Tooltip for redo',
+      args: [],
+    );
+  }
+
+  /// `Zoom out`
+  String get toolbar_zoom_out {
+    return Intl.message(
+      'Zoom out',
+      name: 'toolbar_zoom_out',
+      desc: 'Tooltip for zoom out',
+      args: [],
+    );
+  }
+
+  /// `Zoom in`
+  String get toolbar_zoom_in {
+    return Intl.message(
+      'Zoom in',
+      name: 'toolbar_zoom_in',
+      desc: 'Tooltip for zoom in',
+      args: [],
+    );
+  }
+
+  /// `Fit to view`
+  String get toolbar_zoom_fit {
+    return Intl.message(
+      'Fit to view',
+      name: 'toolbar_zoom_fit',
+      desc: 'Tooltip for reset zoom',
+      args: [],
+    );
+  }
+
+  /// `Fit selection`
+  String get toolbar_zoom_fit_selection {
+    return Intl.message(
+      'Fit selection',
+      name: 'toolbar_zoom_fit_selection',
+      desc: 'Tooltip for zoom to selection',
+      args: [],
+    );
+  }
+
+  /// `Current zoom`
+  String get toolbar_zoom_percent {
+    return Intl.message(
+      'Current zoom',
+      name: 'toolbar_zoom_percent',
+      desc: 'Tooltip for zoom percentage',
+      args: [],
+    );
+  }
+
+  /// `Selection length`
+  String get toolbar_selection_tooltip {
+    return Intl.message(
+      'Selection length',
+      name: 'toolbar_selection_tooltip',
+      desc: 'Tooltip for the selection length label',
+      args: [],
+    );
+  }
+
+  /// `Unsaved changes`
+  String get unsaved_changes_title {
+    return Intl.message(
+      'Unsaved changes',
+      name: 'unsaved_changes_title',
+      desc: 'Title of the quit confirmation dialog',
+      args: [],
+    );
+  }
+
+  /// `If you quit now, unsaved chart changes will be lost. Quit anyway?`
+  String get unsaved_changes_message {
+    return Intl.message(
+      'If you quit now, unsaved chart changes will be lost. Quit anyway?',
+      name: 'unsaved_changes_message',
+      desc: 'Body of the quit confirmation dialog',
+      args: [],
+    );
+  }
+
+  /// `Quit`
+  String get unsaved_changes_quit {
+    return Intl.message(
+      'Quit',
+      name: 'unsaved_changes_quit',
+      desc: 'Button to quit without saving',
+      args: [],
+    );
+  }
+
+  /// `Reset settings`
+  String get settings_reset_all {
+    return Intl.message(
+      'Reset settings',
+      name: 'settings_reset_all',
+      desc: 'Button to reset all settings except language',
+      args: [],
+    );
+  }
+
+  /// `Restores all settings except language to defaults. Form defaults apply after Clear or restart.`
+  String get settings_reset_all_help {
+    return Intl.message(
+      'Restores all settings except language to defaults. Form defaults apply after Clear or restart.',
+      name: 'settings_reset_all_help',
+      desc: 'Help text for reset settings',
+      args: [],
+    );
+  }
+
+  /// `Reset settings?`
+  String get settings_reset_all_confirm_title {
+    return Intl.message(
+      'Reset settings?',
+      name: 'settings_reset_all_confirm_title',
+      desc: 'Confirm dialog title for resetting settings',
+      args: [],
+    );
+  }
+
+  /// `All preferences except language will be restored to defaults. This cannot be undone.`
+  String get settings_reset_all_confirm_message {
+    return Intl.message(
+      'All preferences except language will be restored to defaults. This cannot be undone.',
+      name: 'settings_reset_all_confirm_message',
+      desc: 'Confirm dialog body for resetting settings',
+      args: [],
+    );
+  }
+
+  /// `Settings were reset to defaults`
+  String get settings_reset_all_done {
+    return Intl.message(
+      'Settings were reset to defaults',
+      name: 'settings_reset_all_done',
+      desc: 'SnackBar after settings reset',
       args: [],
     );
   }

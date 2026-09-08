@@ -8,19 +8,19 @@ This tab displays and edits the waveforms created from the form. Click or drag t
 
 ## Toolbar
 
-The bar above the chart:
+The bar above the chart uses icons. Hover for a short description. It wraps if the window is narrow.
 
 | Control | Description |
 | --- | --- |
 | **Lock icon** | Lock editing. While locked you cannot toggle bits, insert/delete, or reorder rows (zoom and comments still work) |
-| **Unit** | Horizontal axis. Off = **step**, on = **ms** |
-| **Labels** | Show or hide time numbers along the bottom |
-| **Edit grid** | **ms** only. Drag grid boundaries to change each step’s duration, then click **Done** |
+| **step / ms** | Horizontal axis unit. **step** = step index, **ms** = milliseconds |
+| **Labels icon** | Show or hide time numbers along the bottom |
+| **Grid icon** | **ms** only. Drag or tap grid boundaries to change each step’s duration; press again to finish |
 | **Undo / Redo** | Undo / redo edits (also Ctrl+Z / Ctrl+Y) |
 | **Zoom out / Zoom in** | Zoom around the view center. The current scale is shown as a percentage |
 | **Fit** | Fit the whole chart in the view |
-| **Fit sel** | Zoom so the selection fills the view (selection required) |
-| **Sel** | Selection length in milliseconds (ms mode) or steps (step mode) |
+| **Fit selection** | Zoom so the selection fills the view (selection required) |
+| **Selection length** | Selection length in milliseconds (ms mode) or steps (step mode) |
 
 ---
 
