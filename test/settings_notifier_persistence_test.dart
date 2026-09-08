@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_application_1/providers/settings_notifier.dart';
+import 'package:flutter_application_1/models/report/html_report_sections.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -39,10 +40,52 @@ void main() {
     expect(second.exportFolder, 'MyFolder');
   });
 
+  test('htmlReportSections は保存し、再生成時に復元できる', () async {
+    final first = SettingsNotifier();
+    await first.initialized;
+
+    expect(first.htmlReportSections, HtmlReportSectionSet.all);
+
+    const selected = HtmlReportSectionSet(
+      composition: true,
+      trigger: false,
+      signals: true,
+      camera: false,
+      chart: true,
+    );
+    first.htmlReportSections = selected;
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getStringList('htmlReportSections'), [
+      'composition',
+      'signals',
+      'chart',
+    ]);
+
+    final second = SettingsNotifier();
+    await second.initialized;
+    expect(second.htmlReportSections, selected);
+  });
+
+  test('htmlReportSections は空の選択を保存しない', () async {
+    final settings = SettingsNotifier();
+    await settings.initialized;
+
+    settings.htmlReportSections = const HtmlReportSectionSet(
+      composition: false,
+      trigger: false,
+      signals: false,
+      camera: false,
+      chart: false,
+    );
+
+    expect(settings.htmlReportSections, HtmlReportSectionSet.all);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.containsKey('htmlReportSections'), isFalse);
+  });
+
   test('msPerStep は起動時に 1.0 へ初期化し、同一セッションでは変更を保持する', () async {
-    SharedPreferences.setMockInitialValues(<String, Object>{
-      'msPerStep': 10.0,
-    });
+    SharedPreferences.setMockInitialValues(<String, Object>{'msPerStep': 10.0});
 
     final settings = SettingsNotifier();
     await settings.initialized;
@@ -59,5 +102,3 @@ void main() {
     expect(restarted.msPerStep, 1.0);
   });
 }
-
-

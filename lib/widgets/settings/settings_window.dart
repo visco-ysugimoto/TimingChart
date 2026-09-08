@@ -7,6 +7,7 @@ import '../../providers/settings_notifier.dart';
 import '../../providers/locale_notifier.dart';
 import '../../models/chart/signal_type.dart';
 import '../../suggestion_loader.dart';
+import '../report/html_report_sections_picker.dart';
 
 // ────────────────────────────────────────────────────────────
 //  環境設定ウインドウ
@@ -102,40 +103,39 @@ class _SettingsWindowState extends State<SettingsWindow> {
     Color? selected = currentColor;
     return showDialog<Color>(
       context: context,
-      builder:
-          (_) => AlertDialog(
-            title: Text(s.color_picker_title),
-            content: SizedBox(
-              width: 300,
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final c in preset)
-                    GestureDetector(
-                      onTap: () {
-                        Navigator.of(context).pop(c);
-                      },
-                      child: Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: c,
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: Colors.black12),
-                        ),
-                      ),
+      builder: (_) => AlertDialog(
+        title: Text(s.color_picker_title),
+        content: SizedBox(
+          width: 300,
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final c in preset)
+                GestureDetector(
+                  onTap: () {
+                    Navigator.of(context).pop(c);
+                  },
+                  child: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: c,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: Colors.black12),
                     ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(selected),
-                child: Text(s.common_cancel),
-              ),
+                  ),
+                ),
             ],
           ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(selected),
+            child: Text(s.common_cancel),
+          ),
+        ],
+      ),
     );
   }
 
@@ -167,10 +167,8 @@ class _SettingsWindowState extends State<SettingsWindow> {
               onTap: () async {
                 final selected = await showDialog<int>(
                   context: context,
-                  builder:
-                      (_) => _CameraCountDialog(
-                        initial: settings.defaultCameraCount,
-                      ),
+                  builder: (_) =>
+                      _CameraCountDialog(initial: settings.defaultCameraCount),
                 );
                 if (selected != null) {
                   settings.defaultCameraCount = selected;
@@ -207,28 +205,26 @@ class _SettingsWindowState extends State<SettingsWindow> {
                 );
                 final updated = await showDialog<int>(
                   context: context,
-                  builder:
-                      (_) => AlertDialog(
-                        title: Text(s.default_chart_length),
-                        content: TextField(
-                          controller: controller,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(hintText: '50'),
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: Text(s.common_cancel),
-                          ),
-                          TextButton(
-                            onPressed:
-                                () => Navigator.of(
-                                  context,
-                                ).pop(int.tryParse(controller.text)),
-                            child: Text(s.common_ok),
-                          ),
-                        ],
+                  builder: (_) => AlertDialog(
+                    title: Text(s.default_chart_length),
+                    content: TextField(
+                      controller: controller,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(hintText: '50'),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: Text(s.common_cancel),
                       ),
+                      TextButton(
+                        onPressed: () => Navigator.of(
+                          context,
+                        ).pop(int.tryParse(controller.text)),
+                        child: Text(s.common_ok),
+                      ),
+                    ],
+                  ),
                 );
                 if (updated != null && updated > 0) {
                   settings.defaultChartLength = updated;
@@ -378,6 +374,16 @@ class _SettingsWindowState extends State<SettingsWindow> {
               value: settings.quickExportEnabled,
               onChanged: (v) => settings.quickExportEnabled = v,
             ),
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const Icon(Icons.html),
+              title: Text(s.settings_html_export_sections),
+              subtitle: Text(s.settings_html_export_sections_help),
+            ),
+            HtmlReportSectionsPicker(
+              value: settings.htmlReportSections,
+              onChanged: (next) => settings.htmlReportSections = next,
+            ),
             ListTile(
               leading: const Icon(Icons.folder_open),
               title: Text(s.default_export_folder),
@@ -389,29 +395,26 @@ class _SettingsWindowState extends State<SettingsWindow> {
                 );
                 final updated = await showDialog<String>(
                   context: context,
-                  builder:
-                      (_) => AlertDialog(
-                        title: Text(s.default_export_folder),
-                        content: TextField(
-                          controller: controller,
-                          decoration: InputDecoration(
-                            hintText: s.hint_export_folder,
-                          ),
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: Text(s.common_cancel),
-                          ),
-                          TextButton(
-                            onPressed:
-                                () => Navigator.of(
-                                  context,
-                                ).pop(controller.text.trim()),
-                            child: Text(s.common_ok),
-                          ),
-                        ],
+                  builder: (_) => AlertDialog(
+                    title: Text(s.default_export_folder),
+                    content: TextField(
+                      controller: controller,
+                      decoration: InputDecoration(
+                        hintText: s.hint_export_folder,
                       ),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: Text(s.common_cancel),
+                      ),
+                      TextButton(
+                        onPressed: () =>
+                            Navigator.of(context).pop(controller.text.trim()),
+                        child: Text(s.common_ok),
+                      ),
+                    ],
+                  ),
                 );
                 if (updated != null && updated.isNotEmpty) {
                   settings.exportFolder = updated;
@@ -429,29 +432,26 @@ class _SettingsWindowState extends State<SettingsWindow> {
                 );
                 final updated = await showDialog<String>(
                   context: context,
-                  builder:
-                      (_) => AlertDialog(
-                        title: Text(s.file_name_prefix),
-                        content: TextField(
-                          controller: controller,
-                          decoration: InputDecoration(
-                            hintText: s.hint_filename_prefix,
-                          ),
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: Text(s.common_cancel),
-                          ),
-                          TextButton(
-                            onPressed:
-                                () => Navigator.of(
-                                  context,
-                                ).pop(controller.text.trim()),
-                            child: Text(s.common_ok),
-                          ),
-                        ],
+                  builder: (_) => AlertDialog(
+                    title: Text(s.file_name_prefix),
+                    content: TextField(
+                      controller: controller,
+                      decoration: InputDecoration(
+                        hintText: s.hint_filename_prefix,
                       ),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: Text(s.common_cancel),
+                      ),
+                      TextButton(
+                        onPressed: () =>
+                            Navigator.of(context).pop(controller.text.trim()),
+                        child: Text(s.common_ok),
+                      ),
+                    ],
+                  ),
                 );
                 if (updated != null && updated.isNotEmpty) {
                   settings.fileNamePrefix = updated;

@@ -4,9 +4,9 @@ import 'package:flutter_application_1/models/chart/signal_data.dart';
 import 'package:flutter_application_1/models/chart/signal_type.dart';
 import 'package:flutter_application_1/models/form/camera_table_types.dart';
 import 'package:flutter_application_1/models/form/form_state.dart';
+import 'package:flutter_application_1/models/report/html_report_sections.dart';
 import 'package:flutter_application_1/services/report_html_builder.dart';
 import 'package:flutter_application_1/widgets/form/form_tab_constants.dart';
-
 
 void main() {
   group('ReportHtmlBuilder', () {
@@ -81,7 +81,8 @@ void main() {
         ],
         rowModes: [kRowModeSimultaneous],
         triggerMarkdown: '## コードトリガ\n同時に複数の入力を使います。',
-        chartSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50"></svg>',
+        chartSvg:
+            '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50"></svg>',
       );
 
       final html = ReportHtmlBuilder.build(data);
@@ -117,6 +118,55 @@ void main() {
       expect(html, contains('<script>'));
     });
 
+    test('選択していないセクションは HTML に出さない', () {
+      const data = ReportHtmlData(
+        languageCode: 'ja',
+        formState: TimingFormState(
+          triggerOption: TriggerOptions.code,
+          ioPort: 32,
+          hwPort: 2,
+          camera: 2,
+          inputCount: 32,
+          outputCount: 16,
+        ),
+        plcEipOption: PlcEipOptions.none,
+        signals: [
+          SignalData(
+            name: 'TRIGGER',
+            signalType: SignalType.input,
+            values: [0, 1],
+          ),
+        ],
+        signalPorts: [1],
+        tableData: [
+          [CellMode.mode1, CellMode.none],
+        ],
+        rowModes: [kRowModeSimultaneous],
+        triggerMarkdown: '## コードトリガ',
+        chartSvg:
+            '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50"></svg>',
+        sections: HtmlReportSectionSet(
+          composition: false,
+          trigger: false,
+          signals: true,
+          camera: false,
+          chart: true,
+        ),
+      );
+
+      final html = ReportHtmlBuilder.build(data);
+      expect(html, isNot(contains('id="composition"')));
+      expect(html, isNot(contains('id="trigger"')));
+      expect(html, isNot(contains('コードトリガ')));
+      expect(html, contains('id="signals"'));
+      expect(html, contains('TRIGGER'));
+      expect(html, isNot(contains('id="camera"')));
+      expect(html, isNot(contains('順次取込')));
+      expect(html, contains('id="chart"'));
+      expect(html, contains('chart-viewport'));
+      expect(html, contains('<script>'));
+    });
+
     test('カメラが1台のときは同時取込列を出さない', () {
       const data = ReportHtmlData(
         languageCode: 'ja',
@@ -130,7 +180,11 @@ void main() {
         ),
         plcEipOption: PlcEipOptions.none,
         signals: [
-          SignalData(name: 'TRIGGER', signalType: SignalType.input, values: [0]),
+          SignalData(
+            name: 'TRIGGER',
+            signalType: SignalType.input,
+            values: [0],
+          ),
         ],
         signalPorts: [1],
         tableData: [
@@ -159,11 +213,7 @@ void main() {
         ),
         plcEipOption: PlcEipOptions.none,
         signals: [
-          SignalData(
-            name: 'BUSY',
-            signalType: SignalType.output,
-            values: [0],
-          ),
+          SignalData(name: 'BUSY', signalType: SignalType.output, values: [0]),
           SignalData(
             name: 'Control Code3(bit)',
             signalType: SignalType.control,
@@ -196,7 +246,10 @@ void main() {
         html.indexOf('<h3>Input</h3>'),
         html.indexOf('<h3>Output</h3>'),
       );
-      expect(inputHtml.indexOf('TRIGGER'), lessThan(inputHtml.indexOf('Control Code2(bit)')));
+      expect(
+        inputHtml.indexOf('TRIGGER'),
+        lessThan(inputHtml.indexOf('Control Code2(bit)')),
+      );
       expect(
         inputHtml.indexOf('Control Code2(bit)'),
         lessThan(inputHtml.indexOf('Control Code3(bit)')),
@@ -253,8 +306,16 @@ void main() {
         ),
         plcEipOption: PlcEipOptions.plc,
         signals: [
-          SignalData(name: 'TRIGGER', signalType: SignalType.input, values: [0]),
-          SignalData(name: 'TRIGGER', signalType: SignalType.input, values: [0]),
+          SignalData(
+            name: 'TRIGGER',
+            signalType: SignalType.input,
+            values: [0],
+          ),
+          SignalData(
+            name: 'TRIGGER',
+            signalType: SignalType.input,
+            values: [0],
+          ),
           SignalData(name: 'BUSY', signalType: SignalType.output, values: [0]),
           SignalData(
             name: 'PLO1: BUSY',
@@ -412,7 +473,11 @@ void main() {
         ),
         plcEipOption: PlcEipOptions.none,
         signals: [
-          SignalData(name: 'TRIGGER', signalType: SignalType.input, values: [0]),
+          SignalData(
+            name: 'TRIGGER',
+            signalType: SignalType.input,
+            values: [0],
+          ),
           SignalData(name: 'BUSY', signalType: SignalType.output, values: [0]),
         ],
         signalPorts: [1, 2],

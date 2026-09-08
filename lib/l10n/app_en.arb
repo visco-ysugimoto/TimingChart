@@ -226,6 +226,46 @@
   "@settings_quick_export": {
       "description": "Toggle quick export without file dialog"
   },
+  "settings_html_export_sections": "Default HTML report sections",
+  "@settings_html_export_sections": {
+      "description": "Settings: default sections included in HTML reports"
+  },
+  "settings_html_export_sections_help": "Used as the initial selection when exporting a report. You can change it each time.",
+  "@settings_html_export_sections_help": {
+      "description": "Help text for default HTML report sections"
+  },
+  "html_export_sections_title": "HTML report sections",
+  "@html_export_sections_title": {
+      "description": "Dialog title for choosing HTML report sections"
+  },
+  "html_export_sections_subtitle": "Choose which sections to include",
+  "@html_export_sections_subtitle": {
+      "description": "Dialog subtitle for HTML report section selection"
+  },
+  "html_export_sections_export": "Export",
+  "@html_export_sections_export": {
+      "description": "Confirm button to export the HTML report"
+  },
+  "html_export_section_composition": "Configuration",
+  "@html_export_section_composition": {
+      "description": "HTML report section: configuration"
+  },
+  "html_export_section_trigger": "Trigger mode",
+  "@html_export_section_trigger": {
+      "description": "HTML report section: trigger mode"
+  },
+  "html_export_section_signals": "Signals",
+  "@html_export_section_signals": {
+      "description": "HTML report section: signals"
+  },
+  "html_export_section_camera": "Camera configuration",
+  "@html_export_section_camera": {
+      "description": "HTML report section: camera table"
+  },
+  "html_export_section_chart": "Chart",
+  "@html_export_section_chart": {
+      "description": "HTML report section: chart"
+  },
   "export_open_folder": "Open folder",
   "@export_open_folder": {
       "description": "SnackBar action to open export folder"

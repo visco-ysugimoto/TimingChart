@@ -1247,6 +1247,106 @@ class S {
     );
   }
 
+  /// `Default HTML report sections`
+  String get settings_html_export_sections {
+    return Intl.message(
+      'Default HTML report sections',
+      name: 'settings_html_export_sections',
+      desc: 'Settings: default sections included in HTML reports',
+      args: [],
+    );
+  }
+
+  /// `Used as the initial selection when exporting a report. You can change it each time.`
+  String get settings_html_export_sections_help {
+    return Intl.message(
+      'Used as the initial selection when exporting a report. You can change it each time.',
+      name: 'settings_html_export_sections_help',
+      desc: 'Help text for default HTML report sections',
+      args: [],
+    );
+  }
+
+  /// `HTML report sections`
+  String get html_export_sections_title {
+    return Intl.message(
+      'HTML report sections',
+      name: 'html_export_sections_title',
+      desc: 'Dialog title for choosing HTML report sections',
+      args: [],
+    );
+  }
+
+  /// `Choose which sections to include`
+  String get html_export_sections_subtitle {
+    return Intl.message(
+      'Choose which sections to include',
+      name: 'html_export_sections_subtitle',
+      desc: 'Dialog subtitle for HTML report section selection',
+      args: [],
+    );
+  }
+
+  /// `Export`
+  String get html_export_sections_export {
+    return Intl.message(
+      'Export',
+      name: 'html_export_sections_export',
+      desc: 'Confirm button to export the HTML report',
+      args: [],
+    );
+  }
+
+  /// `Configuration`
+  String get html_export_section_composition {
+    return Intl.message(
+      'Configuration',
+      name: 'html_export_section_composition',
+      desc: 'HTML report section: configuration',
+      args: [],
+    );
+  }
+
+  /// `Trigger mode`
+  String get html_export_section_trigger {
+    return Intl.message(
+      'Trigger mode',
+      name: 'html_export_section_trigger',
+      desc: 'HTML report section: trigger mode',
+      args: [],
+    );
+  }
+
+  /// `Signals`
+  String get html_export_section_signals {
+    return Intl.message(
+      'Signals',
+      name: 'html_export_section_signals',
+      desc: 'HTML report section: signals',
+      args: [],
+    );
+  }
+
+  /// `Camera configuration`
+  String get html_export_section_camera {
+    return Intl.message(
+      'Camera configuration',
+      name: 'html_export_section_camera',
+      desc: 'HTML report section: camera table',
+      args: [],
+    );
+  }
+
+  /// `Chart`
+  String get html_export_section_chart {
+    return Intl.message(
+      'Chart',
+      name: 'html_export_section_chart',
+      desc: 'HTML report section: chart',
+      args: [],
+    );
+  }
+
   /// `Open folder`
   String get export_open_folder {
     return Intl.message(

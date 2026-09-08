@@ -313,6 +313,28 @@ class MessageLookup extends MessageLookupByLibrary {
     "formTabTitle": MessageLookupByLibrary.simpleMessage("Input Form"),
     "hint_export_folder": MessageLookupByLibrary.simpleMessage("Export Chart"),
     "hint_filename_prefix": MessageLookupByLibrary.simpleMessage("prefix_"),
+    "html_export_section_camera": MessageLookupByLibrary.simpleMessage(
+      "Camera configuration",
+    ),
+    "html_export_section_chart": MessageLookupByLibrary.simpleMessage("Chart"),
+    "html_export_section_composition": MessageLookupByLibrary.simpleMessage(
+      "Configuration",
+    ),
+    "html_export_section_signals": MessageLookupByLibrary.simpleMessage(
+      "Signals",
+    ),
+    "html_export_section_trigger": MessageLookupByLibrary.simpleMessage(
+      "Trigger mode",
+    ),
+    "html_export_sections_export": MessageLookupByLibrary.simpleMessage(
+      "Export",
+    ),
+    "html_export_sections_subtitle": MessageLookupByLibrary.simpleMessage(
+      "Choose which sections to include",
+    ),
+    "html_export_sections_title": MessageLookupByLibrary.simpleMessage(
+      "HTML report sections",
+    ),
     "hwPortLabel": MessageLookupByLibrary.simpleMessage("Total HW Port"),
     "hwTriggerPrefix": MessageLookupByLibrary.simpleMessage("HW Trigger"),
     "hwTriggerSectionTitle": MessageLookupByLibrary.simpleMessage(
@@ -366,6 +388,12 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "settings_export_base_directory_not_set":
         MessageLookupByLibrary.simpleMessage("Not set (show save dialog)"),
+    "settings_html_export_sections": MessageLookupByLibrary.simpleMessage(
+      "Default HTML report sections",
+    ),
+    "settings_html_export_sections_help": MessageLookupByLibrary.simpleMessage(
+      "Used as the initial selection when exporting a report. You can change it each time.",
+    ),
     "settings_nav_appearance": MessageLookupByLibrary.simpleMessage(
       "Appearance",
     ),

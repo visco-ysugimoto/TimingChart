@@ -261,6 +261,26 @@ class MessageLookup extends MessageLookupByLibrary {
     "formTabTitle": MessageLookupByLibrary.simpleMessage("入力フォーム"),
     "hint_export_folder": MessageLookupByLibrary.simpleMessage("Export Chart"),
     "hint_filename_prefix": MessageLookupByLibrary.simpleMessage("prefix_"),
+    "html_export_section_camera": MessageLookupByLibrary.simpleMessage(
+      "カメラ取込表",
+    ),
+    "html_export_section_chart": MessageLookupByLibrary.simpleMessage("チャート"),
+    "html_export_section_composition": MessageLookupByLibrary.simpleMessage(
+      "構成",
+    ),
+    "html_export_section_signals": MessageLookupByLibrary.simpleMessage("信号一覧"),
+    "html_export_section_trigger": MessageLookupByLibrary.simpleMessage(
+      "トリガー方式",
+    ),
+    "html_export_sections_export": MessageLookupByLibrary.simpleMessage(
+      "エクスポート",
+    ),
+    "html_export_sections_subtitle": MessageLookupByLibrary.simpleMessage(
+      "出力する項目を選択してください",
+    ),
+    "html_export_sections_title": MessageLookupByLibrary.simpleMessage(
+      "HTMLレポートの出力項目",
+    ),
     "hwPortLabel": MessageLookupByLibrary.simpleMessage("HW ポート総数"),
     "hwTriggerPrefix": MessageLookupByLibrary.simpleMessage("HW トリガー"),
     "hwTriggerSectionTitle": MessageLookupByLibrary.simpleMessage("HW トリガー信号"),
@@ -302,6 +322,12 @@ class MessageLookup extends MessageLookupByLibrary {
     ),
     "settings_export_base_directory_not_set":
         MessageLookupByLibrary.simpleMessage("未設定（保存時にダイアログ表示）"),
+    "settings_html_export_sections": MessageLookupByLibrary.simpleMessage(
+      "HTMLレポートのデフォルト出力項目",
+    ),
+    "settings_html_export_sections_help": MessageLookupByLibrary.simpleMessage(
+      "レポート書き出し時の初期選択です。書き出しのたびに変更できます。",
+    ),
     "settings_nav_appearance": MessageLookupByLibrary.simpleMessage("表示"),
     "settings_nav_chart": MessageLookupByLibrary.simpleMessage("チャート"),
     "settings_nav_general": MessageLookupByLibrary.simpleMessage("全般"),

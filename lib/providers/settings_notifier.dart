@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/chart/signal_type.dart';
+import '../models/report/html_report_sections.dart';
 
 class SettingsNotifier extends ChangeNotifier {
   SharedPreferences? _prefs;
@@ -28,6 +29,7 @@ class SettingsNotifier extends ChangeNotifier {
   static const _kFileNamePrefix = 'fileNamePrefix';
   static const _kLastExportDirectory = 'lastExportDirectory';
   static const _kQuickExportEnabled = 'quickExportEnabled';
+  static const _kHtmlReportSections = 'htmlReportSections';
   static const _kDarkMode = 'darkMode';
   static const _kAccentColor = 'accentColor';
 
@@ -83,7 +85,11 @@ class SettingsNotifier extends ChangeNotifier {
     _exportFolder = p.getString(_kExportFolder) ?? _exportFolder;
     _fileNamePrefix = p.getString(_kFileNamePrefix) ?? _fileNamePrefix;
     _lastExportDirectory = p.getString(_kLastExportDirectory);
-    _quickExportEnabled = p.getBool(_kQuickExportEnabled) ?? _quickExportEnabled;
+    _quickExportEnabled =
+        p.getBool(_kQuickExportEnabled) ?? _quickExportEnabled;
+    _htmlReportSections = HtmlReportSectionSet.fromPrefIds(
+      p.getStringList(_kHtmlReportSections),
+    );
 
     // 外観
     _darkMode = p.getBool(_kDarkMode) ?? _darkMode;
@@ -282,8 +288,9 @@ class SettingsNotifier extends ChangeNotifier {
   set lastExportDirectory(String? path) {
     final normalized = path?.trim();
     if (normalized == _lastExportDirectory) return;
-    _lastExportDirectory =
-        (normalized == null || normalized.isEmpty) ? null : normalized;
+    _lastExportDirectory = (normalized == null || normalized.isEmpty)
+        ? null
+        : normalized;
     if (_lastExportDirectory == null) {
       _prefs?.remove(_kLastExportDirectory);
     } else {
@@ -298,6 +305,15 @@ class SettingsNotifier extends ChangeNotifier {
     if (v == _quickExportEnabled) return;
     _quickExportEnabled = v;
     _prefs?.setBool(_kQuickExportEnabled, v);
+    notifyListeners();
+  }
+
+  HtmlReportSectionSet _htmlReportSections = HtmlReportSectionSet.all;
+  HtmlReportSectionSet get htmlReportSections => _htmlReportSections;
+  set htmlReportSections(HtmlReportSectionSet v) {
+    if (!v.hasAny || v == _htmlReportSections) return;
+    _htmlReportSections = v;
+    _prefs?.setStringList(_kHtmlReportSections, v.toPrefIds());
     notifyListeners();
   }
 

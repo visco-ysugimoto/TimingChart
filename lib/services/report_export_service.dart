@@ -16,6 +16,7 @@ import '../widgets/chart/timing_chart.dart';
 import '../widgets/form/form_tab.dart' show FormTabState;
 import '../widgets/form/form_tab_constants.dart';
 import '../widgets/form/form_tab_rules.dart';
+import '../models/report/html_report_sections.dart';
 import 'export_service.dart';
 import 'chart_svg_builder.dart';
 import 'report_html_builder.dart';
@@ -28,6 +29,7 @@ class ReportExportService {
     required List<SignalData> chartSignals,
     required List<int> chartPortNumbers,
     required TimingChartController chartController,
+    required HtmlReportSectionSet sections,
     FormTabState? formTabState,
     TimingChartState? timingChartState,
     List<String> inputNames = const [],
@@ -45,27 +47,34 @@ class ReportExportService {
       await SchedulerBinding.instance.endOfFrame;
       if (!context.mounted) return false;
 
-      final locale =
-          Provider.of<LocaleNotifier>(context, listen: false).locale;
+      final locale = Provider.of<LocaleNotifier>(context, listen: false).locale;
       final languageCode = locale.languageCode.toLowerCase();
 
       final plcEipOption = formTabState?.plcOption ?? PlcEipOptions.none;
-      final signalsAndPorts = await _resolveSignals(
-        chartSignals: chartSignals,
-        chartPortNumbers: chartPortNumbers,
-        chartIoSources: chartIoSources,
-        chartController: chartController,
-        timingChartState: timingChartState,
-        formState: formState,
-        inputNames: inputNames,
-        plcEipInputNames: plcEipInputNames,
-        outputNames: outputNames,
-        plcEipOutputNames: plcEipOutputNames,
-        plcEipOption: plcEipOption,
-      );
+      var signals = const <SignalData>[];
+      var signalPorts = const <int>[];
+      var signalSources = const <IoChannelSource>[];
+      if (sections.signals) {
+        final signalsAndPorts = await _resolveSignals(
+          chartSignals: chartSignals,
+          chartPortNumbers: chartPortNumbers,
+          chartIoSources: chartIoSources,
+          chartController: chartController,
+          timingChartState: timingChartState,
+          formState: formState,
+          inputNames: inputNames,
+          plcEipInputNames: plcEipInputNames,
+          outputNames: outputNames,
+          plcEipOutputNames: plcEipOutputNames,
+          plcEipOption: plcEipOption,
+        );
+        signals = signalsAndPorts.signals;
+        signalPorts = signalsAndPorts.ports;
+        signalSources = signalsAndPorts.sources;
+      }
 
       String? chartSvg;
-      if (timingChartState != null) {
+      if (sections.chart && timingChartState != null) {
         final exportData = timingChartState.buildChartSvgExportData();
         if (exportData != null) {
           chartSvg = ChartSvgBuilder.build(exportData);
@@ -73,23 +82,31 @@ class ReportExportService {
       }
       if (!context.mounted) return false;
 
-      final triggerMarkdown = await _loadTriggerMarkdown(
-        triggerOption: formState.triggerOption,
-        languageCode: languageCode,
-      );
+      final triggerMarkdown = sections.trigger
+          ? await _loadTriggerMarkdown(
+              triggerOption: formState.triggerOption,
+              languageCode: languageCode,
+            )
+          : '';
+      if (!context.mounted) return false;
 
       final html = ReportHtmlBuilder.build(
         ReportHtmlData(
           languageCode: languageCode,
           formState: formState,
           plcEipOption: plcEipOption,
-          signals: signalsAndPorts.signals,
-          signalPorts: signalsAndPorts.ports,
-          signalSources: signalsAndPorts.sources,
-          tableData: formTabState?.getTableData() ?? const <List<CellMode>>[],
-          rowModes: formTabState?.getRowModes() ?? const <String>[],
+          signals: signals,
+          signalPorts: signalPorts,
+          signalSources: signalSources,
+          tableData: sections.camera
+              ? formTabState?.getTableData() ?? const <List<CellMode>>[]
+              : const <List<CellMode>>[],
+          rowModes: sections.camera
+              ? formTabState?.getRowModes() ?? const <String>[]
+              : const <String>[],
           triggerMarkdown: triggerMarkdown,
           chartSvg: chartSvg,
+          sections: sections,
         ),
       );
 
@@ -107,8 +124,9 @@ class ReportExportService {
   }
 
   static Future<
-      ({List<SignalData> signals, List<int> ports, List<IoChannelSource> sources})
-  > _resolveSignals({
+    ({List<SignalData> signals, List<int> ports, List<IoChannelSource> sources})
+  >
+  _resolveSignals({
     required List<SignalData> chartSignals,
     required List<int> chartPortNumbers,
     required List<IoChannelSource> chartIoSources,
@@ -164,8 +182,9 @@ class ReportExportService {
         final index = takeChartIndex(name);
         if (index < 0) continue;
         final original = chartSignals[index];
-        final port =
-            index < chartPortNumbers.length ? chartPortNumbers[index] : 0;
+        final port = index < chartPortNumbers.length
+            ? chartPortNumbers[index]
+            : 0;
         await addLabeled(original, port, sourceOf(index, original));
       }
       for (var i = 0; i < chartSignals.length; i++) {
@@ -260,14 +279,12 @@ class ReportExportService {
       List<String> names, {
       required bool isPlcEipChannel,
     }) async {
-      final limit =
-          names.length < formState.inputCount
-              ? names.length
-              : formState.inputCount;
-      final source =
-          isPlcEipChannel
-              ? _plcEipSourceOf(plcEipOption)
-              : IoChannelSource.dio;
+      final limit = names.length < formState.inputCount
+          ? names.length
+          : formState.inputCount;
+      final source = isPlcEipChannel
+          ? _plcEipSourceOf(plcEipOption)
+          : IoChannelSource.dio;
       for (var i = 0; i < limit; i++) {
         final raw = names[i].trim();
         if (raw.isEmpty) continue;
@@ -294,11 +311,7 @@ class ReportExportService {
           continue;
         }
         signals.add(
-          SignalData(
-            name: labelName,
-            signalType: type,
-            values: const [],
-          ),
+          SignalData(name: labelName, signalType: type, values: const []),
         );
         ports.add(port);
         sources.add(source);
@@ -322,10 +335,9 @@ class ReportExportService {
     required List<IoChannelSource> sources,
   }) async {
     Future<void> mergeDio() async {
-      final limit =
-          outputNames.length < formState.outputCount
-              ? outputNames.length
-              : formState.outputCount;
+      final limit = outputNames.length < formState.outputCount
+          ? outputNames.length
+          : formState.outputCount;
       for (var i = 0; i < limit; i++) {
         final raw = outputNames[i].trim();
         if (raw.isEmpty) continue;
@@ -357,10 +369,9 @@ class ReportExportService {
 
     Future<void> mergePlcEip() async {
       if (plcEipOption == PlcEipOptions.none) return;
-      final limit =
-          plcEipOutputNames.length < formState.outputCount
-              ? plcEipOutputNames.length
-              : formState.outputCount;
+      final limit = plcEipOutputNames.length < formState.outputCount
+          ? plcEipOutputNames.length
+          : formState.outputCount;
       final source = _plcEipSourceOf(plcEipOption);
       for (var i = 0; i < limit; i++) {
         final raw = plcEipOutputNames[i].trim();

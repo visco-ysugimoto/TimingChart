@@ -1,4 +1,4 @@
-﻿import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/scheduler.dart';
@@ -42,6 +42,7 @@ import 'services/chart_concat_service.dart';
 import 'widgets/chart/chart_concat_dialogs.dart';
 import 'widgets/form/form_tab_controller_mapper.dart';
 import 'widgets/form/form_tab_rules.dart';
+import 'widgets/report/html_report_sections_dialog.dart';
 
 /// ZIQインポートテストモードの有効/無効を制御する環境変数
 const bool kZiqImportTest = bool.fromEnvironment(
@@ -112,10 +113,9 @@ Future<void> _runZiqImportTestFromContents({
   if (ini != null) {
     final ioActive = VxVisMgrParser.parseIOActive(ini);
     final ioSetting = VxVisMgrParser.parseIOSetting(ini);
-    final enabled =
-        VxVisMgrParser.parseStatusSignalSettings(
-          ini,
-        ).where((s) => s.enabled).toList();
+    final enabled = VxVisMgrParser.parseStatusSignalSettings(
+      ini,
+    ).where((s) => s.enabled).toList();
 
     if (ioActive != null) {
       debugPrint(
@@ -125,14 +125,11 @@ Future<void> _runZiqImportTestFromContents({
     if (ioSetting != null) {
       final trigger =
           (ioSetting.plcCommandEnabled || ioSetting.ethernetIpCommandEnabled)
-              ? 'Command Trigger'
-              : (ioSetting.triggerMode == 0
-                  ? 'Code Trigger'
-                  : 'Single Trigger');
-      final plcEip =
-          ioSetting.plcLinkEnabled
-              ? 'PLC'
-              : (ioSetting.ethernetIpEnabled ? 'EIP' : 'None');
+          ? 'Command Trigger'
+          : (ioSetting.triggerMode == 0 ? 'Code Trigger' : 'Single Trigger');
+      final plcEip = ioSetting.plcLinkEnabled
+          ? 'PLC'
+          : (ioSetting.ethernetIpEnabled ? 'EIP' : 'None');
       debugPrint(' IOSetting: trigger=$trigger, PLC/EIP=$plcEip');
     }
     debugPrint(' Enabled signals: ${enabled.length}');
@@ -159,10 +156,9 @@ Future<void> _runZiqImportTestFromContents({
   if (ini == null) return;
 
   final mapping = await VxVisMgrMappingLoader.loadMapping();
-  final enabled =
-      VxVisMgrParser.parseStatusSignalSettings(
-        ini,
-      ).where((s) => s.enabled).toList();
+  final enabled = VxVisMgrParser.parseStatusSignalSettings(
+    ini,
+  ).where((s) => s.enabled).toList();
 
   String plcEipOption = 'None';
   final ioSetting2 = VxVisMgrParser.parseIOSetting(ini);
@@ -306,8 +302,9 @@ class TimingChartGeneratorApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer2<LocaleNotifier, SettingsNotifier>(
       builder: (context, localeNotifier, settings, child) {
-        final brightness =
-            settings.darkMode ? Brightness.dark : Brightness.light;
+        final brightness = settings.darkMode
+            ? Brightness.dark
+            : Brightness.light;
         final baseTheme = ThemeData(brightness: brightness);
         return MaterialApp(
           title: 'Timing Chart Generator',
@@ -329,10 +326,9 @@ class TimingChartGeneratorApp extends StatelessWidget {
             ),
             inputDecorationTheme: baseTheme.inputDecorationTheme.copyWith(
               filled: true,
-              fillColor:
-                  brightness == Brightness.dark
-                      ? Colors.grey[800]
-                      : Colors.white,
+              fillColor: brightness == Brightness.dark
+                  ? Colors.grey[800]
+                  : Colors.white,
             ),
             dropdownMenuTheme: baseTheme.dropdownMenuTheme.copyWith(
               menuStyle: MenuStyle(
@@ -436,10 +432,9 @@ class _TimingChartGeneratorHomePageState
     final chart = _timingChartKey.currentState;
     final currentNames =
         chart?.getSignalIdNames() ?? _chartSignals.map((s) => s.name).toList();
-    final currentValues =
-        chart != null
-            ? chart.getChartData()
-            : _chartSignals.map((s) => s.values).toList();
+    final currentValues = chart != null
+        ? chart.getChartData()
+        : _chartSignals.map((s) => s.values).toList();
 
     final nameToValues = <String, List<int>>{};
     for (int i = 0; i < currentNames.length; i++) {
@@ -449,14 +444,13 @@ class _TimingChartGeneratorHomePageState
   }
 
   void _commitNameToValues(Map<String, List<int>> nameToValues) {
-    final updatedSignals =
-        _chartSignals.map((signal) {
-          final stored = nameToValues[signal.name];
-          if (stored != null) {
-            return signal.copyWith(values: stored);
-          }
-          return signal;
-        }).toList();
+    final updatedSignals = _chartSignals.map((signal) {
+      final stored = nameToValues[signal.name];
+      if (stored != null) {
+        return signal.copyWith(values: stored);
+      }
+      return signal;
+    }).toList();
 
     setState(() {
       _chartSignals = updatedSignals;
@@ -597,8 +591,9 @@ class _TimingChartGeneratorHomePageState
       _chartSignals[originalIndex] = _chartSignals[originalIndex].copyWith(
         showIoNumber: showIoNumber,
       );
-      _chartShowIoNumbers =
-          _chartSignals.map((signal) => signal.showIoNumber).toList();
+      _chartShowIoNumbers = _chartSignals
+          .map((signal) => signal.showIoNumber)
+          .toList();
     });
   }
 
@@ -944,13 +939,12 @@ class _TimingChartGeneratorHomePageState
         duration: const Duration(seconds: 3),
         persist: false,
         showCloseIcon: true,
-        action:
-            success && savedPath != null && !kIsWeb
-                ? SnackBarAction(
-                  label: s.export_open_folder,
-                  onPressed: () => revealFileInFileManager(savedPath),
-                )
-                : null,
+        action: success && savedPath != null && !kIsWeb
+            ? SnackBarAction(
+                label: s.export_open_folder,
+                onPressed: () => revealFileInFileManager(savedPath),
+              )
+            : null,
       ),
     );
   }
@@ -977,12 +971,18 @@ class _TimingChartGeneratorHomePageState
       outputControllers: _outputControllers,
       hwTriggerControllers: _hwTriggerControllers,
       auxiliaryControllers: _auxiliaryControllers,
-      timeUnitIsMs:
-          Provider.of<SettingsNotifier>(context, listen: false).timeUnitIsMs,
-      msPerStep:
-          Provider.of<SettingsNotifier>(context, listen: false).msPerStep,
-      stepDurationsMs:
-          Provider.of<SettingsNotifier>(context, listen: false).stepDurationsMs,
+      timeUnitIsMs: Provider.of<SettingsNotifier>(
+        context,
+        listen: false,
+      ).timeUnitIsMs,
+      msPerStep: Provider.of<SettingsNotifier>(
+        context,
+        listen: false,
+      ).msPerStep,
+      stepDurationsMs: Provider.of<SettingsNotifier>(
+        context,
+        listen: false,
+      ).stepDurationsMs,
       onExported: (path) => savedPath = path,
     );
 
@@ -1092,26 +1092,25 @@ class _TimingChartGeneratorHomePageState
     if (!mounted) return;
     if (picked == null) return;
     if (picked.config == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(s.concat_failed_load)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(s.concat_failed_load)));
       return;
     }
 
     final incoming = picked.config!;
     if (incoming.signals.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(s.concat_failed_empty)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(s.concat_failed_empty)));
       return;
     }
 
     final nameToValues = _snapshotNameToValues();
-    final currentSignals =
-        _chartSignals.map((signal) {
-          final stored = nameToValues[signal.name];
-          return stored != null ? signal.copyWith(values: stored) : signal;
-        }).toList();
+    final currentSignals = _chartSignals.map((signal) {
+      final stored = nameToValues[signal.name];
+      return stored != null ? signal.copyWith(values: stored) : signal;
+    }).toList();
     final currentAnnotations =
         _timingChartKey.currentState?.getAnnotations() ??
         List<TimingChartAnnotation>.from(_chartController.annotations);
@@ -1119,10 +1118,9 @@ class _TimingChartGeneratorHomePageState
         _timingChartKey.currentState?.getOmissionTimeIndices() ??
         List<int>.from(_chartController.omissionTimeIndices);
     final settings = Provider.of<SettingsNotifier>(context, listen: false);
-    final currentDurations =
-        (_chartController.stepDurationsMs.isNotEmpty)
-            ? _chartController.stepDurationsMs
-            : settings.stepDurationsMs;
+    final currentDurations = (_chartController.stepDurationsMs.isNotEmpty)
+        ? _chartController.stepDurationsMs
+        : settings.stepDurationsMs;
 
     final preview = ChartConcatService.preview(
       currentSignals: currentSignals,
@@ -1168,7 +1166,8 @@ class _TimingChartGeneratorHomePageState
 
     final form = _formTabKey.currentState;
     final valuesByName = <String, List<int>>{
-      for (final signal in result.signals) signal.name: List<int>.from(signal.values),
+      for (final signal in result.signals)
+        signal.name: List<int>.from(signal.values),
     };
     form?.registerExternalSignalValues(valuesByName);
     form?.setChartDataOnly(
@@ -1177,11 +1176,12 @@ class _TimingChartGeneratorHomePageState
     form?.refreshSignalDataList();
 
     final names = result.signals.map((signal) => signal.name).toList();
-    final values = result.signals.map((signal) => List<int>.from(signal.values)).toList();
-    final durationsToApply =
-        settings.timeUnitIsMs
-            ? result.stepDurationsMs
-            : List<double>.from(_chartController.stepDurationsMs);
+    final values = result.signals
+        .map((signal) => List<int>.from(signal.values))
+        .toList();
+    final durationsToApply = settings.timeUnitIsMs
+        ? result.stepDurationsMs
+        : List<double>.from(_chartController.stepDurationsMs);
 
     _chartController.applyFullState(
       signals: values,
@@ -1197,12 +1197,12 @@ class _TimingChartGeneratorHomePageState
     setState(() {
       _chartSignals = result.signals;
       _chartPortNumbers = _portNumbersForSignals(result.signals);
-      _chartShowIoNumbers =
-          result.signals.map((signal) => signal.showIoNumber).toList();
-      _chartIoSources =
-          result.signals
-              .map((signal) => _detectIoSourceFor(signal.name, signal.signalType))
-              .toList();
+      _chartShowIoNumbers = result.signals
+          .map((signal) => signal.showIoNumber)
+          .toList();
+      _chartIoSources = result.signals
+          .map((signal) => _detectIoSourceFor(signal.name, signal.signalType))
+          .toList();
       _chartAnnotations = result.annotations;
     });
 
@@ -1212,9 +1212,9 @@ class _TimingChartGeneratorHomePageState
     }
 
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(s.concat_success)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(s.concat_success)));
   }
 
   String _stripFileExtension(String fileName) {
@@ -1255,31 +1255,31 @@ class _TimingChartGeneratorHomePageState
         signal.signalType == SignalType.group ||
         signal.signalType == SignalType.task;
 
-    final unmatchedInputs =
-        mergedSignals.where((signal) {
-          if (currentNames.contains(signal.name)) return false;
-          if (FormTabControllerMapper.shouldSkipChartToControllerAssignment(
-            formState: _formState,
-            name: signal.name,
-          )) {
-            return false;
-          }
-          return isInputType(signal);
-        }).length;
-    final unmatchedOutputs =
-        mergedSignals.where((signal) {
-          if (currentNames.contains(signal.name)) return false;
-          return signal.signalType == SignalType.output;
-        }).length;
-    final unmatchedHw =
-        mergedSignals.where((signal) {
-          if (currentNames.contains(signal.name)) return false;
-          return signal.signalType == SignalType.hwTrigger;
-        }).length;
+    final unmatchedInputs = mergedSignals.where((signal) {
+      if (currentNames.contains(signal.name)) return false;
+      if (FormTabControllerMapper.shouldSkipChartToControllerAssignment(
+        formState: _formState,
+        name: signal.name,
+      )) {
+        return false;
+      }
+      return isInputType(signal);
+    }).length;
+    final unmatchedOutputs = mergedSignals.where((signal) {
+      if (currentNames.contains(signal.name)) return false;
+      return signal.signalType == SignalType.output;
+    }).length;
+    final unmatchedHw = mergedSignals.where((signal) {
+      if (currentNames.contains(signal.name)) return false;
+      return signal.signalType == SignalType.hwTrigger;
+    }).length;
 
     final neededInput = _nextPortOption(
       _formState.inputCount +
-          math.max(0, unmatchedInputs - _emptyControllerCount(_inputControllers)),
+          math.max(
+            0,
+            unmatchedInputs - _emptyControllerCount(_inputControllers),
+          ),
     );
     final neededOutput = _nextPortOption(
       _formState.outputCount +
@@ -1320,7 +1320,11 @@ class _TimingChartGeneratorHomePageState
 
   List<int> _portNumbersForSignals(List<SignalData> signals) {
     final existingByName = <String, int>{};
-    for (int i = 0; i < _chartSignals.length && i < _chartPortNumbers.length; i++) {
+    for (
+      int i = 0;
+      i < _chartSignals.length && i < _chartPortNumbers.length;
+      i++
+    ) {
       existingByName[_chartSignals[i].name] = _chartPortNumbers[i];
     }
 
@@ -1335,7 +1339,10 @@ class _TimingChartGeneratorHomePageState
     }
 
     return signals
-        .map((signal) => existingByName[signal.name] ?? formByName[signal.name] ?? 0)
+        .map(
+          (signal) =>
+              existingByName[signal.name] ?? formByName[signal.name] ?? 0,
+        )
         .toList();
   }
 
@@ -1398,6 +1405,13 @@ class _TimingChartGeneratorHomePageState
 
   /// 信号一覧・トリガー説明・チャート画像を HTML レポートとして書き出す
   Future<void> _exportHtmlReport() async {
+    final settings = Provider.of<SettingsNotifier>(context, listen: false);
+    final sections = await HtmlReportSectionsDialog.show(
+      context,
+      initial: settings.htmlReportSections,
+    );
+    if (sections == null || !mounted) return;
+
     String? savedPath;
     final latestAnnotations =
         _timingChartKey.currentState?.getAnnotations() ??
@@ -1410,6 +1424,7 @@ class _TimingChartGeneratorHomePageState
       chartSignals: _chartSignals,
       chartPortNumbers: _chartPortNumbers,
       chartController: _chartController,
+      sections: sections,
       formTabState: _formTabKey.currentState,
       timingChartState: _timingChartKey.currentState,
       inputNames: _inputControllers.map((c) => c.text).toList(),
@@ -1472,12 +1487,11 @@ class _TimingChartGeneratorHomePageState
 
     showDialog(
       context: context,
-      builder:
-          (ctx) => VersionInfoDialog(
-            title: versionInfo['title']!,
-            version: versionInfo['version']!,
-            changelog: changelog,
-          ),
+      builder: (ctx) => VersionInfoDialog(
+        title: versionInfo['title']!,
+        version: versionInfo['version']!,
+        changelog: changelog,
+      ),
     );
   }
 
@@ -1674,8 +1688,9 @@ class _TimingChartGeneratorHomePageState
                     _plcEipOption = result.plcEipOption;
                     _chartSignals = result.chartSignals;
                     _chartPortNumbers = result.chartPortNumbers;
-                    _chartShowIoNumbers =
-                        result.chartSignals.map((s) => s.showIoNumber).toList();
+                    _chartShowIoNumbers = result.chartSignals
+                        .map((s) => s.showIoNumber)
+                        .toList();
                     _chartIoSources = result.chartIoSources;
                   });
 
@@ -1711,10 +1726,9 @@ class _TimingChartGeneratorHomePageState
                       settings.msPerStep = avgMs;
                     }
 
-                    final int maxLen =
-                        result.chartSignals.isNotEmpty
-                            ? result.chartSignals[0].values.length
-                            : 0;
+                    final int maxLen = result.chartSignals.isNotEmpty
+                        ? result.chartSignals[0].values.length
+                        : 0;
                     if (result.stepDurationsMs.length != maxLen) {
                       final List<double> fixed = List<double>.from(
                         result.stepDurationsMs,
@@ -1741,17 +1755,22 @@ class _TimingChartGeneratorHomePageState
 
                   // 時間単位の設定
                   if (!context.mounted) return;
-                  Provider.of<SettingsNotifier>(context, listen: false)
-                      .timeUnitIsMs = true;
+                  Provider.of<SettingsNotifier>(
+                    context,
+                    listen: false,
+                  ).timeUnitIsMs = true;
 
                   // チャートデータの更新
                   if (result.chartSignals.isNotEmpty) {
-                    final signalNames =
-                        result.chartSignals.map((s) => s.name).toList();
-                    final signalValues =
-                        result.chartSignals.map((s) => s.values).toList();
-                    final signalTypes =
-                        result.chartSignals.map((s) => s.signalType).toList();
+                    final signalNames = result.chartSignals
+                        .map((s) => s.name)
+                        .toList();
+                    final signalValues = result.chartSignals
+                        .map((s) => s.values)
+                        .toList();
+                    final signalTypes = result.chartSignals
+                        .map((s) => s.signalType)
+                        .toList();
 
                     if (_formTabKey.currentState != null) {
                       _formTabKey.currentState!.setChartDataOnly(signalValues);
@@ -1811,8 +1830,9 @@ class _TimingChartGeneratorHomePageState
                   }
 
                   // Code Trigger 個別ビット変化コメントを適用
-                  _chartAnnotations =
-                      List<TimingChartAnnotation>.from(result.chartAnnotations);
+                  _chartAnnotations = List<TimingChartAnnotation>.from(
+                    result.chartAnnotations,
+                  );
                   _chartController.setAnnotations(_chartAnnotations);
                   if (_timingChartKey.currentState != null) {
                     _timingChartKey.currentState!.updateAnnotations(
@@ -1935,14 +1955,13 @@ class _TimingChartGeneratorHomePageState
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder:
-                        (_) => SettingsWindow(
-                          showIoNumbers: _showIoNumbers,
-                          onShowIoNumbersChanged: (val) {
-                            setState(() => _showIoNumbers = val);
-                            _prefs?.setBool('showIoNumbers', val);
-                          },
-                        ),
+                    builder: (_) => SettingsWindow(
+                      showIoNumbers: _showIoNumbers,
+                      onShowIoNumbersChanged: (val) {
+                        setState(() => _showIoNumbers = val);
+                        _prefs?.setBool('showIoNumbers', val);
+                      },
+                    ),
                   ),
                 );
               },
@@ -2021,45 +2040,48 @@ class _TimingChartGeneratorHomePageState
                 },
                 onTransferInputs: _transferInputs,
                 onTransferOutputs: _transferOutputs,
-                onUpdateChart: (
-                  signalNames,
-                  chartData,
-                  signalTypes,
-                  portNumbers,
-                  ioSources,
-                  bool overrideFlag,
-                ) {
-                  // チャート更新サービスの使用
-                  final result = ChartUpdateService.updateChart(
-                    signalNames: signalNames,
-                    chartData: chartData,
-                    signalTypes: signalTypes,
-                    portNumbers: portNumbers,
-                    ioSources: ioSources,
-                    overrideFlag: overrideFlag,
-                    existingSignals: _chartSignals,
-                    chartController: _chartController,
-                    timingChartState: _timingChartKey.currentState,
-                    detectIoSource: _detectIoSourceFor,
-                  );
-
-                  setState(() {
-                    _chartSignals = result.signals;
-                    _chartPortNumbers = result.portNumbers;
-                    _chartShowIoNumbers =
-                        result.signals.map((s) => s.showIoNumber).toList();
-                    _chartIoSources = result.ioSources;
-
-                    if (_timingChartKey.currentState != null) {
-                      final orderedNames =
-                          _chartSignals.map((s) => s.name).toList();
-                      _chartController.setSignalNames(orderedNames);
-                      _chartController.setSignals(
-                        _chartSignals.map((s) => s.values).toList(),
+                onUpdateChart:
+                    (
+                      signalNames,
+                      chartData,
+                      signalTypes,
+                      portNumbers,
+                      ioSources,
+                      bool overrideFlag,
+                    ) {
+                      // チャート更新サービスの使用
+                      final result = ChartUpdateService.updateChart(
+                        signalNames: signalNames,
+                        chartData: chartData,
+                        signalTypes: signalTypes,
+                        portNumbers: portNumbers,
+                        ioSources: ioSources,
+                        overrideFlag: overrideFlag,
+                        existingSignals: _chartSignals,
+                        chartController: _chartController,
+                        timingChartState: _timingChartKey.currentState,
+                        detectIoSource: _detectIoSourceFor,
                       );
-                    }
-                  });
-                },
+
+                      setState(() {
+                        _chartSignals = result.signals;
+                        _chartPortNumbers = result.portNumbers;
+                        _chartShowIoNumbers = result.signals
+                            .map((s) => s.showIoNumber)
+                            .toList();
+                        _chartIoSources = result.ioSources;
+
+                        if (_timingChartKey.currentState != null) {
+                          final orderedNames = _chartSignals
+                              .map((s) => s.name)
+                              .toList();
+                          _chartController.setSignalNames(orderedNames);
+                          _chartController.setSignals(
+                            _chartSignals.map((s) => s.values).toList(),
+                          );
+                        }
+                      });
+                    },
                 onClearFields: () {
                   _clearAllTextFields();
                   final settings = Provider.of<SettingsNotifier>(

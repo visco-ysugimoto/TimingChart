@@ -3,6 +3,7 @@ import '../models/chart/signal_data.dart';
 import '../models/chart/signal_type.dart';
 import '../models/form/camera_table_types.dart';
 import '../models/form/form_state.dart';
+import '../models/report/html_report_sections.dart';
 import '../widgets/form/form_tab_constants.dart';
 
 /// HTML レポート内の見出し・列名（UI 言語に合わせる）。
@@ -207,6 +208,7 @@ class ReportHtmlData {
   final String plcEipOption;
   final List<SignalData> signals;
   final List<int> signalPorts;
+
   /// [signals] と同じ並び。DIO と PLI/ESI・PLO/ESO を分ける。
   final List<IoChannelSource> signalSources;
   final List<List<CellMode>> tableData;
@@ -214,6 +216,7 @@ class ReportHtmlData {
   final String triggerMarkdown;
   final String? chartSvg;
   final String? chartJpegBase64;
+  final HtmlReportSectionSet sections;
 
   const ReportHtmlData({
     required this.languageCode,
@@ -227,6 +230,7 @@ class ReportHtmlData {
     required this.triggerMarkdown,
     this.chartSvg,
     this.chartJpegBase64,
+    this.sections = HtmlReportSectionSet.all,
   });
 }
 
@@ -343,7 +347,9 @@ class ReportHtmlBuilder {
       ..writeln('<html lang="$lang">')
       ..writeln('<head>')
       ..writeln('<meta charset="utf-8">')
-      ..writeln('<meta name="viewport" content="width=device-width, initial-scale=1">')
+      ..writeln(
+        '<meta name="viewport" content="width=device-width, initial-scale=1">',
+      )
       ..writeln('<title>${escape(l.documentTitle)}</title>')
       ..writeln('<style>${_css()}</style>')
       ..writeln('</head>')
@@ -352,48 +358,60 @@ class ReportHtmlBuilder {
       ..writeln('<h1>${escape(l.documentTitle)}</h1>')
       ..writeln('</header>');
 
-    buf.writeln('<section id="composition">');
-    buf.writeln('<h2>${escape(l.sectionComposition)}</h2>');
-    buf.writeln(_kvTable(compositionRows));
-    buf.writeln('</section>');
-
-    buf.writeln('<section id="trigger">');
-    buf.writeln('<h2>${escape(l.sectionTrigger)}</h2>');
-    if (data.triggerMarkdown.trim().isEmpty) {
-      buf.writeln('<p>${escape(data.formState.triggerOption)}</p>');
-    } else {
-      buf.writeln(markdownToHtml(data.triggerMarkdown));
+    if (data.sections.composition) {
+      buf.writeln('<section id="composition">');
+      buf.writeln('<h2>${escape(l.sectionComposition)}</h2>');
+      buf.writeln(_kvTable(compositionRows));
+      buf.writeln('</section>');
     }
-    buf.writeln('</section>');
 
-    buf.writeln('<section id="signals">');
-    buf.writeln('<h2>${escape(l.sectionSignals)}</h2>');
-    buf.writeln(_signalsTable(data, l));
-    buf.writeln('</section>');
-
-    buf.writeln('<section id="camera">');
-    buf.writeln('<h2>${escape(l.sectionCamera)}</h2>');
-    buf.writeln(_cameraTable(data, l));
-    buf.writeln('</section>');
-
-    buf.writeln('<section id="chart">');
-    buf.writeln('<h2>${escape(l.sectionChart)}</h2>');
-    final svg = data.chartSvg;
-    if (svg != null && svg.isNotEmpty) {
-      buf.writeln(_chartSvgViewport(svg, l));
-    } else {
-      final jpeg = data.chartJpegBase64;
-      if (jpeg == null || jpeg.isEmpty) {
-        buf.writeln('<p>${escape(l.noChart)}</p>');
+    if (data.sections.trigger) {
+      buf.writeln('<section id="trigger">');
+      buf.writeln('<h2>${escape(l.sectionTrigger)}</h2>');
+      if (data.triggerMarkdown.trim().isEmpty) {
+        buf.writeln('<p>${escape(data.formState.triggerOption)}</p>');
       } else {
-        buf.writeln(
-          '<img class="chart" alt="${escape(l.sectionChart)}" src="data:image/jpeg;base64,$jpeg">',
-        );
+        buf.writeln(markdownToHtml(data.triggerMarkdown));
       }
+      buf.writeln('</section>');
     }
-    buf.writeln('</section>');
 
-    if (data.chartSvg != null && data.chartSvg!.isNotEmpty) {
+    if (data.sections.signals) {
+      buf.writeln('<section id="signals">');
+      buf.writeln('<h2>${escape(l.sectionSignals)}</h2>');
+      buf.writeln(_signalsTable(data, l));
+      buf.writeln('</section>');
+    }
+
+    if (data.sections.camera) {
+      buf.writeln('<section id="camera">');
+      buf.writeln('<h2>${escape(l.sectionCamera)}</h2>');
+      buf.writeln(_cameraTable(data, l));
+      buf.writeln('</section>');
+    }
+
+    if (data.sections.chart) {
+      buf.writeln('<section id="chart">');
+      buf.writeln('<h2>${escape(l.sectionChart)}</h2>');
+      final svg = data.chartSvg;
+      if (svg != null && svg.isNotEmpty) {
+        buf.writeln(_chartSvgViewport(svg, l));
+      } else {
+        final jpeg = data.chartJpegBase64;
+        if (jpeg == null || jpeg.isEmpty) {
+          buf.writeln('<p>${escape(l.noChart)}</p>');
+        } else {
+          buf.writeln(
+            '<img class="chart" alt="${escape(l.sectionChart)}" src="data:image/jpeg;base64,$jpeg">',
+          );
+        }
+      }
+      buf.writeln('</section>');
+    }
+
+    if (data.sections.chart &&
+        data.chartSvg != null &&
+        data.chartSvg!.isNotEmpty) {
       buf.writeln(_chartPanZoomScript());
     }
 
@@ -585,17 +603,18 @@ class ReportHtmlBuilder {
     if (data.tableData.isEmpty) {
       return '<p>${escape(l.noCamera)}</p>';
     }
-    final cols =
-        data.tableData
-            .map((row) => row.length)
-            .fold<int>(0, (a, b) => a > b ? a : b);
+    final cols = data.tableData
+        .map((row) => row.length)
+        .fold<int>(0, (a, b) => a > b ? a : b);
     if (cols == 0) {
       return '<p>${escape(l.noCamera)}</p>';
     }
     final showSimultaneous =
         canUseSimultaneousCapture(data.formState.camera) &&
         canUseSimultaneousCapture(cols);
-    final buf = StringBuffer()..writeln('<table>')..writeln('<thead><tr>');
+    final buf = StringBuffer()
+      ..writeln('<table>')
+      ..writeln('<thead><tr>');
     buf.write('<th>${escape(l.colRow)}</th>');
     for (var c = 0; c < cols; c++) {
       buf.write('<th>${escape('${l.cameraColumnPrefix} ${c + 1}')}</th>');
@@ -696,8 +715,8 @@ class ReportHtmlBuilder {
     if (rows.isEmpty) return i;
     final bodyStart =
         rows.length > 1 && rows[1].every((c) => RegExp(r'^:?-+:?$').hasMatch(c))
-            ? 2
-            : 1;
+        ? 2
+        : 1;
     buf.writeln('<table>');
     if (rows.isNotEmpty) {
       buf.write('<thead><tr>');
@@ -747,7 +766,9 @@ class ReportHtmlBuilder {
         '<div class="chart-viewport" id="chart-viewport" data-chart-filename="timing-chart">',
       )
       ..writeln('<div class="chart-toolbar">')
-      ..writeln('<span class="chart-zoom-hint">${escape(l.chartZoomHint)}</span>')
+      ..writeln(
+        '<span class="chart-zoom-hint">${escape(l.chartZoomHint)}</span>',
+      )
       ..writeln('<div class="chart-toolbar-actions">')
       ..writeln(
         '<button type="button" class="chart-zoom-btn" id="chart-zoom-fit">${escape(l.chartZoomFit)}</button>',
