@@ -114,6 +114,19 @@
   "concat_failed_load": "チャートファイルの読み込みに失敗しました",
   "concat_success": "チャートを末尾に結合しました",
   "concat_join_default": "結合チャート",
+  "segment_bar_hint": "ドラッグで並べ替え、×でその区間を削除します",
+  "segment_current_default": "現在のチャート",
+  "segment_unnamed": "セグメント",
+  "segment_delete": "削除",
+  "segment_delete_title": "セグメントを削除しますか？",
+  "segment_delete_message": "「{label}」の区間の波形を削除します。",
+  "@segment_delete_message": {
+      "placeholders": {
+          "label": {
+              "type": "String"
+          }
+      }
+  },
   "toolbar_unit_tooltip": "時間の単位（ステップ / ミリ秒）",
   "toolbar_labels_tooltip": "チャート下部の時間ラベルを表示",
   "toolbar_edit_grid_tooltip": "グリッド編集（境界線をドラッグまたはタップで調整）",

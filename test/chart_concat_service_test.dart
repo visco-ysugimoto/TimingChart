@@ -84,6 +84,12 @@ void main() {
       expect(result.annotations.last.placement, 'top');
       expect(result.joinStartIndex, 3);
       expect(result.joinEndIndex, 4);
+      expect(result.segments, hasLength(2));
+      expect(result.segments[0].startTimeIndex, 0);
+      expect(result.segments[0].endTimeIndex, 3);
+      expect(result.segments[1].label, 'taskB.json');
+      expect(result.segments[1].startTimeIndex, 3);
+      expect(result.segments[1].endTimeIndex, 5);
     });
 
     test('不一致信号は 0 埋めして行追加できる', () {
@@ -131,6 +137,7 @@ void main() {
       );
       expect(added.signals.map((s) => s.name), ['IN1', 'OUT1']);
       expect(added.signals[1].values, [0, 0, 1]);
+      expect(added.signals[1].signalType, SignalType.output);
 
       final dropped = ChartConcatService.concat(
         currentSignals: current,
@@ -146,6 +153,57 @@ void main() {
       );
       expect(dropped.signals.map((s) => s.name), ['IN1']);
       expect(dropped.signals.first.values, [1, 1, 0]);
+    });
+
+    test('名前リスト上の Output は誤った Input 種別でも Output として追加する', () {
+      final current = [
+        const SignalData(
+          name: 'TRIGGER',
+          signalType: SignalType.input,
+          values: [1, 0],
+        ),
+      ];
+      final incoming = _config(
+        signals: const [
+          SignalData(
+            name: 'TRIGGER',
+            signalType: SignalType.input,
+            values: [0, 1],
+          ),
+          SignalData(
+            name: 'CAMERA_2_IMAGE_EXPOSURE',
+            signalType: SignalType.input,
+            values: [1, 1],
+          ),
+          SignalData(
+            name: 'CAMERA_2_IMAGE_ACQUISITION',
+            signalType: SignalType.input,
+            values: [1, 0],
+          ),
+        ],
+        outputNames: const [
+          'CAMERA_2_IMAGE_EXPOSURE',
+          'CAMERA_2_IMAGE_ACQUISITION',
+        ],
+      );
+
+      final result = ChartConcatService.concat(
+        currentSignals: current,
+        currentAnnotations: const [],
+        currentOmissions: const [],
+        currentStepDurationsMs: const [],
+        currentMsPerStep: 1,
+        currentTimeUnitIsMs: false,
+        incoming: incoming,
+        unmatchedPolicy: UnmatchedIncomingPolicy.padAndAdd,
+        joinLabel: 'cam2',
+        newId: nextId,
+      );
+
+      expect(result.signals[1].name, 'CAMERA_2_IMAGE_EXPOSURE');
+      expect(result.signals[1].signalType, SignalType.output);
+      expect(result.signals[2].name, 'CAMERA_2_IMAGE_ACQUISITION');
+      expect(result.signals[2].signalType, SignalType.output);
     });
 
     test('現在チャートが空なら結合コメントを付けず incoming を採用する', () {
@@ -419,6 +477,7 @@ AppConfig _config({
   bool timeUnitIsMs = false,
   double msPerStep = 1,
   List<double> stepDurationsMs = const [],
+  List<String> outputNames = const [],
 }) {
   return AppConfig(
     formState: const TimingFormState(
@@ -432,7 +491,7 @@ AppConfig _config({
     signals: signals,
     tableData: const [],
     inputNames: const [],
-    outputNames: const [],
+    outputNames: outputNames,
     hwTriggerNames: const [],
     inputVisibility: const [],
     outputVisibility: const [],

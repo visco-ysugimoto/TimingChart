@@ -16,6 +16,7 @@ import 'models/chart/signal_data.dart';
 import 'models/chart/timing_chart_annotation.dart';
 import 'utils/desktop_file_reveal.dart';
 import 'utils/file_utils.dart';
+import 'models/backup/app_config.dart';
 import 'widgets/form/form_tab.dart';
 import 'widgets/chart/timing_chart.dart';
 import 'widgets/settings/settings_window.dart';
@@ -38,6 +39,7 @@ import 'services/ziq_import_service.dart';
 import 'services/chart_update_service.dart';
 import 'services/export_service.dart';
 import 'services/report_export_service.dart';
+import 'models/chart/chart_segment.dart';
 import 'services/chart_concat_service.dart';
 import 'widgets/chart/chart_concat_dialogs.dart';
 import 'widgets/form/form_tab_controller_mapper.dart';
@@ -584,7 +586,8 @@ class _TimingChartGeneratorHomePageState
     );
 
     final nameToValues = <String, List<int>>{};
-    for (int i = 0; i < names.length; i++) {
+    final int n = names.length < values.length ? names.length : values.length;
+    for (int i = 0; i < n; i++) {
       nameToValues[names[i]] = List<int>.from(values[i]);
     }
 
@@ -805,6 +808,7 @@ class _TimingChartGeneratorHomePageState
 
       _timingChartKey.currentState!.updateAnnotations([]);
     }
+    _chartController.replaceSegmentsSilent(const []);
 
     _syncFormToSettingsDefaults(
       Provider.of<SettingsNotifier>(context, listen: false),
@@ -1014,7 +1018,17 @@ class _TimingChartGeneratorHomePageState
       return;
     }
     if (!mounted) return;
+    await _applyImportedConfig(config);
+  }
 
+  /// チャートがまだ無い初期状態かどうか（末尾結合の対象が無い）
+  bool _hasNoChartToConcat() {
+    if (_chartSignals.isEmpty) return true;
+    return ChartConcatService.maxSignalLength(_chartSignals) <= 0;
+  }
+
+  /// 保存済み JSON を通常インポートと同じ手順で適用します
+  Future<void> _applyImportedConfig(AppConfig config) async {
     final formState = _formTabKey.currentState;
     formState?.clearAllForImport();
 
@@ -1071,6 +1085,9 @@ class _TimingChartGeneratorHomePageState
       }
 
       _chartAnnotations = config.annotations;
+      _chartController.replaceSegmentsSilent(
+        List<ChartSegment>.from(config.segments),
+      );
       if ((config.annotations.isNotEmpty ||
               config.omissionIndices.isNotEmpty) &&
           _timingChartKey.currentState != null) {
@@ -1111,6 +1128,12 @@ class _TimingChartGeneratorHomePageState
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(s.concat_failed_empty)));
+      return;
+    }
+
+    // 土台のチャートが無いときは結合ではなく通常インポートと同じ復元をする
+    if (_hasNoChartToConcat()) {
+      await _applyImportedConfig(incoming);
       return;
     }
 
@@ -1163,6 +1186,8 @@ class _TimingChartGeneratorHomePageState
       incoming: incoming,
       unmatchedPolicy: policy,
       joinLabel: joinLabel.isEmpty ? s.concat_join_default : joinLabel,
+      currentSegments: _chartController.segments,
+      currentLabel: s.segment_current_default,
     );
 
     if (policy == UnmatchedIncomingPolicy.padAndAdd) {
@@ -1197,6 +1222,7 @@ class _TimingChartGeneratorHomePageState
       annotations: result.annotations,
       omissionTimeIndices: result.omissionIndices,
       stepDurationsMs: durationsToApply,
+      segments: result.segments,
     );
     if (settings.timeUnitIsMs) {
       settings.setStepDurationsMs(result.stepDurationsMs);
@@ -1886,6 +1912,7 @@ class _TimingChartGeneratorHomePageState
 
                     _chartController.setSignalNames(signalNames);
                     _chartController.setSignals(signalValues);
+                    _chartController.replaceSegmentsSilent(const []);
                   }
 
                   // Code Trigger 個別ビット変化コメントを適用
@@ -2127,10 +2154,15 @@ class _TimingChartGeneratorHomePageState
                           final orderedNames = _chartSignals
                               .map((s) => s.name)
                               .toList();
-                          _chartController.setSignalNames(orderedNames);
-                          _chartController.setSignals(
-                            _chartSignals.map((s) => s.values).toList(),
+                          _chartController.setSignalsAndNames(
+                            signals: _chartSignals
+                                .map((s) => List<int>.from(s.values))
+                                .toList(),
+                            signalNames: orderedNames,
                           );
+                          if (overrideFlag) {
+                            _chartController.replaceSegmentsSilent(const []);
+                          }
                         }
                       });
                       _markDirty();

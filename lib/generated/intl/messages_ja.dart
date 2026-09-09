@@ -20,6 +20,8 @@ typedef String MessageIfAbsent(String messageStr, List<dynamic> args);
 class MessageLookup extends MessageLookupByLibrary {
   String get localeName => 'ja';
 
+  static String m0(label) => "「${label}」の区間の波形を削除します。";
+
   final messages = _notInlinedMessages(_notInlinedMessages);
   static Map<String, Function> _notInlinedMessages(_) => <String, Function>{
     "accent_color": MessageLookupByLibrary.simpleMessage("アクセントカラー"),
@@ -338,6 +340,16 @@ class MessageLookup extends MessageLookupByLibrary {
     "reset_default_colors": MessageLookupByLibrary.simpleMessage(
       "デフォルトの色にリセット",
     ),
+    "segment_bar_hint": MessageLookupByLibrary.simpleMessage(
+      "ドラッグで並べ替え、×でその区間を削除します",
+    ),
+    "segment_current_default": MessageLookupByLibrary.simpleMessage("現在のチャート"),
+    "segment_delete": MessageLookupByLibrary.simpleMessage("削除"),
+    "segment_delete_message": m0,
+    "segment_delete_title": MessageLookupByLibrary.simpleMessage(
+      "セグメントを削除しますか？",
+    ),
+    "segment_unnamed": MessageLookupByLibrary.simpleMessage("セグメント"),
     "settings_export_base_directory": MessageLookupByLibrary.simpleMessage(
       "エクスポート先フォルダ（フルパス）",
     ),

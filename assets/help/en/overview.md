@@ -68,9 +68,11 @@ After a successful save, **Open folder** on the snack bar reveals the output loc
 
 Another chart is joined after the current waveforms.
 
+- If there is **no chart yet** (startup or after Clear), the file is opened the same way as **Import**.
 - If **time units differ** (step vs ms), you are asked whether to keep the current unit.
 - If the incoming file has **signals that do not exist** here, choose **Add with 0 padding** or **Do not add**.
 - A join comment (default name **Appended chart**) is inserted at the boundary.
+- After two or more charts are joined, a **segment** bar appears above the chart. Drag a chip to reorder that time slice, or press X to delete it.
 
 ### Other items
 

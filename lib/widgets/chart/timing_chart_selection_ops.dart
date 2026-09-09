@@ -84,6 +84,25 @@ extension _TimingChartSelectionOpsExt on TimingChartState {
       _normalizeSignalLengths();
       _clearSelection();
     });
+    if (_controller != null && _controller!.segments.isNotEmpty) {
+      final selectedOriginal = <int>{
+        for (int v = stSig; v <= edSig; v++) _visibleIndexes[v],
+      };
+      final allRowsSelected = selectedOriginal.length == signals.length;
+      final updated = allRowsSelected
+          ? ChartSegmentService.shiftAfterInsert(
+              segments: _controller!.segments,
+              insertAt: stTime,
+              insertCount: lengthToInsert,
+            )
+          : ChartSegmentService.clampToLength(
+              _controller!.segments,
+              signals.isEmpty
+                  ? 0
+                  : signals.map((e) => e.length).reduce(math.max),
+            );
+      _controller!.replaceSegmentsSilent(updated);
+    }
     _commitSignalsFromChartEdit();
   }
 
@@ -194,6 +213,18 @@ extension _TimingChartSelectionOpsExt on TimingChartState {
         _forceRepaint();
       });
       _controller?.setAnnotations(annotations);
+    }
+
+    if (deleteLen > 0 &&
+        _controller != null &&
+        _controller!.segments.isNotEmpty) {
+      _controller!.replaceSegmentsSilent(
+        ChartSegmentService.shiftAfterDelete(
+          segments: _controller!.segments,
+          deleteStart: clampedSt,
+          deleteEnd: clampedEd,
+        ),
+      );
     }
 
     _commitSignalsFromChartEdit();

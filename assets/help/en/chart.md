@@ -12,7 +12,7 @@ The bar above the chart uses icons. Hover for a short description. It wraps if t
 
 | Control | Description |
 | --- | --- |
-| **Lock icon** | Lock editing. While locked you cannot toggle bits, insert/delete, or reorder rows (zoom and comments still work) |
+| **Lock icon** | Lock editing. While locked you cannot toggle bits, insert/delete, reorder rows, or move/delete segments (zoom and comments still work) |
 | **step / ms** | Horizontal axis unit. **step** = step index, **ms** = milliseconds |
 | **Labels icon** | Show or hide time numbers along the bottom |
 | **Grid icon** | **ms** only. Drag or tap grid boundaries to change each step’s duration; press again to finish |
@@ -21,6 +21,8 @@ The bar above the chart uses icons. Hover for a short description. It wraps if t
 | **Fit** | Fit the whole chart in the view |
 | **Fit selection** | Zoom so the selection fills the view (selection required) |
 | **Selection length** | Selection length in milliseconds (ms mode) or steps (step mode) |
+
+After **two or more** charts are appended, a segment bar appears under the toolbar. Drag a chip to swap that time slice; press X to delete just that slice. The bar is inactive while editing is locked.
 
 ---
 

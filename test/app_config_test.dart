@@ -3,6 +3,7 @@ import 'package:flutter_application_1/models/backup/app_config.dart';
 import 'package:flutter_application_1/models/form/form_state.dart';
 import 'package:flutter_application_1/models/chart/signal_data.dart';
 import 'package:flutter_application_1/models/chart/signal_type.dart';
+import 'package:flutter_application_1/models/chart/chart_segment.dart';
 
 void main() {
   group('AppConfig', () {
@@ -112,6 +113,75 @@ void main() {
       });
       expect(legacy.auxiliaryNames, isEmpty);
       expect(legacy.auxiliaryVisibility, isEmpty);
+    });
+
+    test('segments の往復と旧JSONの欠落を扱える', () {
+      const formState = TimingFormState(
+        triggerOption: 'Single Trigger',
+        ioPort: 1,
+        hwPort: 0,
+        camera: 1,
+        inputCount: 1,
+        outputCount: 0,
+      );
+      const signal = SignalData(
+        name: 'input1',
+        signalType: SignalType.input,
+        values: [0, 1, 0, 1],
+      );
+      const segment = ChartSegment(
+        id: 's1',
+        label: 'taskA',
+        startTimeIndex: 0,
+        endTimeIndex: 4,
+      );
+      final original = AppConfig(
+        formState: formState,
+        signals: const [signal],
+        tableData: const [],
+        inputNames: const ['input1'],
+        outputNames: const [],
+        hwTriggerNames: const [],
+        inputVisibility: const [true],
+        outputVisibility: const [],
+        hwTriggerVisibility: const [],
+        rowModes: const [],
+        segments: const [segment],
+      );
+
+      final decoded = AppConfig.fromJsonString(original.toJsonString());
+      expect(decoded.segments, hasLength(1));
+      expect(decoded.segments.single.id, 's1');
+      expect(decoded.segments.single.label, 'taskA');
+      expect(decoded.segments.single.endTimeIndex, 4);
+
+      final legacy = AppConfig.fromJson({
+        'formState': {
+          'triggerOption': 'Single Trigger',
+          'ioPort': 1,
+          'hwPort': 0,
+          'camera': 1,
+          'inputCount': 1,
+          'outputCount': 0,
+        },
+        'signals': [
+          {
+            'name': 'input1',
+            'signalType': SignalType.input.index,
+            'values': [0, 1],
+            'isVisible': true,
+          },
+        ],
+        'tableData': [],
+        'inputNames': ['input1'],
+        'outputNames': [],
+        'hwTriggerNames': [],
+        'inputVisibility': [true],
+        'outputVisibility': [],
+        'hwTriggerVisibility': [],
+        'rowModes': [],
+      });
+      expect(legacy.segments, isEmpty);
     });
   });
 }

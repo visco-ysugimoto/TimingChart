@@ -112,6 +112,7 @@ class ExportService {
       timeUnitIsMs: timeUnitIsMs,
       msPerStep: msPerStep,
       stepDurationsMs: stepDurationsMs,
+      segments: chartController.segments,
     );
   }
 

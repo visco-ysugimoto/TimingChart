@@ -22,6 +22,9 @@ import '../../providers/settings_notifier.dart';
 import 'package:provider/provider.dart'; // Provider用
 import '../../generated/l10n.dart';
 import '../../providers/timing_chart_controller.dart';
+import '../../models/chart/chart_segment.dart';
+import '../../services/chart_segment_service.dart';
+import 'chart_segment_bar.dart';
 import '../../providers/form_state_notifier.dart';
 import '../../services/chart_svg_export_data.dart';
 import '../form/form_tab_constants.dart';
@@ -527,6 +530,7 @@ class TimingChartState extends State<TimingChart>
     signals = _controller!.signals.map((list) => List<int>.from(list)).toList();
     annotations = List.from(_controller!.annotations);
     _useControllerStepDurations = _controller!.stepDurationsMs.isNotEmpty;
+    _lastHandledHistoryEpoch = _controller!.historyEpoch;
 
     _controllerListener = () {
       if (!mounted) return;
@@ -543,6 +547,14 @@ class TimingChartState extends State<TimingChart>
       final List<int> controllerOmission = List<int>.from(
         _controller!.omissionTimeIndices,
       );
+      final bool signalsChanged = !_areSignalsEqual(
+        signals,
+        controllerSignals,
+      );
+      final bool annotationsChanged = !_areAnnotationsEqual(
+        annotations,
+        controllerAnnotations,
+      );
       final priorLabels = _buildPriorLabelMap();
 
       setState(() {
@@ -558,6 +570,20 @@ class TimingChartState extends State<TimingChart>
       });
       if (namesChanged) {
         _translateNames();
+      }
+      // Template などは setSignalNames → setSignals と分かれて通知するため、
+      // 親への同期は Undo/Redo のときだけ行う。
+      final bool historyChanged =
+          _lastHandledHistoryEpoch != _controller!.historyEpoch;
+      if (historyChanged) {
+        _lastHandledHistoryEpoch = _controller!.historyEpoch;
+        if ((signalsChanged || namesChanged) &&
+            _idSignalNames.length == signals.length) {
+          _notifySignalsChanged();
+        }
+        if (annotationsChanged) {
+          widget.onAnnotationsChanged?.call(controllerAnnotations);
+        }
       }
       final settingsRW = Provider.of<SettingsNotifier>(context, listen: false);
       final int maxLen = signals.isEmpty
@@ -639,11 +665,17 @@ class TimingChartState extends State<TimingChart>
   void _notifySignalsChanged() {
     final callback = widget.onSignalsChanged;
     if (callback == null) return;
-    final names = List<String>.from(_idSignalNames);
+    final int n = math.min(
+      math.min(_idSignalNames.length, signals.length),
+      widget.signalTypes.length,
+    );
+    if (n <= 0) return;
+    final names = _idSignalNames.take(n).toList();
     final values = signals
+        .take(n)
         .map((row) => List<int>.from(row))
         .toList(growable: false);
-    final types = List<SignalType>.from(widget.signalTypes);
+    final types = widget.signalTypes.take(n).toList();
     callback(names, values, types);
   }
 
@@ -2760,11 +2792,33 @@ class TimingChartState extends State<TimingChart>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Align(
-          alignment: Alignment.topRight,
-          child: Padding(
-            padding: const EdgeInsets.only(right: 8, top: 8),
-            child: _buildUnitToggle(context),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              if (_controller != null)
+                Expanded(
+                  child: ListenableBuilder(
+                    listenable: _controller!,
+                    builder: (context, _) {
+                      final segs = _controller!.segments;
+                      if (segs.length < 2) {
+                        return const SizedBox.shrink();
+                      }
+                      return ChartSegmentBar(
+                        segments: segs,
+                        enabled: _canEditChartSignals,
+                        onReorder: _onSegmentReorder,
+                        onDelete: _onSegmentDeleteRequested,
+                      );
+                    },
+                  ),
+                )
+              else
+                const Spacer(),
+              _buildUnitToggle(context),
+            ],
           ),
         ),
         Expanded(
@@ -2805,6 +2859,80 @@ class TimingChartState extends State<TimingChart>
 
   void _onRedoPressed() {
     _controller?.redo();
+  }
+
+  void _onSegmentReorder(int fromIndex, int toIndex) {
+    if (!_canEditChartSignals) return;
+    final controller = _controller;
+    if (controller == null) return;
+    final mutation = ChartSegmentService.reorderSegments(
+      signalValues: controller.signals,
+      signalNames: controller.signalNames,
+      annotations: controller.annotations,
+      omissionIndices: controller.omissionTimeIndices,
+      stepDurationsMs: controller.stepDurationsMs,
+      segments: controller.segments,
+      fromIndex: fromIndex,
+      toIndex: toIndex,
+    );
+    if (mutation == null) return;
+    _applySegmentMutation(mutation);
+  }
+
+  Future<void> _onSegmentDeleteRequested(ChartSegment segment) async {
+    if (!_canEditChartSignals) return;
+    final s = S.of(context);
+    final label = segment.label.isEmpty ? s.segment_unnamed : segment.label;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(s.segment_delete_title),
+        content: Text(s.segment_delete_message(label)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(s.common_cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(s.segment_delete),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    _deleteSegment(segment.id);
+  }
+
+  void _deleteSegment(String segmentId) {
+    final controller = _controller;
+    if (controller == null) return;
+    final mutation = ChartSegmentService.deleteSegment(
+      signalValues: controller.signals,
+      signalNames: controller.signalNames,
+      annotations: controller.annotations,
+      omissionIndices: controller.omissionTimeIndices,
+      stepDurationsMs: controller.stepDurationsMs,
+      segments: controller.segments,
+      segmentId: segmentId,
+    );
+    if (mutation == null) return;
+    _applySegmentMutation(mutation);
+  }
+
+  void _applySegmentMutation(ChartSegmentMutation mutation) {
+    final controller = _controller;
+    if (controller == null) return;
+    controller.applyFullState(
+      signals: mutation.signalValues,
+      signalNames: mutation.signalNames,
+      annotations: mutation.annotations,
+      omissionTimeIndices: mutation.omissionIndices,
+      stepDurationsMs: mutation.stepDurationsMs,
+      segments: mutation.segments,
+    );
+    _notifySignalsChanged();
+    widget.onAnnotationsChanged?.call(mutation.annotations);
   }
 
   Widget _buildZoomControlsListenable(BuildContext context, Widget? _) {
@@ -3192,6 +3320,7 @@ class TimingChartState extends State<TimingChart>
   late final FocusNode _focusNode = FocusNode();
   int _lastHandledGridResetNonce = 0;
   int _lastHandledGridRecomputeNonce = 0;
+  int _lastHandledHistoryEpoch = 0;
 
   @override
   void dispose() {

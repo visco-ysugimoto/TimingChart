@@ -5,6 +5,7 @@ import '../chart/signal_data.dart';
 import '../chart/signal_type.dart';
 import '../form/camera_table_types.dart';
 import '../chart/timing_chart_annotation.dart';
+import '../chart/chart_segment.dart';
 
 /// アプリケーションの全設定を保持するクラス
 class AppConfig {
@@ -41,6 +42,9 @@ class AppConfig {
   final double msPerStep;
   final List<double> stepDurationsMs;
 
+  // 結合したチャートの時間区間
+  final List<ChartSegment> segments;
+
   const AppConfig({
     required this.formState,
     required this.signals,
@@ -59,6 +63,7 @@ class AppConfig {
     this.timeUnitIsMs = false,
     this.msPerStep = 1.0,
     this.stepDurationsMs = const [],
+    this.segments = const [],
   });
 
   /// TextEditingControllerからテキスト値を抽出
@@ -87,6 +92,7 @@ class AppConfig {
     bool timeUnitIsMs = false,
     double msPerStep = 1.0,
     List<double> stepDurationsMs = const [],
+    List<ChartSegment> segments = const [],
   }) {
     return AppConfig(
       formState: formState,
@@ -106,6 +112,7 @@ class AppConfig {
       timeUnitIsMs: timeUnitIsMs,
       msPerStep: msPerStep,
       stepDurationsMs: stepDurationsMs,
+      segments: segments,
     );
   }
 
@@ -151,6 +158,7 @@ class AppConfig {
       'timeUnitIsMs': timeUnitIsMs,
       'msPerStep': msPerStep,
       'stepDurationsMs': stepDurationsMs,
+      'segments': segments.map((s) => s.toJson()).toList(),
     };
   }
 
@@ -231,6 +239,7 @@ class AppConfig {
       timeUnitIsMs: timeUnitIsMs,
       msPerStep: msPerStep,
       stepDurationsMs: stepDurationsMs,
+      segments: ChartSegment.listFromJson(json['segments']),
     );
   }
 

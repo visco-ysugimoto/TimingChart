@@ -1677,6 +1677,66 @@ class S {
     );
   }
 
+  /// `Drag to reorder. X deletes that time slice.`
+  String get segment_bar_hint {
+    return Intl.message(
+      'Drag to reorder. X deletes that time slice.',
+      name: 'segment_bar_hint',
+      desc: 'Hint above the chart segment chips',
+      args: [],
+    );
+  }
+
+  /// `Current chart`
+  String get segment_current_default {
+    return Intl.message(
+      'Current chart',
+      name: 'segment_current_default',
+      desc: 'Label for the existing waveform when first concatenated',
+      args: [],
+    );
+  }
+
+  /// `Segment`
+  String get segment_unnamed {
+    return Intl.message(
+      'Segment',
+      name: 'segment_unnamed',
+      desc: 'Fallback label for a segment without a name',
+      args: [],
+    );
+  }
+
+  /// `Delete`
+  String get segment_delete {
+    return Intl.message(
+      'Delete',
+      name: 'segment_delete',
+      desc: 'Confirm button to delete a chart segment',
+      args: [],
+    );
+  }
+
+  /// `Delete this segment?`
+  String get segment_delete_title {
+    return Intl.message(
+      'Delete this segment?',
+      name: 'segment_delete_title',
+      desc: 'Dialog title when deleting a chart segment',
+      args: [],
+    );
+  }
+
+  /// `The waveform in "{label}" will be removed.`
+  String segment_delete_message(String label) {
+    return Intl.message(
+      'The waveform in "$label" will be removed.',
+      name: 'segment_delete_message',
+      desc: 'Dialog body when deleting a chart segment',
+      args: [label],
+    );
+  }
+
   /// `Time unit (steps / milliseconds)`
   String get toolbar_unit_tooltip {
     return Intl.message(

@@ -1,6 +1,9 @@
 import '../models/backup/app_config.dart';
+import '../models/chart/chart_segment.dart';
 import '../models/chart/signal_data.dart';
+import '../models/chart/signal_type.dart';
 import '../models/chart/timing_chart_annotation.dart';
+import 'chart_segment_service.dart';
 
 /// 結合先にだけ存在する信号の扱い
 enum UnmatchedIncomingPolicy {
@@ -38,6 +41,7 @@ class ChartConcatResult {
   final List<double> stepDurationsMs;
   final int joinStartIndex;
   final int joinEndIndex;
+  final List<ChartSegment> segments;
 
   const ChartConcatResult({
     required this.signals,
@@ -46,6 +50,7 @@ class ChartConcatResult {
     required this.stepDurationsMs,
     required this.joinStartIndex,
     required this.joinEndIndex,
+    this.segments = const [],
   });
 }
 
@@ -109,12 +114,18 @@ class ChartConcatService {
     required AppConfig incoming,
     required UnmatchedIncomingPolicy unmatchedPolicy,
     required String joinLabel,
+    List<ChartSegment> currentSegments = const [],
+    String currentLabel = '',
     String Function()? newId,
   }) {
     var idSeq = 0;
     String idOf() => newId?.call() ?? 'concat_${++idSeq}_${_idStamp()}';
     final currentUsable = _usableSignals(currentSignals);
-    final incomingUsable = _usableSignals(incoming.signals);
+    final incomingUsable = _usableSignals(
+      incoming.signals
+          .map((signal) => _withFormListType(signal, incoming))
+          .toList(),
+    );
     final currentLen = maxSignalLength(currentUsable);
     final incomingLen = maxSignalLength(incomingUsable);
     final currentByKey = <String, SignalData>{
@@ -206,6 +217,16 @@ class ChartConcatService {
       incomingTimeUnitIsMs: incoming.timeUnitIsMs,
     );
 
+    final mergedSegments = ChartSegmentService.appendAfterConcat(
+      currentSegments: currentSegments,
+      currentLength: currentLen,
+      incomingSegments: incoming.segments,
+      incomingLength: incomingLen,
+      currentLabel: currentLabel,
+      incomingLabel: joinLabel,
+      newId: newId == null ? null : () => 'seg_${newId()}',
+    );
+
     return ChartConcatResult(
       signals: mergedSignals,
       annotations: mergedAnnotations,
@@ -213,6 +234,7 @@ class ChartConcatService {
       stepDurationsMs: mergedDurations,
       joinStartIndex: joinStart,
       joinEndIndex: joinEnd,
+      segments: mergedSegments,
     );
   }
 
@@ -273,6 +295,38 @@ class ChartConcatService {
       }
     }
     return result;
+  }
+
+  /// フォームの名前リストから信号種別を復元する。
+  /// `Output3: BUSY` のようなプレフィックス付き名も突合する。
+  static SignalType? typeFromFormLists({
+    required String name,
+    required List<String> inputNames,
+    required List<String> outputNames,
+    required List<String> hwTriggerNames,
+    List<String> auxiliaryNames = const [],
+  }) {
+    final key = _matchKeyFromName(name);
+    if (key.isEmpty) return null;
+    bool matches(List<String> names) =>
+        names.any((candidate) => _matchKeyFromName(candidate) == key);
+    if (matches(auxiliaryNames)) return SignalType.auxiliary;
+    if (matches(hwTriggerNames)) return SignalType.hwTrigger;
+    if (matches(outputNames)) return SignalType.output;
+    if (matches(inputNames)) return SignalType.input;
+    return null;
+  }
+
+  static SignalData _withFormListType(SignalData signal, AppConfig incoming) {
+    final resolved = typeFromFormLists(
+      name: signal.name,
+      inputNames: incoming.inputNames,
+      outputNames: incoming.outputNames,
+      hwTriggerNames: incoming.hwTriggerNames,
+      auxiliaryNames: incoming.auxiliaryNames,
+    );
+    if (resolved == null || resolved == signal.signalType) return signal;
+    return signal.copyWith(signalType: resolved);
   }
 
   static String _displayName(SignalData signal) => signal.name.trim();

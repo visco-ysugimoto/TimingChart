@@ -398,6 +398,35 @@
   "@concat_join_default": {
       "description": "Default join annotation label"
   },
+  "segment_bar_hint": "Drag to reorder. X deletes that time slice.",
+  "@segment_bar_hint": {
+      "description": "Hint above the chart segment chips"
+  },
+  "segment_current_default": "Current chart",
+  "@segment_current_default": {
+      "description": "Label for the existing waveform when first concatenated"
+  },
+  "segment_unnamed": "Segment",
+  "@segment_unnamed": {
+      "description": "Fallback label for a segment without a name"
+  },
+  "segment_delete": "Delete",
+  "@segment_delete": {
+      "description": "Confirm button to delete a chart segment"
+  },
+  "segment_delete_title": "Delete this segment?",
+  "@segment_delete_title": {
+      "description": "Dialog title when deleting a chart segment"
+  },
+  "segment_delete_message": "The waveform in \"{label}\" will be removed.",
+  "@segment_delete_message": {
+      "description": "Dialog body when deleting a chart segment",
+      "placeholders": {
+          "label": {
+              "type": "String"
+          }
+      }
+  },
   "toolbar_unit_tooltip": "Time unit (steps / milliseconds)",
   "@toolbar_unit_tooltip": {
       "description": "Tooltip for chart toolbar time unit toggle"

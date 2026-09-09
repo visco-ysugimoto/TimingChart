@@ -108,5 +108,46 @@ void main() {
       expect(restoredAnn.maxWidth, 160);
       expect(restoredAnn.text, 'upper comment');
     });
+
+    test('outputNames にある信号は inputCount より前でも Output になる', () {
+      const formState = TimingFormState(
+        triggerOption: 'Single Trigger',
+        ioPort: 32,
+        hwPort: 0,
+        camera: 2,
+        inputCount: 32,
+        outputCount: 32,
+      );
+      final config = AppConfig(
+        formState: formState,
+        signals: const [
+          SignalData(
+            name: 'TRIGGER',
+            signalType: SignalType.input,
+            values: [1, 0],
+          ),
+          SignalData(
+            name: 'CAMERA_2_IMAGE_EXPOSURE',
+            signalType: SignalType.output,
+            values: [0, 1],
+          ),
+        ],
+        tableData: const [],
+        inputNames: const ['TRIGGER'],
+        outputNames: const ['CAMERA_2_IMAGE_EXPOSURE'],
+        hwTriggerNames: const [],
+        inputVisibility: const [true],
+        outputVisibility: const [true],
+        hwTriggerVisibility: const [],
+        rowModes: const [],
+      );
+
+      final restored = WaveDromConverter.fromWaveDromJson(
+        WaveDromConverter.toWaveDromJson(config),
+      );
+      expect(restored, isNotNull);
+      expect(restored!.signals[1].name, 'CAMERA_2_IMAGE_EXPOSURE');
+      expect(restored.signals[1].signalType, SignalType.output);
+    });
   });
 }

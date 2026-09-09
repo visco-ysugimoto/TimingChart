@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../models/chart/chart_segment.dart';
 import '../models/chart/timing_chart_annotation.dart';
 
 /// TimingChart の状態（signals / names / annotations）を集約管理するコントローラ。
@@ -36,8 +37,10 @@ class TimingChartController extends ChangeNotifier {
   List<TimingChartAnnotation> _annotations;
   int _gridResetNonce = 0;
   int _gridRecomputeNonce = 0;
+  int _historyEpoch = 0;
   List<int> _omissionTimeIndices = [];
   List<double> _stepDurationsMs = const [];
+  List<ChartSegment> _segments = const [];
 
   // Undo/Redo履歴管理
   final List<_ChartStateSnapshot> _undoStack = [];
@@ -50,8 +53,10 @@ class TimingChartController extends ChangeNotifier {
   List<TimingChartAnnotation> get annotations => _annotations;
   int get gridResetNonce => _gridResetNonce;
   int get gridRecomputeNonce => _gridRecomputeNonce;
+  int get historyEpoch => _historyEpoch;
   List<int> get omissionTimeIndices => _omissionTimeIndices;
   List<double> get stepDurationsMs => _stepDurationsMs;
+  List<ChartSegment> get segments => _segments;
 
   /// Undoが可能かどうか
   bool get canUndo => _undoStack.isNotEmpty;
@@ -69,6 +74,7 @@ class TimingChartController extends ChangeNotifier {
       annotations: List<TimingChartAnnotation>.from(_annotations),
       omissionTimeIndices: List<int>.from(_omissionTimeIndices),
       stepDurationsMs: List<double>.from(_stepDurationsMs),
+      segments: List<ChartSegment>.from(_segments),
     );
 
     _undoStack.add(snapshot);
@@ -89,6 +95,7 @@ class TimingChartController extends ChangeNotifier {
       annotations: List<TimingChartAnnotation>.from(_annotations),
       omissionTimeIndices: List<int>.from(_omissionTimeIndices),
       stepDurationsMs: List<double>.from(_stepDurationsMs),
+      segments: List<ChartSegment>.from(_segments),
     );
     _redoStack.add(currentSnapshot);
 
@@ -98,6 +105,7 @@ class TimingChartController extends ChangeNotifier {
     _isUndoRedoOperation = true;
     _restoreSnapshot(previousSnapshot);
     _isUndoRedoOperation = false;
+    _historyEpoch++;
 
     notifyListeners();
   }
@@ -113,6 +121,7 @@ class TimingChartController extends ChangeNotifier {
       annotations: List<TimingChartAnnotation>.from(_annotations),
       omissionTimeIndices: List<int>.from(_omissionTimeIndices),
       stepDurationsMs: List<double>.from(_stepDurationsMs),
+      segments: List<ChartSegment>.from(_segments),
     );
     _undoStack.add(currentSnapshot);
 
@@ -122,6 +131,7 @@ class TimingChartController extends ChangeNotifier {
     _isUndoRedoOperation = true;
     _restoreSnapshot(nextSnapshot);
     _isUndoRedoOperation = false;
+    _historyEpoch++;
 
     notifyListeners();
   }
@@ -133,6 +143,7 @@ class TimingChartController extends ChangeNotifier {
     _annotations = List<TimingChartAnnotation>.from(snapshot.annotations);
     _omissionTimeIndices = List<int>.from(snapshot.omissionTimeIndices);
     _stepDurationsMs = List<double>.from(snapshot.stepDurationsMs);
+    _segments = List<ChartSegment>.from(snapshot.segments);
   }
 
   void setSignals(List<List<int>> newSignals) {
@@ -206,6 +217,7 @@ class TimingChartController extends ChangeNotifier {
     required List<TimingChartAnnotation> annotations,
     required List<int> omissionTimeIndices,
     required List<double> stepDurationsMs,
+    List<ChartSegment>? segments,
   }) {
     if (!_isUndoRedoOperation) {
       _saveSnapshot();
@@ -215,6 +227,15 @@ class TimingChartController extends ChangeNotifier {
     _annotations = List<TimingChartAnnotation>.from(annotations);
     _omissionTimeIndices = List<int>.from(omissionTimeIndices);
     _stepDurationsMs = List<double>.from(stepDurationsMs);
+    if (segments != null) {
+      _segments = List<ChartSegment>.from(segments);
+    }
+    notifyListeners();
+  }
+
+  /// 列削除など、既存の Undo ステップに載せるためのセグメント更新
+  void replaceSegmentsSilent(List<ChartSegment> segments) {
+    _segments = List<ChartSegment>.from(segments);
     notifyListeners();
   }
 
@@ -254,6 +275,7 @@ class _ChartStateSnapshot {
   final List<TimingChartAnnotation> annotations;
   final List<int> omissionTimeIndices;
   final List<double> stepDurationsMs;
+  final List<ChartSegment> segments;
 
   _ChartStateSnapshot({
     required this.signals,
@@ -261,6 +283,7 @@ class _ChartStateSnapshot {
     required this.annotations,
     required this.omissionTimeIndices,
     required this.stepDurationsMs,
+    required this.segments,
   });
 }
 

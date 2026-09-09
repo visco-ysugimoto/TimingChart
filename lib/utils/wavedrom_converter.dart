@@ -1,11 +1,13 @@
 import 'dart:convert';
 
 import '../models/backup/app_config.dart';
+import '../models/chart/chart_segment.dart';
 import '../models/chart/signal_data.dart';
 import '../models/chart/timing_chart_annotation.dart';
 import '../models/form/form_state.dart';
 import '../models/chart/signal_type.dart';
 import '../models/form/camera_table_types.dart' show CellMode;
+import '../services/chart_concat_service.dart';
 
 /// AppConfig から WaveDrom 形式(JSON)へ変換するユーティリティ
 class WaveDromConverter {
@@ -208,6 +210,7 @@ class WaveDromConverter {
       'timeUnitIsMs': config.timeUnitIsMs,
       'msPerStep': config.msPerStep,
       'stepDurationsMs': config.stepDurationsMs,
+      'segments': config.segments.map((s) => s.toJson()).toList(),
     };
   }
 
@@ -466,15 +469,23 @@ class WaveDromConverter {
         final values = _waveToValues(waveStr);
 
         SignalType type;
-        if (sigIdx < inputCount) {
+        final resolved = ChartConcatService.typeFromFormLists(
+          name: name,
+          inputNames: inputNames,
+          outputNames: outputNames,
+          hwTriggerNames: hwTriggerNames,
+          auxiliaryNames: auxiliaryNames,
+        );
+        if (resolved != null) {
+          type = resolved;
+        } else if (auxiliaryNameSet.contains(name)) {
+          type = SignalType.auxiliary;
+        } else if (sigIdx < inputCount) {
           type = SignalType.input;
         } else if (sigIdx < inputCount + hwPort) {
           type = SignalType.hwTrigger;
         } else {
           type = SignalType.output;
-        }
-        if (auxiliaryNameSet.contains(name)) {
-          type = SignalType.auxiliary;
         }
 
         signals.add(
@@ -517,6 +528,7 @@ class WaveDromConverter {
       timeUnitIsMs: timeUnitIsMs,
       msPerStep: msPerStep,
       stepDurationsMs: stepDurationsMs,
+      segments: ChartSegment.listFromJson(cfg['segments']),
     );
   }
 }
