@@ -164,6 +164,22 @@ void main() {
       ]);
       expect(decoded.segments.single.rowModes, ['none']);
 
+      final withScanOrder = AppConfig(
+        formState: formState,
+        signals: const [signal],
+        tableData: const [],
+        inputNames: const ['input1'],
+        outputNames: const [],
+        hwTriggerNames: const [],
+        inputVisibility: const [true],
+        outputVisibility: const [],
+        hwTriggerVisibility: const [],
+        rowModes: const [],
+        captureScanOrder: 'row',
+      );
+      final decodedScan = AppConfig.fromJsonString(withScanOrder.toJsonString());
+      expect(decodedScan.captureScanOrder, 'row');
+
       final legacy = AppConfig.fromJson({
         'formState': {
           'triggerOption': 'Single Trigger',
@@ -191,6 +207,7 @@ void main() {
         'rowModes': [],
       });
       expect(legacy.segments, isEmpty);
+      expect(legacy.captureScanOrder, 'column');
     });
   });
 }

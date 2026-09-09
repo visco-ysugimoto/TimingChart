@@ -33,6 +33,9 @@ class AppConfig {
   // 行モード (none / simultaneous など)
   final List<String> rowModes;
 
+  // Camera Configuration Table の走査順 (column / row)
+  final String captureScanOrder;
+
   // チャートアノテーションと省略区間
   final List<TimingChartAnnotation> annotations;
   final List<int> omissionIndices;
@@ -58,6 +61,7 @@ class AppConfig {
     required this.hwTriggerVisibility,
     this.auxiliaryVisibility = const [],
     required this.rowModes,
+    this.captureScanOrder = 'column',
     this.annotations = const [],
     this.omissionIndices = const [],
     this.timeUnitIsMs = false,
@@ -87,6 +91,7 @@ class AppConfig {
     required List<bool> hwTriggerVisibility,
     List<bool> auxiliaryVisibility = const [],
     required List<String> rowModes,
+    String captureScanOrder = 'column',
     List<TimingChartAnnotation> annotations = const [],
     List<int> omissionIndices = const [],
     bool timeUnitIsMs = false,
@@ -107,6 +112,7 @@ class AppConfig {
       hwTriggerVisibility: hwTriggerVisibility,
       auxiliaryVisibility: auxiliaryVisibility,
       rowModes: rowModes,
+      captureScanOrder: captureScanOrder,
       annotations: annotations,
       omissionIndices: omissionIndices,
       timeUnitIsMs: timeUnitIsMs,
@@ -153,6 +159,7 @@ class AppConfig {
       'hwTriggerVisibility': hwTriggerVisibility,
       'auxiliaryVisibility': auxiliaryVisibility,
       'rowModes': rowModes,
+      'captureScanOrder': captureScanOrder,
       'annotations': annotations.map((a) => a.toJson()).toList(),
       'omissionIndices': omissionIndices,
       'timeUnitIsMs': timeUnitIsMs,
@@ -224,6 +231,9 @@ class AppConfig {
       auxiliaryVisibility:
           (json['auxiliaryVisibility'] as List?)?.cast<bool>() ?? const [],
       rowModes: (json['rowModes'] as List?)?.cast<String>() ?? const [],
+      captureScanOrder: CaptureScanOrder.fromName(
+        json['captureScanOrder'] as String?,
+      ).name,
       annotations:
           ((json['annotations'] ?? []) as List)
               .map(

@@ -149,5 +149,41 @@ void main() {
       expect(restored!.signals[1].name, 'CAMERA_2_IMAGE_EXPOSURE');
       expect(restored.signals[1].signalType, SignalType.output);
     });
+
+    test('captureScanOrder が WaveDrom JSON を往復しても維持される', () {
+      const formState = TimingFormState(
+        triggerOption: 'Single Trigger',
+        ioPort: 1,
+        hwPort: 0,
+        camera: 1,
+        inputCount: 1,
+        outputCount: 0,
+      );
+      final config = AppConfig(
+        formState: formState,
+        signals: const [
+          SignalData(
+            name: 'input1',
+            signalType: SignalType.input,
+            values: [1, 0],
+          ),
+        ],
+        tableData: const [],
+        inputNames: const ['input1'],
+        outputNames: const [],
+        hwTriggerNames: const [],
+        inputVisibility: const [true],
+        outputVisibility: const [],
+        hwTriggerVisibility: const [],
+        rowModes: const [],
+        captureScanOrder: 'row',
+      );
+
+      final restored = WaveDromConverter.fromWaveDromJson(
+        WaveDromConverter.toWaveDromJson(config),
+      );
+      expect(restored, isNotNull);
+      expect(restored!.captureScanOrder, 'row');
+    });
   });
 }

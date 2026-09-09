@@ -29,6 +29,7 @@ import '../../models/chart/signal_data.dart'; // SignalDataをインポート
 import '../../models/chart/io_channel_source.dart'; // IoChannelSourceをインポート
 import '../../models/backup/app_config.dart'; // AppConfigをインポート
 import '../../models/form/camera_table_types.dart';
+import '../../models/form/camera_capture_scheduler.dart';
 import 'input_section.dart';
 import 'output_section.dart';
 import 'hw_trigger_section.dart';
@@ -168,6 +169,9 @@ class FormTabState extends State<FormTab>
 
   /// カラム一括変更のための現在値（UI用）
   List<CellMode> _columnModes = [];
+
+  /// Camera Configuration Table の走査順（列順 / 行順）
+  CaptureScanOrder _captureScanOrder = CaptureScanOrder.defaultOrder;
 
   // --- 画面状態（可視性） ---
   /// チェックボックスの状態（SignalData の isVisible と同期する）
@@ -1490,79 +1494,15 @@ class FormTabState extends State<FormTab>
     // 32 信号データの更新
 
     // ---------- Exposure 信号データの更新 ----------
-    const int minGap = 4;
-    int currentTime = 6;
-
-    // exposureTimes[camIndex] = List<timeIndex>
-    Map<int, List<int>> exposureTimes = {
-      for (int c = 1; c <= formState.camera; c++) c: [],
-    };
-
-    // 信号データを更新する
-    Map<int, List<int>> contactWaitTimes = {
-      for (int c = 1; c <= formState.camera; c++) c: [],
-    };
-    Map<int, List<int>> hwTriggerTimes = {
-      for (int c = 1; c <= formState.camera; c++) c: [],
-    };
-
-    final bool hasSimultaneous =
-        canUseSimultaneousCapture(formState.camera) &&
-        _rowModes.any((mode) => mode == RowMode.simultaneous);
-
-    if (hasSimultaneous) {
-      // --- 信号データの更新 ---
-      for (int row = 0; row < _tableData.length; row++) {
-        bool isSimul = _rowModes[row] == RowMode.simultaneous;
-        if (isSimul) {
-          bool any = false;
-          for (int cam = 0; cam < formState.camera; cam++) {
-            if (_tableData[row][cam] == CellMode.mode1 ||
-                _tableData[row][cam] == CellMode.mode2 ||
-                _tableData[row][cam] == CellMode.mode3) {
-              exposureTimes[cam + 1]!.add(currentTime);
-              if (_tableData[row][cam] == CellMode.mode2) {
-                contactWaitTimes[cam + 1]!.add(currentTime);
-              } else if (_tableData[row][cam] == CellMode.mode3) {
-                hwTriggerTimes[cam + 1]!.add(currentTime);
-              }
-              any = true;
-            }
-          }
-          if (any) currentTime += minGap + 1;
-        } else {
-          for (int cam = 0; cam < formState.camera; cam++) {
-            if (_tableData[row][cam] == CellMode.mode1 ||
-                _tableData[row][cam] == CellMode.mode2 ||
-                _tableData[row][cam] == CellMode.mode3) {
-              exposureTimes[cam + 1]!.add(currentTime);
-              if (_tableData[row][cam] == CellMode.mode2) {
-                contactWaitTimes[cam + 1]!.add(currentTime);
-              } else if (_tableData[row][cam] == CellMode.mode3) {
-                hwTriggerTimes[cam + 1]!.add(currentTime);
-              }
-              currentTime += minGap + 1;
-            }
-          }
-        }
-      }
-    } else {
-      for (int cam = 0; cam < formState.camera; cam++) {
-        for (int row = 0; row < _tableData.length; row++) {
-          if (_tableData[row][cam] == CellMode.mode1 ||
-              _tableData[row][cam] == CellMode.mode2 ||
-              _tableData[row][cam] == CellMode.mode3) {
-            exposureTimes[cam + 1]!.add(currentTime);
-            if (_tableData[row][cam] == CellMode.mode2) {
-              contactWaitTimes[cam + 1]!.add(currentTime);
-            } else if (_tableData[row][cam] == CellMode.mode3) {
-              hwTriggerTimes[cam + 1]!.add(currentTime);
-            }
-            currentTime += minGap + 1;
-          }
-        }
-      }
-    }
+    final schedule = CameraCaptureScheduler.build(
+      tableData: _tableData,
+      rowModes: _rowModes,
+      cameraCount: formState.camera,
+      scanOrder: _captureScanOrder,
+    );
+    final Map<int, List<int>> exposureTimes = schedule.exposureTimes;
+    final Map<int, List<int>> contactWaitTimes = schedule.contactWaitTimes;
+    final Map<int, List<int>> hwTriggerTimes = schedule.hwTriggerTimes;
 
     int maxTimeIndex = exposureTimes.values
         .expand((list) => list)
@@ -2046,6 +1986,8 @@ class FormTabState extends State<FormTab>
         _rowModes = List.generate(_rowCount, (_) => RowMode.none);
       }
 
+      _captureScanOrder = CaptureScanOrder.fromName(config.captureScanOrder);
+
       if (config.inputVisibility.length == _inputVisibility.length) {
         _inputVisibility = List.from(config.inputVisibility);
       }
@@ -2384,6 +2326,8 @@ class FormTabState extends State<FormTab>
     return _rowModes.map((e) => e.name).toList();
   }
 
+  String getCaptureScanOrder() => _captureScanOrder.name;
+
   // CODE_OPTION / Command Option の波形を生成する
   List<int> _generateCodeOptionWave(List<int> autoWave, int waveLength) {
     // AUTO_MODE の立ち上がり検出（0→1の遷移）
@@ -2620,11 +2564,18 @@ class FormTabState extends State<FormTab>
             tableData: _tableData,
             rowModes: _rowModes,
             columnModes: _columnModes,
+            captureScanOrder: _captureScanOrder,
             onAddRow: _addRow,
             onRemoveRow: _removeRow,
             onToggleRowMode: _changeRowMode,
             onChangeCellMode: _changeCellMode,
             onChangeColumnMode: _changeColumnMode,
+            onCaptureScanOrderChanged: (order) {
+              if (order == null) return;
+              setState(() {
+                _captureScanOrder = order;
+              });
+            },
           ),
         ),
       ],
@@ -2998,11 +2949,13 @@ class _FormTabBodySection extends StatelessWidget {
   final List<List<CellMode>> tableData;
   final List<RowMode> rowModes;
   final List<CellMode> columnModes;
+  final CaptureScanOrder captureScanOrder;
   final VoidCallback onAddRow;
   final VoidCallback onRemoveRow;
   final void Function(int row) onToggleRowMode;
   final void Function(int row, int col, CellMode mode) onChangeCellMode;
   final void Function(int col, CellMode mode) onChangeColumnMode;
+  final ValueChanged<CaptureScanOrder?> onCaptureScanOrderChanged;
 
   const _FormTabBodySection({
     required this.formState,
@@ -3033,11 +2986,13 @@ class _FormTabBodySection extends StatelessWidget {
     required this.tableData,
     required this.rowModes,
     required this.columnModes,
+    required this.captureScanOrder,
     required this.onAddRow,
     required this.onRemoveRow,
     required this.onToggleRowMode,
     required this.onChangeCellMode,
     required this.onChangeColumnMode,
+    required this.onCaptureScanOrderChanged,
   });
 
   @override
@@ -3246,27 +3201,46 @@ class _FormTabBodySection extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Wrap(
-                    spacing: 16,
-                    runSpacing: 8,
-                    alignment: WrapAlignment.end,
-                    children: [
-                      ElevatedButton.icon(
-                        onPressed: onAddRow,
-                        icon: const Icon(Icons.add),
-                        label: const Text('Add Row'),
-                        style: addRowButtonStyle,
+                Wrap(
+                  spacing: 16,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 180,
+                      child: Tooltip(
+                        message: _captureScanOrderTooltip(context),
+                        child: CustomDropdown<CaptureScanOrder>(
+                          value: captureScanOrder,
+                          items: CaptureScanOrder.values,
+                          onChanged: onCaptureScanOrderChanged,
+                          label: _captureScanOrderTitle(context),
+                          itemLabel: (order) =>
+                              _captureScanOrderItemLabel(context, order),
+                        ),
                       ),
-                      ElevatedButton.icon(
-                        onPressed: rowCount > 1 ? onRemoveRow : null,
-                        icon: const Icon(Icons.remove),
-                        label: const Text('Remove Row'),
-                        style: removeRowButtonStyle,
-                      ),
-                    ],
-                  ),
+                    ),
+                    Wrap(
+                      spacing: 16,
+                      runSpacing: 8,
+                      alignment: WrapAlignment.end,
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: onAddRow,
+                          icon: const Icon(Icons.add),
+                          label: const Text('Add Row'),
+                          style: addRowButtonStyle,
+                        ),
+                        ElevatedButton.icon(
+                          onPressed: rowCount > 1 ? onRemoveRow : null,
+                          icon: const Icon(Icons.remove),
+                          label: const Text('Remove Row'),
+                          style: removeRowButtonStyle,
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 8),
                 Expanded(
@@ -3288,6 +3262,32 @@ class _FormTabBodySection extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  bool _isJapanese(BuildContext context) =>
+      Localizations.localeOf(context).languageCode == 'ja';
+
+  String _captureScanOrderTitle(BuildContext context) =>
+      _isJapanese(context) ? '取込順' : 'Capture Order';
+
+  String _captureScanOrderItemLabel(
+    BuildContext context,
+    CaptureScanOrder order,
+  ) {
+    final ja = _isJapanese(context);
+    switch (order) {
+      case CaptureScanOrder.column:
+        return ja ? '列順' : 'Column';
+      case CaptureScanOrder.row:
+        return ja ? '行順' : 'Row';
+    }
+  }
+
+  String _captureScanOrderTooltip(BuildContext context) {
+    if (_isJapanese(context)) {
+      return '列順はカメラごとに上から波形を並べます。行順は表の上の行から順に並べます。同時取込がある場合は従来どおり行単位で処理します。';
+    }
+    return 'Column order fills each camera top to bottom. Row order follows the table from the top row. Simultaneous rows still fire together.';
   }
 }
 

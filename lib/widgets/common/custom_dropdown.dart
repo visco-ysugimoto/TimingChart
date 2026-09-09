@@ -5,6 +5,7 @@ class CustomDropdown<T> extends StatelessWidget {
   final List<T> items;
   final ValueChanged<T?> onChanged;
   final String label;
+  final String Function(T item)? itemLabel;
 
   const CustomDropdown({
     super.key,
@@ -12,6 +13,7 @@ class CustomDropdown<T> extends StatelessWidget {
     required this.items,
     required this.onChanged,
     required this.label,
+    this.itemLabel,
   });
 
   @override
@@ -23,7 +25,7 @@ class CustomDropdown<T> extends StatelessWidget {
           items.map((T item) {
             return DropdownMenuItem<T>(
               value: item,
-              child: Text(item.toString()),
+              child: Text(itemLabel?.call(item) ?? item.toString()),
             );
           }).toList(),
       onChanged: onChanged,

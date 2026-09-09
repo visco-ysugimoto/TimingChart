@@ -67,6 +67,7 @@ class ExportService {
     List<bool> hwTriggerVisibility = [];
     List<bool> auxiliaryVisibility = [];
     List<String> rowModes = [];
+    var captureScanOrder = CaptureScanOrder.defaultOrder.name;
 
     if (formTabState != null) {
       signalData = formTabState.getSignalDataList();
@@ -76,6 +77,7 @@ class ExportService {
       hwTriggerVisibility = formTabState.getHwTriggerVisibility();
       auxiliaryVisibility = formTabState.getAuxiliaryVisibility();
       rowModes = formTabState.getRowModes();
+      captureScanOrder = formTabState.getCaptureScanOrder();
     }
 
     if (timingChartState != null) {
@@ -107,6 +109,7 @@ class ExportService {
       hwTriggerVisibility: hwTriggerVisibility,
       auxiliaryVisibility: auxiliaryVisibility,
       rowModes: rowModes,
+      captureScanOrder: captureScanOrder,
       annotations: chartAnnotations,
       omissionIndices: timingChartState?.getOmissionTimeIndices() ?? const [],
       timeUnitIsMs: timeUnitIsMs,

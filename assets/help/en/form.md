@@ -130,6 +130,17 @@ Each cell has a dropdown. Colors help you scan the table.
 
 > Use Simultaneous rows for multi-camera shots at the same instant, and Sequential rows for one-by-one capture.
 
+### Capture order (waveforms)
+
+Use **Capture Order** above the table to choose how Template reads the table.
+
+| Order | Behavior |
+| --- | --- |
+| **Column** | Camera 1 top to bottom, then Camera 2, … (the original behavior). Example: 1,1,1,1,2,2,3,3 |
+| **Row** | Top row left to right, then the next row, …. Example: 1,1,3,3,1,1,2,2 |
+
+If any row is Simultaneous, captures still fire together by row, as before.
+
 ---
 
 ## Troubleshooting

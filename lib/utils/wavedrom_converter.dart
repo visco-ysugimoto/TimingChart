@@ -6,7 +6,7 @@ import '../models/chart/signal_data.dart';
 import '../models/chart/timing_chart_annotation.dart';
 import '../models/form/form_state.dart';
 import '../models/chart/signal_type.dart';
-import '../models/form/camera_table_types.dart' show CellMode;
+import '../models/form/camera_table_types.dart' show CellMode, CaptureScanOrder;
 import '../services/chart_concat_service.dart';
 
 /// AppConfig から WaveDrom 形式(JSON)へ変換するユーティリティ
@@ -119,6 +119,7 @@ class WaveDromConverter {
             hwTriggerVisibility: config.hwTriggerVisibility,
             auxiliaryVisibility: config.auxiliaryVisibility,
             rowModes: config.rowModes,
+            captureScanOrder: config.captureScanOrder,
             annotations: annList,
             omissionIndices: omitList,
             timeUnitIsMs: config.timeUnitIsMs,
@@ -156,6 +157,7 @@ class WaveDromConverter {
           hwTriggerVisibility: config.hwTriggerVisibility,
           auxiliaryVisibility: config.auxiliaryVisibility,
           rowModes: config.rowModes,
+          captureScanOrder: config.captureScanOrder,
           annotations: annList2,
           omissionIndices: omitList2,
           timeUnitIsMs: config.timeUnitIsMs,
@@ -206,6 +208,7 @@ class WaveDromConverter {
               .map((row) => row.map((cell) => cell.index).toList())
               .toList(),
       'rowModes': config.rowModes,
+      'captureScanOrder': config.captureScanOrder,
       // 時間単位/スケール
       'timeUnitIsMs': config.timeUnitIsMs,
       'msPerStep': config.msPerStep,
@@ -523,6 +526,9 @@ class WaveDromConverter {
       hwTriggerVisibility: hwTriggerVisibility,
       auxiliaryVisibility: auxiliaryVisibility,
       rowModes: rowModes,
+      captureScanOrder: CaptureScanOrder.fromName(
+        cfg['captureScanOrder'] as String?,
+      ).name,
       annotations: annotations,
       omissionIndices: omissionIndices,
       timeUnitIsMs: timeUnitIsMs,

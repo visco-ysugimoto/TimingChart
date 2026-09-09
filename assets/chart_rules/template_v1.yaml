@@ -12,7 +12,8 @@ meta:
   # 露光スケジューリングポリシー
   scheduling:
     camera_order: ascending            # ascending / descending / custom
-    respect_rowmode_simultaneous: true # 行が simultaneous の場合はカメラ同時露光
+    scan_order: column                 # column / row  Camera Configuration Table の走査順
+    respect_rowmode_simultaneous: true # 行が simultaneous の場合はカメラ同時露光（scan_order より優先）
     min_gap_seq: 4                    # sequential 露光間隔 (samples)
     custom_strategy: null              # 将来のカスタム戦略名 (plugin id 等)
 
