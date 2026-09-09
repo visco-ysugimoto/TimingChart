@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/chart/timing_chart_annotation.dart';
 import '../../utils/comment_text_spans.dart';
+import '../../utils/comment_box_layout.dart';
 import 'chart_coordinate_mapper.dart';
 import 'dart:math' as math;
 import 'chart_drawing_util.dart';
@@ -259,6 +260,11 @@ class ChartAnnotationsManager {
             topAttempts++;
           }
         }
+        commentRect = shiftCommentOutOfLabelColumn(
+          commentRect: commentRect,
+          labelColumn: Rect.fromLTWH(0, 0, labelWidth + 1, chartBottomY),
+          placementTop: true,
+        );
         placedTopCommentRects.add(commentRect);
         annotationRects[ann.id] = commentRect;
 
@@ -483,6 +489,12 @@ class ChartAnnotationsManager {
           attempts++;
         }
       }
+
+      commentRect = shiftCommentOutOfLabelColumn(
+        commentRect: commentRect,
+        labelColumn: Rect.fromLTWH(0, 0, labelWidth + 1, chartBottomY),
+        placementTop: false,
+      );
 
       debugPrint(
         'コメントボックスの位置: X=${commentRect.left}, Y=${commentRect.top}, Width=${commentRect.width}, Height=${commentRect.height}',

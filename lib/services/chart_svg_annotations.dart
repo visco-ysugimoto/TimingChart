@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../models/chart/timing_chart_annotation.dart';
 import '../utils/comment_text_spans.dart';
+import '../utils/comment_box_layout.dart';
 import 'chart_svg_export_data.dart';
 import 'chart_svg_writer.dart';
 
@@ -178,14 +179,29 @@ class ChartSvgAnnotations {
           commentRect = commentRect.translate(0, -20);
           topAttempts++;
         }
-        placedTopCommentRects.add(commentRect);
-        if (arrowRect != null) placedArrowRects.add(arrowRect);
       } else {
         var attempts = 0;
         while (_overlapsAny(commentRect, placedCommentRects) && attempts < 15) {
           commentRect = commentRect.translate(0, 20);
           attempts++;
         }
+      }
+
+      commentRect = shiftCommentOutOfLabelColumn(
+        commentRect: commentRect,
+        labelColumn: Rect.fromLTWH(
+          originX,
+          originY,
+          data.labelWidth + 1,
+          signalCount * data.cellHeight,
+        ),
+        placementTop: placementTop,
+      );
+
+      if (placementTop) {
+        placedTopCommentRects.add(commentRect);
+        if (arrowRect != null) placedArrowRects.add(arrowRect);
+      } else {
         placedCommentRects.add(commentRect);
         placedOnlyCommentRects.add(commentRect);
         if (arrowRect != null) placedCommentRects.add(arrowRect);
