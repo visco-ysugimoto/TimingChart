@@ -396,6 +396,7 @@ class _TimingChartGeneratorHomePageState
 
   bool _isImportingZiq = false;
   bool _hasUnsavedChanges = false;
+  bool _isQuitting = false;
 
   /// PLC/EIPオプションが無効な場合、関連するコントローラーをクリアします
   void _clearPlcEipControllersIfDisabled() {
@@ -1593,14 +1594,19 @@ class _TimingChartGeneratorHomePageState
     _hasUnsavedChanges = false;
   }
 
+  Future<void> _quitDesktopApp() async {
+    if (_isQuitting) return;
+    _isQuitting = true;
+    // destroy() は PostQuitMessage だけでエンジンを破棄せず、終了が数秒遅れる。
+    await windowManager.setPreventClose(false);
+    await windowManager.close();
+  }
+
   @override
   Future<void> onWindowClose() async {
-    if (!_hasUnsavedChanges) {
-      await windowManager.destroy();
-      return;
-    }
-    if (!mounted) {
-      await windowManager.destroy();
+    if (_isQuitting) return;
+    if (!_hasUnsavedChanges || !mounted) {
+      await _quitDesktopApp();
       return;
     }
     final s = S.of(context);
@@ -1622,7 +1628,7 @@ class _TimingChartGeneratorHomePageState
       ),
     );
     if (quit == true) {
-      await windowManager.destroy();
+      await _quitDesktopApp();
     }
   }
 
