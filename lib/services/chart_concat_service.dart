@@ -3,6 +3,7 @@ import '../models/chart/chart_segment.dart';
 import '../models/chart/signal_data.dart';
 import '../models/chart/signal_type.dart';
 import '../models/chart/timing_chart_annotation.dart';
+import '../models/form/camera_table_types.dart';
 import 'chart_segment_service.dart';
 
 /// 結合先にだけ存在する信号の扱い
@@ -42,6 +43,9 @@ class ChartConcatResult {
   final int joinStartIndex;
   final int joinEndIndex;
   final List<ChartSegment> segments;
+  final List<List<CellMode>> tableData;
+  final List<String> rowModes;
+  final int cameraCount;
 
   const ChartConcatResult({
     required this.signals,
@@ -51,6 +55,9 @@ class ChartConcatResult {
     required this.joinStartIndex,
     required this.joinEndIndex,
     this.segments = const [],
+    this.tableData = const [],
+    this.rowModes = const [],
+    this.cameraCount = 1,
   });
 }
 
@@ -116,6 +123,9 @@ class ChartConcatService {
     required String joinLabel,
     List<ChartSegment> currentSegments = const [],
     String currentLabel = '',
+    List<List<CellMode>> currentTable = const [],
+    List<String> currentRowModes = const [],
+    int currentCameraCount = 1,
     String Function()? newId,
   }) {
     var idSeq = 0;
@@ -224,7 +234,18 @@ class ChartConcatService {
       incomingLength: incomingLen,
       currentLabel: currentLabel,
       incomingLabel: joinLabel,
+      currentTable: currentTable,
+      currentRowModes: currentRowModes,
+      incomingTable: incoming.tableData,
+      incomingRowModes: incoming.rowModes,
       newId: newId == null ? null : () => 'seg_${newId()}',
+    );
+    final combinedTable = ChartSegmentService.combineCameraTables(
+      mergedSegments,
+      minCameraCount: [
+        currentCameraCount,
+        incoming.formState.camera,
+      ].fold(1, (a, b) => a > b ? a : b),
     );
 
     return ChartConcatResult(
@@ -235,6 +256,9 @@ class ChartConcatService {
       joinStartIndex: joinStart,
       joinEndIndex: joinEnd,
       segments: mergedSegments,
+      tableData: combinedTable.table,
+      rowModes: combinedTable.rowModes,
+      cameraCount: combinedTable.cameraCount,
     );
   }
 

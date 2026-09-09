@@ -73,6 +73,7 @@ Another chart is joined after the current waveforms.
 - If the incoming file has **signals that do not exist** here, choose **Add with 0 padding** or **Do not add**.
 - A join comment (default name **Appended chart**) is inserted at the boundary.
 - After two or more charts are joined, a **segment** bar appears above the chart. Drag a chip to reorder that time slice, or press X to delete it.
+- The **camera configuration table** on the form is stacked in join order. Reordering or deleting a segment updates those rows to match.
 
 ### Other items
 

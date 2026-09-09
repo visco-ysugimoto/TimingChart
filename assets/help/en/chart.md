@@ -22,7 +22,7 @@ The bar above the chart uses icons. Hover for a short description. It wraps if t
 | **Fit selection** | Zoom so the selection fills the view (selection required) |
 | **Selection length** | Selection length in milliseconds (ms mode) or steps (step mode) |
 
-After **two or more** charts are appended, a segment bar appears under the toolbar. Drag a chip to swap that time slice; press X to delete just that slice. The bar is inactive while editing is locked.
+After **two or more** charts are appended, a segment bar appears under the toolbar. Drag a chip to swap that time slice; press X to delete just that slice. The bar is inactive while editing is locked. The camera configuration table on the form follows the same segment order.
 
 ---
 

@@ -3,6 +3,7 @@ import 'package:flutter_application_1/models/backup/app_config.dart';
 import 'package:flutter_application_1/models/chart/signal_data.dart';
 import 'package:flutter_application_1/models/chart/signal_type.dart';
 import 'package:flutter_application_1/models/chart/timing_chart_annotation.dart';
+import 'package:flutter_application_1/models/form/camera_table_types.dart';
 import 'package:flutter_application_1/models/form/form_state.dart';
 import 'package:flutter_application_1/services/chart_concat_service.dart';
 
@@ -467,6 +468,63 @@ void main() {
       expect(result.signals.single.name, 'BUSY');
       expect(result.signals.single.values, [1, 0, 1]);
     });
+
+    test('カメラ取込表を結合順に積み、列数は多い方に揃える', () {
+      final current = [
+        const SignalData(
+          name: 'TRIGGER',
+          signalType: SignalType.input,
+          values: [0, 1],
+        ),
+      ];
+      final incoming = _config(
+        signals: const [
+          SignalData(
+            name: 'TRIGGER',
+            signalType: SignalType.input,
+            values: [1, 0],
+          ),
+        ],
+        camera: 2,
+        tableData: const [
+          [CellMode.mode2, CellMode.mode1],
+          [CellMode.none, CellMode.none],
+        ],
+        rowModes: const ['simultaneous', 'none'],
+      );
+
+      final result = ChartConcatService.concat(
+        currentSignals: current,
+        currentAnnotations: const [],
+        currentOmissions: const [],
+        currentStepDurationsMs: const [],
+        currentMsPerStep: 1,
+        currentTimeUnitIsMs: false,
+        incoming: incoming,
+        unmatchedPolicy: UnmatchedIncomingPolicy.padAndAdd,
+        joinLabel: 'taskB.json',
+        currentTable: const [
+          [CellMode.mode1],
+          [CellMode.none],
+        ],
+        currentRowModes: const ['none', 'none'],
+        currentCameraCount: 1,
+        newId: nextId,
+      );
+
+      expect(result.cameraCount, 2);
+      expect(result.tableData, [
+        [CellMode.mode1, CellMode.none],
+        [CellMode.mode2, CellMode.mode1],
+      ]);
+      expect(result.rowModes, ['none', 'simultaneous']);
+      expect(result.segments[0].cameraTable, [
+        [CellMode.mode1],
+      ]);
+      expect(result.segments[1].cameraTable, [
+        [CellMode.mode2, CellMode.mode1],
+      ]);
+    });
   });
 }
 
@@ -478,25 +536,28 @@ AppConfig _config({
   double msPerStep = 1,
   List<double> stepDurationsMs = const [],
   List<String> outputNames = const [],
+  int camera = 1,
+  List<List<CellMode>> tableData = const [],
+  List<String> rowModes = const [],
 }) {
   return AppConfig(
-    formState: const TimingFormState(
+    formState: TimingFormState(
       triggerOption: 'Single Trigger',
       ioPort: 32,
       hwPort: 0,
-      camera: 1,
+      camera: camera,
       inputCount: 32,
       outputCount: 32,
     ),
     signals: signals,
-    tableData: const [],
+    tableData: tableData,
     inputNames: const [],
     outputNames: outputNames,
     hwTriggerNames: const [],
     inputVisibility: const [],
     outputVisibility: const [],
     hwTriggerVisibility: const [],
-    rowModes: const [],
+    rowModes: rowModes,
     annotations: annotations,
     omissionIndices: omissionIndices,
     timeUnitIsMs: timeUnitIsMs,

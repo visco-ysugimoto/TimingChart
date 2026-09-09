@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_application_1/models/chart/chart_segment.dart';
 import 'package:flutter_application_1/models/chart/timing_chart_annotation.dart';
+import 'package:flutter_application_1/models/form/camera_table_types.dart';
 import 'package:flutter_application_1/services/chart_segment_service.dart';
 
 void main() {
@@ -190,6 +191,144 @@ void main() {
       expect(mutation.annotations.last.startTimeIndex, 2);
       expect(mutation.omissionIndices, [2]);
       expect(mutation.stepDurationsMs, [1, 1, 5]);
+    });
+
+    test('結合時にカメラ取込表をセグメントへ付け、結合順に連結する', () {
+      final segments = ChartSegmentService.appendAfterConcat(
+        currentSegments: const [],
+        currentLength: 3,
+        incomingSegments: const [],
+        incomingLength: 2,
+        currentLabel: 'A',
+        incomingLabel: 'B',
+        currentTable: const [
+          [CellMode.mode1],
+          [CellMode.none],
+          [CellMode.none],
+        ],
+        currentRowModes: const ['none', 'none', 'none'],
+        incomingTable: const [
+          [CellMode.mode2, CellMode.mode1],
+          [CellMode.none, CellMode.none],
+        ],
+        incomingRowModes: const ['simultaneous', 'none'],
+        newId: nextId,
+      );
+
+      expect(segments, hasLength(2));
+      expect(segments[0].cameraTable, [
+        [CellMode.mode1],
+      ]);
+      expect(segments[1].cameraTable, [
+        [CellMode.mode2, CellMode.mode1],
+      ]);
+      expect(segments[1].rowModes, ['simultaneous']);
+
+      final combined = ChartSegmentService.combineCameraTables(
+        segments,
+        minCameraCount: 1,
+      );
+      expect(combined.cameraCount, 2);
+      expect(combined.table, [
+        [CellMode.mode1, CellMode.none],
+        [CellMode.mode2, CellMode.mode1],
+      ]);
+      expect(combined.rowModes, ['none', 'simultaneous']);
+    });
+
+    test('並べ替えでカメラ取込表もセグメントに追従する', () {
+      const segments = [
+        ChartSegment(
+          id: 'a',
+          label: 'A',
+          startTimeIndex: 0,
+          endTimeIndex: 3,
+          cameraTable: [
+            [CellMode.mode1],
+          ],
+          rowModes: ['none'],
+        ),
+        ChartSegment(
+          id: 'b',
+          label: 'B',
+          startTimeIndex: 3,
+          endTimeIndex: 5,
+          cameraTable: [
+            [CellMode.mode2],
+          ],
+          rowModes: ['none'],
+        ),
+      ];
+      final mutation = ChartSegmentService.reorderSegments(
+        signalValues: const [
+          [1, 1, 1, 0, 0],
+        ],
+        signalNames: const ['SIG'],
+        annotations: const [],
+        omissionIndices: const [],
+        stepDurationsMs: const [],
+        segments: segments,
+        fromIndex: 0,
+        toIndex: 1,
+      );
+
+      expect(mutation, isNotNull);
+      expect(mutation!.segments[0].label, 'B');
+      expect(mutation.segments[0].cameraTable, [
+        [CellMode.mode2],
+      ]);
+      expect(mutation.segments[1].cameraTable, [
+        [CellMode.mode1],
+      ]);
+
+      final combined = ChartSegmentService.combineCameraTables(
+        mutation.segments,
+      );
+      expect(combined.table, [
+        [CellMode.mode2],
+        [CellMode.mode1],
+      ]);
+    });
+
+    test('削除したセグメントのカメラ取込表は結合結果から外れる', () {
+      final mutation = ChartSegmentService.deleteSegment(
+        signalValues: const [
+          [1, 1, 0, 0],
+        ],
+        signalNames: const ['SIG'],
+        annotations: const [],
+        omissionIndices: const [],
+        stepDurationsMs: const [],
+        segments: const [
+          ChartSegment(
+            id: 'a',
+            label: 'A',
+            startTimeIndex: 0,
+            endTimeIndex: 2,
+            cameraTable: [
+              [CellMode.mode1],
+            ],
+          ),
+          ChartSegment(
+            id: 'b',
+            label: 'B',
+            startTimeIndex: 2,
+            endTimeIndex: 4,
+            cameraTable: [
+              [CellMode.mode2],
+            ],
+          ),
+        ],
+        segmentId: 'b',
+      );
+
+      expect(mutation, isNotNull);
+      final combined = ChartSegmentService.combineCameraTables(
+        mutation!.segments,
+      );
+      expect(combined.table, [
+        [CellMode.mode1],
+      ]);
     });
 
     test('列削除に合わせてセグメント境界が縮む', () {

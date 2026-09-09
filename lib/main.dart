@@ -41,6 +41,7 @@ import 'services/export_service.dart';
 import 'services/report_export_service.dart';
 import 'models/chart/chart_segment.dart';
 import 'services/chart_concat_service.dart';
+import 'services/chart_segment_service.dart';
 import 'widgets/chart/chart_concat_dialogs.dart';
 import 'widgets/form/form_tab_controller_mapper.dart';
 import 'widgets/form/form_tab_rules.dart';
@@ -1176,6 +1177,7 @@ class _TimingChartGeneratorHomePageState
     }
 
     final joinLabel = _stripFileExtension(picked.fileName);
+    final formBefore = _formTabKey.currentState;
     final result = ChartConcatService.concat(
       currentSignals: currentSignals,
       currentAnnotations: currentAnnotations,
@@ -1188,6 +1190,9 @@ class _TimingChartGeneratorHomePageState
       joinLabel: joinLabel.isEmpty ? s.concat_join_default : joinLabel,
       currentSegments: _chartController.segments,
       currentLabel: s.segment_current_default,
+      currentTable: formBefore?.getTableData() ?? const [],
+      currentRowModes: formBefore?.getRowModes() ?? const [],
+      currentCameraCount: _formState.camera,
     );
 
     if (policy == UnmatchedIncomingPolicy.padAndAdd) {
@@ -1207,6 +1212,10 @@ class _TimingChartGeneratorHomePageState
       result.signals.map((signal) => List<int>.from(signal.values)).toList(),
     );
     form?.refreshSignalDataList();
+    await _syncCameraTableFromSegments(
+      result.segments,
+      cameraCount: result.cameraCount,
+    );
 
     final names = result.signals.map((signal) => signal.name).toList();
     final values = result.signals
@@ -1250,6 +1259,28 @@ class _TimingChartGeneratorHomePageState
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(s.concat_success)));
+  }
+
+  Future<void> _syncCameraTableFromSegments(
+    List<ChartSegment> segments, {
+    int? cameraCount,
+  }) async {
+    final combined = ChartSegmentService.combineCameraTables(
+      segments,
+      minCameraCount: cameraCount ?? _formState.camera,
+    );
+    if (combined.table.isEmpty) return;
+    if (!mounted) return;
+    final form = _formTabKey.currentState;
+    if (combined.cameraCount > _formState.camera) {
+      // カメラ数変更の didChangeDependencies が表を空初期化しないよう先に抑止する
+      form?.keepTableOnNextCameraChange();
+      _formNotifier.update(camera: combined.cameraCount);
+    }
+    form?.applyCameraTable(
+      tableData: combined.table,
+      rowModes: combined.rowModes,
+    );
   }
 
   String _stripFileExtension(String fileName) {
@@ -2202,6 +2233,9 @@ class _TimingChartGeneratorHomePageState
                 onAnnotationsChanged: (anns) {
                   _chartAnnotations = List.from(anns);
                   _markDirty();
+                },
+                onSegmentsChanged: (segments) {
+                  unawaited(_syncCameraTableFromSegments(segments));
                 },
                 showIoNumbersPerSignal: _chartShowIoNumbers,
                 signalColorArgb: _chartSignals.map((s) => s.colorArgb).toList(),

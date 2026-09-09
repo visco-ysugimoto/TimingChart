@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_application_1/models/backup/app_config.dart';
+import 'package:flutter_application_1/models/form/camera_table_types.dart';
 import 'package:flutter_application_1/models/form/form_state.dart';
 import 'package:flutter_application_1/models/chart/signal_data.dart';
 import 'package:flutter_application_1/models/chart/signal_type.dart';
@@ -134,6 +135,10 @@ void main() {
         label: 'taskA',
         startTimeIndex: 0,
         endTimeIndex: 4,
+        cameraTable: [
+          [CellMode.mode1],
+        ],
+        rowModes: ['none'],
       );
       final original = AppConfig(
         formState: formState,
@@ -154,6 +159,10 @@ void main() {
       expect(decoded.segments.single.id, 's1');
       expect(decoded.segments.single.label, 'taskA');
       expect(decoded.segments.single.endTimeIndex, 4);
+      expect(decoded.segments.single.cameraTable, [
+        [CellMode.mode1],
+      ]);
+      expect(decoded.segments.single.rowModes, ['none']);
 
       final legacy = AppConfig.fromJson({
         'formState': {

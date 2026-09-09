@@ -126,6 +126,9 @@ class TimingChart extends StatefulWidget {
   final void Function(List<TimingChartAnnotation> annotations)?
   onAnnotationsChanged;
 
+  /// セグメント並べ替え・削除・Undo のあと、カメラ取込表を同期する
+  final void Function(List<ChartSegment> segments)? onSegmentsChanged;
+
   const TimingChart({
     super.key,
     required this.initialSignalNames,
@@ -144,6 +147,7 @@ class TimingChart extends StatefulWidget {
     this.onSignalShowIoNumberChanged,
     this.onAuxiliaryAppearanceChanged,
     this.onAnnotationsChanged,
+    this.onSegmentsChanged,
     this.signalColorArgb = const [],
   });
 
@@ -584,6 +588,9 @@ class TimingChartState extends State<TimingChart>
         if (annotationsChanged) {
           widget.onAnnotationsChanged?.call(controllerAnnotations);
         }
+        widget.onSegmentsChanged?.call(
+          List<ChartSegment>.from(_controller!.segments),
+        );
       }
       final settingsRW = Provider.of<SettingsNotifier>(context, listen: false);
       final int maxLen = signals.isEmpty
@@ -2933,6 +2940,7 @@ class TimingChartState extends State<TimingChart>
     );
     _notifySignalsChanged();
     widget.onAnnotationsChanged?.call(mutation.annotations);
+    widget.onSegmentsChanged?.call(mutation.segments);
   }
 
   Widget _buildZoomControlsListenable(BuildContext context, Widget? _) {

@@ -189,6 +189,9 @@ class FormTabState extends State<FormTab>
   int _prevHwPort = -1;
   int _prevCamera = -1;
 
+  /// 結合などでカメラ数を先に上げるとき、表の再初期化を一度だけ抑止する
+  bool _keepTableOnNextCameraChange = false;
+
   // --- 画面状態（サブモード） ---
   /// PLC/EIP のモード（None/PLC/EIP）。UIのTabBar構成にも影響する。
   String _plcEipOption = PlcEipOptions.none;
@@ -476,7 +479,11 @@ class FormTabState extends State<FormTab>
     }
 
     if (_prevCamera != -1 && _prevCamera != fs.camera) {
-      _initializeTableData();
+      if (_keepTableOnNextCameraChange) {
+        _keepTableOnNextCameraChange = false;
+      } else {
+        _initializeTableData();
+      }
 
       // HW Port が0またはカメラ数以外の場合、自動的にカメラ数へ更新
       if (fs.hwPort != 0 && fs.hwPort != fs.camera) {
@@ -1870,6 +1877,45 @@ class FormTabState extends State<FormTab>
   // テーブルデータを取得する（外部アクセス用）
   List<List<CellMode>> getTableData() {
     return _tableData;
+  }
+
+  /// 次のカメラ数変更では取込表を空で作り直さない
+  void keepTableOnNextCameraChange() {
+    _keepTableOnNextCameraChange = true;
+  }
+
+  /// 結合などで組み立てたカメラ取込表をフォームへ反映する
+  void applyCameraTable({
+    required List<List<CellMode>> tableData,
+    required List<String> rowModes,
+  }) {
+    if (tableData.isEmpty) return;
+    final cameras = formState.camera > 0 ? formState.camera : 1;
+    setState(() {
+      _tableData = [
+        for (final row in tableData)
+          row.length >= cameras
+              ? List<CellMode>.from(row.take(cameras))
+              : [
+                  ...row,
+                  ...List<CellMode>.filled(cameras - row.length, CellMode.none),
+                ],
+      ];
+      _rowCount = _tableData.length;
+      _rowModes = [
+        for (var i = 0; i < _rowCount; i++)
+          i < rowModes.length
+              ? RowMode.values.firstWhere(
+                  (mode) => mode.name == rowModes[i],
+                  orElse: () => RowMode.none,
+                )
+              : RowMode.none,
+      ];
+      if (!canUseSimultaneousCapture(cameras)) {
+        _rowModes = List.generate(_rowCount, (_) => RowMode.none);
+      }
+      _columnModes = List.generate(cameras, (_) => CellMode.none);
+    });
   }
 
   List<bool> getInputVisibility() {

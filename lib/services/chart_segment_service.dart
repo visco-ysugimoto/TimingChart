@@ -1,5 +1,19 @@
 import '../models/chart/chart_segment.dart';
 import '../models/chart/timing_chart_annotation.dart';
+import '../models/form/camera_table_types.dart';
+
+/// セグメント列から組み立てたカメラ取込表
+class CombinedCameraTable {
+  final List<List<CellMode>> table;
+  final List<String> rowModes;
+  final int cameraCount;
+
+  const CombinedCameraTable({
+    required this.table,
+    required this.rowModes,
+    required this.cameraCount,
+  });
+}
 
 /// 波形スライス操作の結果
 class ChartSegmentMutation {
@@ -36,22 +50,34 @@ class ChartSegmentService {
     required int incomingLength,
     required String currentLabel,
     required String incomingLabel,
+    List<List<CellMode>> currentTable = const [],
+    List<String> currentRowModes = const [],
+    List<List<CellMode>> incomingTable = const [],
+    List<String> incomingRowModes = const [],
     String Function()? newId,
   }) {
     var seq = 0;
     String idOf() => newId?.call() ?? _defaultId(++seq);
 
-    final left = _normalizedOrSingle(
-      currentSegments,
-      currentLength,
-      currentLabel.isEmpty ? 'Chart' : currentLabel,
-      idOf,
+    final left = _distributeTable(
+      _normalizedOrSingle(
+        currentSegments,
+        currentLength,
+        currentLabel.isEmpty ? 'Chart' : currentLabel,
+        idOf,
+      ),
+      currentTable,
+      currentRowModes,
     );
-    final rightBase = _normalizedOrSingle(
-      incomingSegments,
-      incomingLength,
-      incomingLabel.isEmpty ? 'Chart' : incomingLabel,
-      idOf,
+    final rightBase = _distributeTable(
+      _normalizedOrSingle(
+        incomingSegments,
+        incomingLength,
+        incomingLabel.isEmpty ? 'Chart' : incomingLabel,
+        idOf,
+      ),
+      incomingTable,
+      incomingRowModes,
     );
     final right = [
       for (final segment in rightBase)
@@ -62,6 +88,113 @@ class ChartSegmentService {
         ),
     ];
     return [...left, ...right];
+  }
+
+  /// フォームの取込表をセグメントへ割り振る。
+  /// 既存の行数があるときはその幅で切り、余りは末尾へ付ける。
+  static List<ChartSegment> _distributeTable(
+    List<ChartSegment> segments,
+    List<List<CellMode>> table,
+    List<String> rowModes,
+  ) {
+    if (segments.isEmpty) return segments;
+    final compact = _compactUsedRows(table, rowModes);
+    if (compact.table.isEmpty) return segments;
+
+    final counts = [for (final segment in segments) segment.cameraTable.length];
+    if (counts.every((count) => count == 0)) {
+      return [
+        segments.first.copyWith(
+          cameraTable: compact.table,
+          rowModes: compact.rowModes,
+        ),
+        ...segments.skip(1),
+      ];
+    }
+
+    var offset = 0;
+    final result = <ChartSegment>[];
+    for (var i = 0; i < segments.length; i++) {
+      final remaining = compact.table.length - offset;
+      final take = i == segments.length - 1
+          ? remaining
+          : (counts[i] < remaining ? counts[i] : remaining);
+      final end = offset + (take > 0 ? take : 0);
+      result.add(
+        segments[i].copyWith(
+          cameraTable: compact.table.sublist(offset, end),
+          rowModes: compact.rowModes.sublist(offset, end),
+        ),
+      );
+      offset = end;
+    }
+    return result;
+  }
+
+  static CombinedCameraTable _compactUsedRows(
+    List<List<CellMode>> table,
+    List<String> rowModes,
+  ) {
+    var last = -1;
+    for (var i = 0; i < table.length; i++) {
+      if (table[i].any((cell) => cell != CellMode.none)) {
+        last = i;
+      }
+    }
+    if (last < 0) {
+      return const CombinedCameraTable(
+        table: [],
+        rowModes: [],
+        cameraCount: 1,
+      );
+    }
+    return CombinedCameraTable(
+      table: _copyTable(table.sublist(0, last + 1)),
+      rowModes: [
+        for (var i = 0; i <= last; i++)
+          i < rowModes.length ? rowModes[i] : RowMode.none.name,
+      ],
+      cameraCount: 1,
+    );
+  }
+
+  static List<List<CellMode>> _copyTable(List<List<CellMode>> table) {
+    return [for (final row in table) List<CellMode>.from(row)];
+  }
+
+  /// セグメント順にカメラ取込表を連結する。列数は最大カメラ数に揃える。
+  static CombinedCameraTable combineCameraTables(
+    List<ChartSegment> segments, {
+    int minCameraCount = 1,
+  }) {
+    var cameras = minCameraCount > 0 ? minCameraCount : 1;
+    for (final segment in segments) {
+      for (final row in segment.cameraTable) {
+        if (row.length > cameras) cameras = row.length;
+      }
+    }
+    final table = <List<CellMode>>[];
+    final modes = <String>[];
+    for (final segment in segments) {
+      for (var i = 0; i < segment.cameraTable.length; i++) {
+        table.add(_padRow(segment.cameraTable[i], cameras));
+        modes.add(
+          i < segment.rowModes.length
+              ? segment.rowModes[i]
+              : RowMode.none.name,
+        );
+      }
+    }
+    return CombinedCameraTable(
+      table: table,
+      rowModes: modes,
+      cameraCount: cameras,
+    );
+  }
+
+  static List<CellMode> _padRow(List<CellMode> row, int cameras) {
+    if (row.length >= cameras) return List<CellMode>.from(row.take(cameras));
+    return [...row, ...List<CellMode>.filled(cameras - row.length, CellMode.none)];
   }
 
   static List<ChartSegment> _normalizedOrSingle(
