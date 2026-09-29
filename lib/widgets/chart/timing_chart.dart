@@ -12,6 +12,7 @@ import '../../models/chart/timing_chart_annotation.dart';
 import '../../models/chart/signal_type.dart';
 import '../../models/chart/io_channel_source.dart';
 import '../../utils/comment_text_spans.dart';
+import '../../utils/comment_box_layout.dart';
 import '../../utils/chart_shortcut_keys.dart';
 import 'chart_annotations.dart';
 import 'chart_grid.dart';
@@ -430,6 +431,12 @@ class TimingChartState extends State<TimingChart>
 
   /// ドラッグ開始時のアノテーションボックスのサイズ
   Size? _draggingBoxSize;
+
+  /// ドラッグ中に最後に確定したボックス左上（チャートローカル）
+  Offset? _draggingLatestTopLeft;
+
+  /// [_draggingLatestTopLeft] を記録したときの行高さ
+  double? _draggingLatestCellHeight;
 
   /// ドラッグ開始時の指位置（CustomPaint ローカル Y）
   double? _draggingStartFingerLocalY;
@@ -851,6 +858,7 @@ class TimingChartState extends State<TimingChart>
           a[i].text != b[i].text ||
           a[i].offsetX != b[i].offsetX ||
           a[i].offsetY != b[i].offsetY ||
+          a[i].boxCenterRow != b[i].boxCenterRow ||
           a[i].arrowTipY != b[i].arrowTipY ||
           a[i].arrowTipRowIndex != b[i].arrowTipRowIndex ||
           a[i].arrowHorizontal != b[i].arrowHorizontal ||
@@ -2488,6 +2496,21 @@ class TimingChartState extends State<TimingChart>
   ) {
     // Update state variables
     _cellWidth = layoutData.cellWidth;
+    final List<TimingChartAnnotation>? anchored = anchorCommentsInsideChart(
+      annotations: annotations,
+      paintedRects: _annotationHitRects,
+      oldCellHeight: _cellHeight,
+      newCellHeight: layoutData.cellHeight,
+      rowCount: _visibleIndexes.length,
+      draggingAnnotationId: _draggingAnnotationId,
+    );
+    if (anchored != null) {
+      annotations = anchored;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _controller?.setAnnotations(annotations);
+      });
+    }
     _cellHeight = layoutData.cellHeight;
     _minZoomFactorForView = layoutData.minZoomFactorForView;
     _maxZoomFactorForView = layoutData.maxZoomFactorForView;

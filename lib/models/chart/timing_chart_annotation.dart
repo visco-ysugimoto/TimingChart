@@ -44,8 +44,13 @@ class TimingChartAnnotation {
   final int? endTimeIndex;
   final String text;
   // ユーザーがコメントボックスを任意移動できるようにするためのオフセット（px）
+  // チャート本体の外（上下余白）ではこちらを使う。余白は行高さに追従しない。
   final double? offsetX;
   final double? offsetY;
+  // コメントボックス中心の縦位置（チャート上端からの行数。1.0 = 1行分）。
+  // チャート内に置いたボックスは cellHeight が変わっても同じ行に留まる。
+  // 非nullのときは offsetY より優先する。
+  final double? boxCenterRow;
   // 矢印先端のY座標（チャートローカル座標, marginTop基準）。nullならデフォルト（上端）
   final double? arrowTipY;
   // 矢印先端を「どの行に向けるか」（表示行インデックス）。cellHeight変動に強い。
@@ -94,6 +99,7 @@ class TimingChartAnnotation {
     required this.text,
     this.offsetX,
     this.offsetY,
+    this.boxCenterRow,
     this.arrowTipY,
     this.arrowTipRowIndex,
     this.arrowHorizontal,
@@ -121,6 +127,9 @@ class TimingChartAnnotation {
     String? text,
     double? offsetX,
     double? offsetY,
+    double? boxCenterRow,
+    bool clearOffsetY = false,
+    bool clearBoxCenterRow = false,
     double? arrowTipY,
     int? arrowTipRowIndex,
     bool? arrowHorizontal,
@@ -146,7 +155,9 @@ class TimingChartAnnotation {
       endTimeIndex: endTimeIndex ?? this.endTimeIndex,
       text: text ?? this.text,
       offsetX: offsetX ?? this.offsetX,
-      offsetY: offsetY ?? this.offsetY,
+      offsetY: clearOffsetY ? null : (offsetY ?? this.offsetY),
+      boxCenterRow:
+          clearBoxCenterRow ? null : (boxCenterRow ?? this.boxCenterRow),
       arrowTipY: arrowTipY ?? this.arrowTipY,
       arrowTipRowIndex: arrowTipRowIndex ?? this.arrowTipRowIndex,
       arrowHorizontal: arrowHorizontal ?? this.arrowHorizontal,
@@ -178,6 +189,7 @@ class TimingChartAnnotation {
       'text': text,
       if (offsetX != null) 'offsetX': offsetX,
       if (offsetY != null) 'offsetY': offsetY,
+      if (boxCenterRow != null) 'boxCenterRow': boxCenterRow,
       if (arrowTipY != null) 'arrowTipY': arrowTipY,
       if (arrowTipRowIndex != null) 'arrowTipRowIndex': arrowTipRowIndex,
       if (arrowHorizontal != null) 'arrowHorizontal': arrowHorizontal,
@@ -211,6 +223,7 @@ class TimingChartAnnotation {
       text: json['text']?.toString() ?? '',
       offsetX: (json['offsetX'] as num?)?.toDouble(),
       offsetY: (json['offsetY'] as num?)?.toDouble(),
+      boxCenterRow: (json['boxCenterRow'] as num?)?.toDouble(),
       arrowTipY: (json['arrowTipY'] as num?)?.toDouble(),
       arrowTipRowIndex: (json['arrowTipRowIndex'] as num?)?.toInt(),
       arrowHorizontal: json['arrowHorizontal'] as bool?,

@@ -157,21 +157,25 @@ class ChartSvgAnnotations {
         commentRect = Rect.fromLTWH(commentX, commentY, boxWidth, boxHeight);
       }
 
-      if (ann.offsetX != null || ann.offsetY != null) {
-        commentRect = commentRect.shift(
-          Offset(ann.offsetX ?? 0, ann.offsetY ?? 0),
-        );
-      }
+      final bool anchoredInChart = ann.boxCenterRow != null;
+      commentRect = placeCommentBox(
+        baseRect: commentRect,
+        offsetX: ann.offsetX,
+        offsetY: ann.offsetY,
+        boxCenterRow: ann.boxCenterRow,
+        cellHeight: data.cellHeight,
+        chartTopY: originY,
+      );
 
       const double maxTopCommentAreaHeight = 100.0;
       const double topClipPadding = 8.0;
       const double minTopLeftY =
           -(maxTopCommentAreaHeight - topClipPadding);
-      if (commentRect.top < minTopLeftY) {
+      if (!anchoredInChart && commentRect.top < minTopLeftY) {
         commentRect = commentRect.translate(0, minTopLeftY - commentRect.top);
       }
 
-      if (placementTop) {
+      if (!anchoredInChart && placementTop) {
         var topAttempts = 0;
         while (placedTopCommentRects.any((r) => r.overlaps(commentRect)) &&
             topAttempts < 15 &&
@@ -179,7 +183,7 @@ class ChartSvgAnnotations {
           commentRect = commentRect.translate(0, -20);
           topAttempts++;
         }
-      } else {
+      } else if (!anchoredInChart) {
         var attempts = 0;
         while (_overlapsAny(commentRect, placedCommentRects) && attempts < 15) {
           commentRect = commentRect.translate(0, 20);

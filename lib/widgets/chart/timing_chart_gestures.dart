@@ -276,8 +276,10 @@ extension _TimingChartGesturesExt on TimingChartState {
   void _onPanEndImpl(DragEndDetails details) {
     if (_draggingAnnotationId != null) {
       _setState(() {
+        _freezeInChartCommentAnchor();
         _clearAnnotationDragState();
       });
+      _controller?.setAnnotations(annotations);
       _forceRepaint();
       return;
     }
@@ -345,8 +347,10 @@ extension _TimingChartGesturesExt on TimingChartState {
   void _onLongPressEndImpl(LongPressEndDetails details) {
     if (_draggingAnnotationId != null) {
       _setState(() {
+        _freezeInChartCommentAnchor();
         _clearAnnotationDragState();
       });
+      _controller?.setAnnotations(annotations);
       _forceRepaint();
     }
   }
@@ -653,6 +657,8 @@ extension _TimingChartGesturesExt on TimingChartState {
     _draggingStartFingerChartX =
         chartLocalPos.dx - chartMarginLeft + hScroll;
     _draggingStartFingerLocalY = chartLocalPos.dy;
+    _draggingLatestTopLeft = rect.topLeft;
+    _draggingLatestCellHeight = _cellHeight;
 
     _dragPreviewTopExtent = _topCommentAreaHeight;
   }
@@ -686,6 +692,8 @@ extension _TimingChartGesturesExt on TimingChartState {
     if (proposedTopLeft.dy < minAllowedTop) {
       proposedTopLeft = Offset(proposedTopLeft.dx, minAllowedTop);
     }
+    _draggingLatestTopLeft = proposedTopLeft;
+    _draggingLatestCellHeight = _cellHeight;
 
     var newPreview = _computeDragPreviewTopExtent(
       draggingId: _draggingAnnotationId,
@@ -732,11 +740,36 @@ extension _TimingChartGesturesExt on TimingChartState {
     _controller?.setAnnotations(annotations);
   }
 
+  /// ドロップ位置がチャート本体なら、中心行を保存して縦圧縮後も同じ行に留める。
+  void _freezeInChartCommentAnchor() {
+    final int idx = annotations.indexWhere((a) => a.id == _draggingAnnotationId);
+    final Offset? topLeft = _draggingLatestTopLeft;
+    final Size? boxSize = _draggingBoxSize;
+    final double? cellHeight = _draggingLatestCellHeight;
+    if (idx == -1 || topLeft == null || boxSize == null || cellHeight == null) {
+      return;
+    }
+    final double? row = commentBoxCenterRow(
+      boxTop: topLeft.dy,
+      boxHeight: boxSize.height,
+      chartBottomY: _visibleIndexes.length * cellHeight,
+      cellHeight: cellHeight,
+    );
+    final TimingChartAnnotation current = annotations[idx];
+    annotations[idx] = current.copyWith(
+      boxCenterRow: row,
+      clearBoxCenterRow: row == null,
+      clearOffsetY: row != null,
+    );
+  }
+
   void _clearAnnotationDragState() {
     final lastPreview = _dragPreviewTopExtent;
     _draggingAnnotationId = null;
     _draggingInitialBoxTopLeft = null;
     _draggingBoxSize = null;
+    _draggingLatestTopLeft = null;
+    _draggingLatestCellHeight = null;
     _draggingStartFingerLocalY = null;
     _draggingStartFingerChartX = null;
     _dragPreviewTopExtent = 0.0;

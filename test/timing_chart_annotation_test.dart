@@ -67,6 +67,23 @@ void main() {
       expect(decoded.isArrowVisible, isFalse);
     });
 
+    test('JSONの往復でチャート内の中心行が維持される', () {
+      const original = TimingChartAnnotation(
+        id: 'a1',
+        startTimeIndex: 1,
+        endTimeIndex: null,
+        text: 'inside',
+        offsetX: 12,
+        boxCenterRow: 3.5,
+      );
+
+      final decoded = TimingChartAnnotation.fromJson(original.toJson());
+
+      expect(decoded.boxCenterRow, 3.5);
+      expect(decoded.offsetX, 12);
+      expect(decoded.offsetY, isNull);
+    });
+
     test('copyWithで表示フラグを更新できる', () {
       const original = TimingChartAnnotation(
         id: 'a1',

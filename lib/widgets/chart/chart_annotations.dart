@@ -235,23 +235,27 @@ class ChartAnnotationsManager {
           commentRect = Rect.fromLTWH(commentX, commentY, boxWidth, boxHeight);
         }
 
-        if (ann.offsetX != null || ann.offsetY != null) {
-          commentRect = commentRect.shift(
-            Offset(ann.offsetX ?? 0, ann.offsetY ?? 0),
-          );
-        }
+        final bool anchoredInChart =
+            ann.boxCenterRow != null && draggingAnnotationId != ann.id;
+        commentRect = placeCommentBox(
+          baseRect: commentRect,
+          offsetX: ann.offsetX,
+          offsetY: ann.offsetY,
+          boxCenterRow: anchoredInChart ? ann.boxCenterRow : null,
+          cellHeight: cellHeight,
+        );
 
         const double maxTopCommentAreaHeight = 100.0;
         const double topClipPadding = 8.0;
         const double minTopLeftY =
             -(maxTopCommentAreaHeight - topClipPadding);
-        if (commentRect.top < minTopLeftY) {
+        if (!anchoredInChart && commentRect.top < minTopLeftY) {
           commentRect = commentRect.translate(
             0,
             minTopLeftY - commentRect.top,
           );
         }
-        if (draggingAnnotationId != ann.id) {
+        if (!anchoredInChart && draggingAnnotationId != ann.id) {
           int topAttempts = 0;
           while (placedTopCommentRects.any((r) => r.overlaps(commentRect)) &&
               topAttempts < 15 &&
@@ -465,23 +469,28 @@ class ChartAnnotationsManager {
         commentRect = Rect.fromLTWH(commentX, commentY, boxWidth, boxHeight);
       }
 
-      // ユーザー移動オフセットを適用
-      if (ann.offsetX != null || ann.offsetY != null) {
-        commentRect = commentRect.shift(
-          Offset(ann.offsetX ?? 0, ann.offsetY ?? 0),
-        );
-      }
+      // チャート内に置いたボックスは行単位で縦位置を保つ。
+      // ドラッグ中は指位置（px オフセット）を優先する。
+      final bool anchoredInChart =
+          ann.boxCenterRow != null && draggingAnnotationId != ann.id;
+      commentRect = placeCommentBox(
+        baseRect: commentRect,
+        offsetX: ann.offsetX,
+        offsetY: ann.offsetY,
+        boxCenterRow: anchoredInChart ? ann.boxCenterRow : null,
+        cellHeight: cellHeight,
+      );
 
       const double maxTopCommentAreaHeight = 100.0;
       const double topClipPadding = 8.0;
       const double minTopLeftY =
           -(maxTopCommentAreaHeight - topClipPadding);
-      if (commentRect.top < minTopLeftY) {
+      if (!anchoredInChart && commentRect.top < minTopLeftY) {
         commentRect = commentRect.translate(0, minTopLeftY - commentRect.top);
       }
 
       int attempts = 0;
-      if (draggingAnnotationId != ann.id) {
+      if (!anchoredInChart && draggingAnnotationId != ann.id) {
         while (placedCommentRects.any((r) => r.overlaps(commentRect)) &&
             attempts < 15) {
           // ユーザーが動かした場合はY方向にのみ最小調整（衝突しない位置へ）
