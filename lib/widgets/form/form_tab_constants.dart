@@ -58,6 +58,7 @@ class SignalNames {
   static const String batchExposure = 'BATCH_EXPOSURE';
   static const String batchExposureComplete = 'BATCH_EXPOSURE_COMPLETE';
   static const String recovery = 'RECOVERY';
+  static const String error = 'ERROR';
   static const String pcControl = 'PC_CONTROL';
   static const String systemKeepRunningSignal =
       'SYSTEM_KEEP_RUNNING_SIGNAL';

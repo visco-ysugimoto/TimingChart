@@ -1572,6 +1572,9 @@ class FormTabState extends State<FormTab>
       filteredSignals.map((e) => e.signalType).toList(),
     );
 
+    // チャートには出さず、フォームの Output30 / Output32 にだけ置く
+    setState(_assignFormOnlyTemplateOutputs);
+
     final List<String> names = filteredSignals.map((e) => e.name).toList();
     final values = filteredSignals.map((e) => e.values).toList();
     final types = filteredSignals.map((e) => e.signalType).toList();
@@ -1665,6 +1668,20 @@ class FormTabState extends State<FormTab>
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('信号データの更新が完了しました')));
+  }
+
+  /// Template でフォームだけに置く出力。チェックはオフにし、チャートの初期表示には出さない。
+  void _assignFormOnlyTemplateOutputs() {
+    const int errorIndex = 29; // Output30
+    const int pcControlIndex = 31; // Output32
+    if (formState.outputCount < 32) return;
+    if (widget.outputControllers.length <= pcControlIndex) return;
+    if (_outputVisibility.length <= pcControlIndex) return;
+
+    widget.outputControllers[errorIndex].text = SignalNames.error;
+    widget.outputControllers[pcControlIndex].text = SignalNames.pcControl;
+    _outputVisibility[errorIndex] = false;
+    _outputVisibility[pcControlIndex] = false;
   }
 
   // 信号データリストを取得する（外部アクセス用）
